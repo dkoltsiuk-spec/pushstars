@@ -36,9 +36,9 @@
 
 ## Acceptance criteria
 
-- [ ] `git init` (или клон) и первый коммит с документацией.
-- [ ] `.gitignore` исключает `Library/`, `Temp/`, `Obj/`, `Builds/`, `.gradle`, и т.д.
-- [ ] В README есть ссылка на PROJECT_PLAN.md.
+- [x] `git init` (или клон) и первый коммит с документацией.
+- [x] `.gitignore` исключает `Library/`, `Temp/`, `Obj/`, `Builds/`, `.gradle`, и т.д.
+- [x] В README есть ссылка на PROJECT_PLAN.md.
 
 ## Тестирование
 
