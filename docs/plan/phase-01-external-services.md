@@ -19,22 +19,28 @@ Firebase, Photon, Apple Developer, Google Play Console, Branch/AppsFlyer (зар
 
 ## Чеклист (артефакт)
 
-Шаблон уже в репозитории: **[credentials-checklist.md](../architecture/credentials-checklist.md)** — скопировать локально или заполнять в wiki и **не коммитить секреты**.
+Полная инструкция и таблицы для заполнения: **[credentials-checklist.md](../architecture/credentials-checklist.md)**.
 
-Заполнить пункты:
+Шаблон переменных окружения (без секретов в git): **[functions/.env.example](../../functions/.env.example)**.
+
+Краткий список:
 
 - [ ] Firebase проект (Blaze), приложения iOS + Android, bundle id `com.pushstars.app` (или финальный).
 - [ ] Скачать `GoogleService-Info.plist`, `google-services.json` (хранить безопасно).
 - [ ] Включить Auth (Anonymous + провайдеры позже), Firestore, RTDB, Storage, Functions, FCM, Crashlytics, Analytics.
+- [ ] Индекс Firestore `matches`: `playerUids` + `createdAt` (см. архитектурный документ).
 - [ ] Photon приложение PUN2, AppId, регион по умолчанию.
-- [ ] Сгенерировать секрет для Photon webhook → сохранить для Firebase env `PHOTON_WEBHOOK_SECRET`.
+- [ ] Сгенерировать секрет для Photon webhook → `PHOTON_WEBHOOK_SECRET` (позже привязать к Functions).
 - [ ] Apple: Team ID, push capability, APNs key для FCM.
 - [ ] Google Play: консольный доступ, SHA-1/256 для debug/release при необходимости.
+- [ ] Branch или AppsFlyer — аккаунт под deep links (фаза 16).
 
 ## Acceptance criteria
 
-- Все ID и пути к plist/json задокументированы внутри команды (не обязательно в git).
-- Firebase billing alerts настроены (напр. $10/мес).
+- [ ] Все ID и пути к plist/json задокументированы внутри команды (не обязательно в git).
+- [ ] Firebase billing alerts настроены (напр. $10/мес).
+
+*(Галочки проставляешь ты после ручной настройки; репозиторий содержит только шаблоны.)*
 
 ## Тестирование
 

@@ -4,6 +4,7 @@
 
 ## Документация
 
+- **[Фаза 01 — внешние сервисы](docs/architecture/credentials-checklist.md)** — Firebase, Photon, Apple, Google Play (заполняется вручную).
 - **[PROJECT_PLAN.md](PROJECT_PLAN.md)** — мастер-план, порядок фаз, стек, правила для агента.
 - **[docs/plan/](docs/plan/)** — по одному файлу на фазу реализации (00–17).
 - **[docs/architecture/](docs/architecture/)** — Firebase, Ghost Mode, константы.
