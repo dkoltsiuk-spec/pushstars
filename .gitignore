@@ -8,6 +8,12 @@
 /[Uu]ser[Ss]ettings/
 /[Mm]emoryCaptures/
 /[Rr]ecordings/
+/[Aa]ssets/[Ss]treamingAssets/aa.meta
+/[Aa]ssets/[Aa]ddressable[Aa]ssets[Dd]ata/*/*.bin*
+/[Aa]ssets/[Ss]treamingAssets/aa/*
+
+# Unity Package Manager cache (not needed in source)
+/[Pp]ackages/packages-lock.json
 
 # Asset meta noise when using plastic/git partial workflows — keep if needed:
 # *.pidb.meta

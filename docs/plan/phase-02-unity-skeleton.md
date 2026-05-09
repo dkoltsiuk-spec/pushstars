@@ -37,6 +37,28 @@
 - [ ] Сборка на Android и iOS без ошибок (пустой билд или smoke scene).
 - [ ] Переключение трёх табов без утечек сцен (additive или canvas swap).
 
+## Статус реализации
+
+Выполнено агентом (phase-02):
+- [x] `ProjectSettings/` — полный набор `.asset`-файлов для Unity 2022.3.61f1
+- [x] `Packages/manifest.json` — URP 14, TextMeshPro 3, UniTask 2.3.3 (OpenUPM)
+- [x] `Assets/_Project/Scenes/Boot.unity` — сцена с AppBootstrap
+- [x] `Assets/_Project/Scenes/Main.unity` — shell с LeaguePanel / DuelPanel / ProfilePanel
+- [x] `Assets/_Project/Scripts/App/AppBootstrap.cs` + `PushStars.App.asmdef`
+- [x] `Assets/_Project/Scripts/Core/` — `IInitializable`, `IService`, `ServiceLocator` + `PushStars.Core.asmdef`
+- [x] `Assets/_Project/Scripts/UI/MainNavigation/` — `TabId`, `TabButton`, `MainShellView` + `PushStars.UI.asmdef`
+- [x] `Assets/_Project/Scripts/UI/League/LeagueView.cs`
+- [x] `Assets/_Project/Scripts/UI/Duel/DuelView.cs`
+- [x] `Assets/_Project/Scripts/UI/Profile/ProfileView.cs`
+- [x] Все `.meta`-файлы для перечисленных ассетов
+- [x] `.gitignore` обновлён
+
+Требует ручной настройки в Unity Editor:
+- Назначить сцены Boot и Main в Build Settings
+- Привязать `LeaguePanel`, `DuelPanel`, `ProfilePanel` в Inspector `MainShellView`
+- Добавить три `TabButton` в нижнюю навигацию и заполнить `_tabButtons[]`
+- Настроить URP Asset через Edit → Project Settings → Graphics
+
 ## Тестирование
 
 Ручной прогон на одном Android и одном iOS устройстве (или симулятор).
