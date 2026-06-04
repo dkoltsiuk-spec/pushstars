@@ -26,10 +26,16 @@
 
 ## Acceptance criteria
 
-- [ ] При старте приложение входит анонимно (или в связке с будущим Apple/Google).
-- [ ] Firestore `PersistenceEnabled = true`, лимит кеша по архитектуре.
-- [ ] FCM запрос разрешений на iOS в нужном месте жизненного цикла.
-- [ ] Crashlytics инициализирован; тестовый crash за флагом dev.
+- [x] При старте приложение входит анонимно (или в связке с будущим Apple/Google). ✅ `uid` в логах, юзер виден в Console.
+- [x] Firestore `PersistenceEnabled = true`, лимит кеша по архитектуре. ✅ persistence включён; self-test (запись+чтение `_diagnostics/ping`) проходит.
+- [ ] FCM запрос разрешений на iOS в нужном месте жизненного цикла. ⏭️ отложено — минимальный набор SDK; FCM в фазе 15.
+- [ ] Crashlytics инициализирован; тестовый crash за флагом dev. ⏭️ пакет импортирован, init/тестовый crash добавим позже.
+
+> **Решения фазы 04:** минимальный набор SDK (Auth + Firestore + Crashlytics), bundle id `com.pushstars.app`,
+> dev-правило Firestore `allow read, write: if request.auth != null` (настоящие правила — фаза 05),
+> конфиги (`GoogleService-Info.plist` / `google-services.json` / `*-desktop.json`) — в `.gitignore`, не коммитятся.
+> Реализация: `Assets/_Project/Scripts/Firebase/` (`FirebaseService`, `FirebaseAuthService`, `FirestoreService`),
+> вызов из `AppBootstrap.InitServicesAsync()`.
 
 ## Тестирование
 

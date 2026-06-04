@@ -54,15 +54,17 @@ Desktop.ini
 sysinfo.txt
 *.stackdump
 
-# Firebase / mobile secrets — раскомментируй, если конфиги только локально / в CI secrets:
-# GoogleService-Info.plist
-# google-services.json
-# **/google-services.json
+# Firebase / mobile config — храним только локально (фаза 04, решение: не коммитить).
+# Это клиентские конфиги; на новой машине положить вручную (см. credentials-checklist.md).
+GoogleService-Info.plist
+GoogleService-Info.plist.meta
+google-services.json
+google-services.json.meta
+**/google-services.json
+# Сгенерированный Firebase-редактором десктоп-конфиг (тоже содержит ключи):
+Assets/StreamingAssets/google-services-desktop.json
+Assets/StreamingAssets/google-services-desktop.json.meta
 
 # Node (будущий functions/, фаза 05)
 functions/node_modules/
 functions/.env
-
-# Локальные копии конфигов (раскомментируй, если не хочешь коммитить в своём форке)
-# GoogleService-Info.plist
-# google-services.json
