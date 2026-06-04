@@ -1,0 +1,13 @@
+{
+  "rules": {
+    "matchmaking": {
+      "queue": {
+        "$uid": {
+          ".read": "auth != null",
+          ".write": "auth != null && auth.uid === $uid",
+          ".validate": "newData.hasChildren(['trophies', 'rank', 'joinedAt'])"
+        }
+      }
+    }
+  }
+}

@@ -1,0 +1,19 @@
+{
+  "name": "pushstars-functions",
+  "description": "Push Stars Cloud Functions — phase 05 (backend core)",
+  "version": "0.1.0",
+  "private": true,
+  "main": "src/index.js",
+  "engines": {
+    "node": "22"
+  },
+  "scripts": {
+    "serve": "firebase emulators:start --only functions,firestore",
+    "deploy": "firebase deploy --only functions",
+    "logs": "firebase functions:log"
+  },
+  "dependencies": {
+    "firebase-admin": "^12.1.0",
+    "firebase-functions": "^5.0.1"
+  }
+}

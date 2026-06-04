@@ -1,0 +1,49 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    // Profile — readable by any signed-in user.
+    // Client may only update fcmToken / displayName / offlineXpPending / offlineXpSyncToken.
+    // Everything else is written exclusively by Cloud Functions (admin SDK bypasses rules).
+    match /users/{uid} {
+      allow read: if request.auth != null;
+
+      allow update: if request.auth.uid == uid
+        && request.resource.data.diff(resource.data).affectedKeys()
+           .hasOnly(['fcmToken', 'displayName', 'offlineXpPending', 'offlineXpSyncToken']);
+
+      allow create: if false;  // onUserCreated (Auth trigger) seeds the doc
+      allow delete: if false;  // onUserDeleted Cloud Function
+    }
+
+    // Leaderboard — read only; written by Cloud Functions.
+    match /leaderboard/{league}/players/{uid} {
+      allow read: if request.auth != null;
+      allow write: if false;
+    }
+
+    // Match history — a player may read only matches they took part in.
+    match /matches/{matchId} {
+      allow read: if request.auth != null
+        && request.auth.uid in resource.data.playerUids;
+      allow write: if false;
+    }
+
+    // Ghost-session metadata (MVP: own best) — read only your own; written by CF / Storage.
+    match /ghost_sessions/{uid}/sessions/{sessionId} {
+      allow read: if request.auth != null && uid == request.auth.uid;
+      allow write: if false;
+    }
+
+    // Seasons and leagues — read only.
+    match /seasons/{seasonId} {
+      allow read: if request.auth != null;
+      allow write: if false;
+    }
+
+    match /leagues/{leagueId} {
+      allow read: if request.auth != null;
+      allow write: if false;
+    }
+  }
+}

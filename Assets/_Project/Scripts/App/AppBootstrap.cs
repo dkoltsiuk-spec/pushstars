@@ -46,8 +46,9 @@ namespace PushStars.App
                 var firestore = new FirestoreService();
                 firestore.Configure();
                 ServiceLocator.Register(firestore);
-                await firestore.SelfTestAsync();
-                await UniTask.SwitchToMainThread();
+                // Phase 05: connectivity is now proven by the onUserCreated Cloud Function
+                // seeding users/{uid}. The old _diagnostics/ping self-test is dropped — the
+                // strict Firestore rules deny that path.
 
                 Debug.Log("[AppBootstrap] Services initialized.");
             }
