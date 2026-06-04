@@ -65,6 +65,12 @@ google-services.json.meta
 Assets/StreamingAssets/google-services-desktop.json
 Assets/StreamingAssets/google-services-desktop.json.meta
 
+# Firebase desktop native libs for OTHER OSes — exceed GitHub's 100MB limit and aren't
+# needed on this Windows project (Editor uses the .dll; iOS/Android use their own plugin
+# dirs). Re-imported automatically when the Firebase Unity SDK is imported.
+Assets/Firebase/Plugins/x86_64/*.bundle
+Assets/Firebase/Plugins/x86_64/*.so
+
 # Node (будущий functions/, фаза 05)
 functions/node_modules/
 functions/.env
