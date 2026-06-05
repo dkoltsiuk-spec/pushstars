@@ -155,7 +155,7 @@ namespace PushStars.Editor
             characterImage.texture = _previewRt;
             characterImage.color   = Color.white;
             BuildPlaceholderPanel(leaguePanel,  "ЛИГА",    "[Фаза 11]");
-            BuildPlaceholderPanel(profilePanel, "ПРОФИЛЬ", "[Фаза 06]");
+            BuildProfilePanel(profilePanel);
 
             // Duel is the default tab — hide the others so edit mode shows one screen, not all
             // three stacked. MainShellView re-syncs panel visibility on Start at runtime.
@@ -466,6 +466,120 @@ namespace PushStars.Editor
             var label = MakeTMP(panel, "Label", _theme.TextPrimary, $"{title}\n{phase}", 28, FontStyles.Bold);
             Anchor(label.rectTransform, new Vector2(0.5f, 0.5f), new Vector2(0.5f, 0.5f), new Vector2(0.5f, 0.5f));
             label.rectTransform.sizeDelta = new Vector2(300, 120);
+        }
+
+        // ════════════════════════════════════════════════════════════════════════
+        //  PROFILE PANEL  (phase 06 — binds to users/{uid} via ProfilePresenter)
+        // ════════════════════════════════════════════════════════════════════════
+        static void BuildProfilePanel(RectTransform panel)
+        {
+            // ── Avatar placeholder (circle + profile icon; real avatar = Genies, phase 10) ──
+            var avatar = MakeImage(panel, "Avatar", new Color(1f, 1f, 1f, 0.06f), _theme.CircleShape);
+            var art    = avatar.rectTransform;
+            Anchor(art, new Vector2(0.5f, 1f), new Vector2(0.5f, 1f), new Vector2(0.5f, 1f));
+            art.anchoredPosition = new Vector2(0, -84);
+            art.sizeDelta        = new Vector2(104, 104);
+            avatar.raycastTarget = false;
+            if (_theme.NavProfile != null)
+            {
+                var ic = MakeImage(art, "Icon", Color.white, _theme.NavProfile);
+                Anchor(ic.rectTransform, new Vector2(0.5f, 0.5f), new Vector2(0.5f, 0.5f), new Vector2(0.5f, 0.5f));
+                ic.rectTransform.sizeDelta = new Vector2(104, 104);
+                ic.preserveAspect = true;
+                ic.raycastTarget  = false;
+            }
+
+            // ── Name ──────────────────────────────────────────────────────────────────
+            var name = MakeTMP(panel, "Name", _theme.TextPrimary, "Игрок", 26, FontStyles.Bold);
+            Anchor(name.rectTransform, new Vector2(0.5f, 1f), new Vector2(0.5f, 1f), new Vector2(0.5f, 1f));
+            name.rectTransform.anchoredPosition = new Vector2(0, -158);
+            name.rectTransform.sizeDelta        = new Vector2(320, 34);
+            name.alignment = TextAlignmentOptions.Center;
+
+            // ── Rank + win streak (single centered lines — no glyph risk) ───────────────
+            var rank = MakeTMP(panel, "Rank", _theme.TrophyGold, "БРОНЗА", 15, FontStyles.Bold);
+            Anchor(rank.rectTransform, new Vector2(0.5f, 1f), new Vector2(0.5f, 1f), new Vector2(0.5f, 1f));
+            rank.rectTransform.anchoredPosition = new Vector2(0, -196);
+            rank.rectTransform.sizeDelta        = new Vector2(280, 22);
+            rank.alignment = TextAlignmentOptions.Center;
+
+            var streak = MakeTMP(panel, "Streak", _theme.TextSecondary, "СЕРИЯ ПОБЕД: 0", 13, FontStyles.Bold);
+            Anchor(streak.rectTransform, new Vector2(0.5f, 1f), new Vector2(0.5f, 1f), new Vector2(0.5f, 1f));
+            streak.rectTransform.anchoredPosition = new Vector2(0, -220);
+            streak.rectTransform.sizeDelta        = new Vector2(280, 20);
+            streak.alignment = TextAlignmentOptions.Center;
+
+            // ── Wardrobe button (decorative — full wardrobe is phase 10) ────────────────
+            var wardrobe = Spawn(Load("SecondaryChip"), panel);
+            if (wardrobe != null)
+            {
+                wardrobe.GetComponent<SecondaryChip>()?.SetLabel("ГАРДЕРОБ");
+                var wrt = (RectTransform)wardrobe.transform;
+                Anchor(wrt, new Vector2(0.5f, 1f), new Vector2(0.5f, 1f), new Vector2(0.5f, 1f));
+                wrt.anchoredPosition = new Vector2(0, -262);
+                wrt.sizeDelta        = new Vector2(168, 44); // wide enough so "ГАРДЕРОБ" never wraps
+                var wle = wardrobe.GetComponent<LayoutElement>();
+                if (wle != null) { wle.preferredWidth = 168; wle.preferredHeight = 44; }
+                var wlbl = wardrobe.GetComponentInChildren<TextMeshProUGUI>(true);
+                if (wlbl != null)
+                {
+                    wlbl.enableWordWrapping = false;
+                    wlbl.enableAutoSizing   = false;
+                    wlbl.fontSize           = 14;
+                }
+            }
+
+            // ── KPI badges: wins / win-rate / total reps (design-system StatBadge ×3) ───
+            var kpis = MakeRect(panel, "KPIs");
+            Anchor(kpis, new Vector2(0.5f, 1f), new Vector2(0.5f, 1f), new Vector2(0.5f, 1f));
+            kpis.anchoredPosition = new Vector2(0, -340);
+            kpis.sizeDelta        = new Vector2(0, 84);
+            var kHL = kpis.gameObject.AddComponent<HorizontalLayoutGroup>();
+            kHL.spacing               = 12;
+            kHL.childAlignment        = TextAnchor.MiddleCenter;
+            kHL.childControlWidth     = false;
+            kHL.childControlHeight    = false;
+            kHL.childForceExpandWidth = false;
+            kpis.gameObject.AddComponent<ContentSizeFitter>().horizontalFit = ContentSizeFitter.FitMode.PreferredSize;
+
+            var winsBadge    = SpawnStat(kpis, "0",   "ПОБЕДЫ");
+            var winRateBadge = SpawnStat(kpis, "0%",  "ВИНРЕЙТ");
+            var repsBadge    = SpawnStat(kpis, "0",   "ВСЕГО");
+
+            // ── Match history section (empty until matches exist; repo wired in presenter) ──
+            var histTitle = MakeTMP(panel, "HistoryTitle", _theme.TextPrimary, "ИСТОРИЯ МАТЧЕЙ", 15, FontStyles.Bold);
+            Anchor(histTitle.rectTransform, new Vector2(0.5f, 1f), new Vector2(0.5f, 1f), new Vector2(0.5f, 1f));
+            histTitle.rectTransform.anchoredPosition = new Vector2(0, -440);
+            histTitle.rectTransform.sizeDelta        = new Vector2(320, 22);
+            histTitle.alignment = TextAlignmentOptions.Center;
+
+            var empty = MakeTMP(panel, "HistoryEmpty", _theme.TextSecondary, "Пока нет сыгранных матчей", 14, FontStyles.Normal);
+            Anchor(empty.rectTransform, new Vector2(0.5f, 1f), new Vector2(0.5f, 1f), new Vector2(0.5f, 1f));
+            empty.rectTransform.anchoredPosition = new Vector2(0, -480);
+            empty.rectTransform.sizeDelta        = new Vector2(320, 24);
+            empty.alignment = TextAlignmentOptions.Center;
+
+            // ── Presenter (reads users/{uid} + history on enable) ───────────────────────
+            var presenter = panel.gameObject.AddComponent<ProfilePresenter>();
+            var so = new SerializedObject(presenter);
+            so.FindProperty("_nameText").objectReferenceValue         = name;
+            so.FindProperty("_rankText").objectReferenceValue         = rank;
+            so.FindProperty("_streakText").objectReferenceValue       = streak;
+            so.FindProperty("_winsBadge").objectReferenceValue        = winsBadge;
+            so.FindProperty("_winRateBadge").objectReferenceValue     = winRateBadge;
+            so.FindProperty("_repsBadge").objectReferenceValue        = repsBadge;
+            so.FindProperty("_historyEmptyState").objectReferenceValue = empty.gameObject;
+            so.ApplyModifiedPropertiesWithoutUndo();
+        }
+
+        // Spawns a design-system StatBadge, previews value/label in edit mode, returns the component.
+        static StatBadge SpawnStat(RectTransform parent, string value, string label)
+        {
+            var go = Spawn(Load("StatBadge"), parent);
+            if (go == null) return null;
+            var badge = go.GetComponent<StatBadge>();
+            badge?.SetStat(value, label);
+            return badge;
         }
 
         // ════════════════════════════════════════════════════════════════════════

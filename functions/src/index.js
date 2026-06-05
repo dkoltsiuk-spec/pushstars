@@ -7,10 +7,12 @@ require('./admin'); // initialise the Admin SDK once, before the handlers load
 
 const { onUserCreated } = require('./onUserCreated');
 const { onUserDeleted } = require('./onUserDeleted');
+const { ensureProfile } = require('./ensureProfile');
 const { syncOfflineXp } = require('./syncOfflineXp');
 const { updateDisplayName } = require('./updateDisplayName');
 
 exports.onUserCreated = onUserCreated;
 exports.onUserDeleted = onUserDeleted;
+exports.ensureProfile = ensureProfile;
 exports.syncOfflineXp = syncOfflineXp;
 exports.updateDisplayName = updateDisplayName;

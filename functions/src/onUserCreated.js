@@ -1,8 +1,8 @@
 const functions = require('firebase-functions/v1');
 const admin = require('./admin');
+const { defaultProfile } = require('./profileDefaults');
 
 const db = admin.firestore();
-const { FieldValue } = admin.firestore;
 
 // Seeds a default profile document when a new Auth user is created (anonymous or upgraded).
 // Idempotent: skips if the doc already exists. Admin SDK bypasses Security Rules, so this
@@ -12,26 +12,7 @@ exports.onUserCreated = functions.auth.user().onCreate(async (user) => {
   const snap = await ref.get();
   if (snap.exists) return null;
 
-  await ref.set({
-    displayName: user.displayName || 'Игрок',
-    avatarState: {},
-    rank: 'bronze',
-    trophies: 0,
-    xp: 0,
-    winStreak: 0,
-    totalWins: 0,
-    totalLosses: 0,
-    totalReps: 0,
-    winRate: 0,
-    leaderboardRank: 0,
-    leaderboardLeague: 'bronze',
-    lastMatchAt: null,
-    createdAt: FieldValue.serverTimestamp(),
-    fcmToken: '',
-    offlineXpPending: 0,
-    offlineXpSyncToken: '',
-  });
-
+  await ref.set(defaultProfile(user.displayName));
   functions.logger.info(`Seeded profile for ${user.uid}`);
   return null;
 });
