@@ -144,7 +144,16 @@ namespace PushStars.CV
 
             _imageProcessingOptions = new Mediapipe.Tasks.Vision.Core.ImageProcessingOptions(rotationDegrees: 0);
 
-            // 3) Camera.
+            // 3) Camera permission (iOS/Android prompt at runtime; instant-granted on desktop).
+            yield return Application.RequestUserAuthorization(UserAuthorization.WebCam);
+            if (!Application.HasUserAuthorization(UserAuthorization.WebCam))
+            {
+                Debug.LogError("[MediaPipe] Camera permission was not granted.");
+                IsRunning = false;
+                yield break;
+            }
+
+            // 4) Camera.
             _webCam = string.IsNullOrEmpty(_deviceName)
                 ? new WebCamTexture(_requestedWidth, _requestedHeight, _requestedFps)
                 : new WebCamTexture(_deviceName, _requestedWidth, _requestedHeight, _requestedFps);

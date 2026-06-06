@@ -1,0 +1,73 @@
+workflows:
+  ios-pushstars:
+    name: Push Stars — iOS (CV test)
+    max_build_duration: 120
+    instance_type: mac_mini_m2
+
+    # App Store Connect integration name — create it in Codemagic:
+    #   Teams → <your team> → Integrations → App Store Connect (upload an API key).
+    # Replace `codemagic` below with the integration name you give it.
+    integrations:
+      app_store_connect: codemagic
+
+    environment:
+      # Must match the project's Unity version. If Codemagic doesn't have this exact patch,
+      # set it to the nearest 2022.3.x it offers (check the build log's available versions).
+      unity: 2022.3.62f3
+      ios_signing:
+        distribution_type: app_store          # app_store → TestFlight. Use `development` for ad-hoc.
+        bundle_identifier: com.pushstars.app
+      groups:
+        - unity_credentials                    # secrets: UNITY_EMAIL, UNITY_PASSWORD, UNITY_SERIAL
+      vars:
+        UNITY_IOS_DIR: ios_build
+        XCODE_PROJECT: "Unity-iPhone.xcodeproj"
+        XCODE_SCHEME: "Unity-iPhone"
+        # MediaPipe plugin is gitignored (391 MB) — fetched fresh in CI from the public release.
+        MEDIAPIPE_URL: "https://github.com/homuler/MediaPipeUnityPlugin/releases/download/v0.16.3/MediaPipeUnity.0.16.3.unitypackage"
+
+    scripts:
+      - name: Download MediaPipe plugin
+        script: |
+          curl -fL -o "$CM_BUILD_DIR/mediapipe.unitypackage" "$MEDIAPIPE_URL"
+
+      # ── Unity license ────────────────────────────────────────────────────────────
+      # Plus/Pro: the line below works as-is (serial + account).
+      # Personal (no serial): replace this step with a manual-license-file activation
+      #   (-createManualActivationFile → upload .alf → store the returned .ulf as a secret
+      #    UNITY_LICENSE and write it before activating). Ask if you're on Personal.
+      - name: Activate Unity license
+        script: |
+          "$UNITY_HOME/Contents/MacOS/Unity" -batchmode -quit -logFile - \
+            -serial "${UNITY_SERIAL}" -username "${UNITY_EMAIL}" -password "${UNITY_PASSWORD}"
+
+      - name: Import MediaPipe plugin
+        script: |
+          "$UNITY_HOME/Contents/MacOS/Unity" -batchmode -nographics -quit -logFile - \
+            -projectPath . -importPackage "$CM_BUILD_DIR/mediapipe.unitypackage"
+
+      - name: Build Unity iOS Xcode project
+        script: |
+          "$UNITY_HOME/Contents/MacOS/Unity" -batchmode -nographics -quit -logFile - \
+            -projectPath . -executeMethod PushStars.Editor.BuildScript.BuildiOS \
+            -buildOutput "$CM_BUILD_DIR/$UNITY_IOS_DIR"
+
+      - name: Set up code signing
+        script: xcode-project use-profiles
+
+      - name: Build IPA
+        script: |
+          xcode-project build-ipa \
+            --project "$UNITY_IOS_DIR/$XCODE_PROJECT" \
+            --scheme "$XCODE_SCHEME"
+
+    artifacts:
+      - $UNITY_IOS_DIR/**/*.ipa
+      - build/ios/ipa/*.ipa
+      - "*.ipa"
+      - "!**/Library/**"
+
+    publishing:
+      app_store_connect:
+        auth: integration
+        submit_to_testflight: true
