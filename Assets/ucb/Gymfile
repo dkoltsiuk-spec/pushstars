@@ -3,4 +3,4 @@
 # Manager sub-packages (GoogleUtilities / abseil / gRPC / nanopb / Promises / Firebase_*) — gets
 # DEVELOPMENT_TEAM and can be code-signed. Without this they fail with
 # "Signing ... requires a development team".
-xcargs "DEVELOPMENT_TEAM=Y4N58LLV3T"
+xcargs "DEVELOPMENT_TEAM=Y4N58LLV3T CODE_SIGN_STYLE=Manual"
