@@ -91,6 +91,8 @@ namespace PushStars.UI
         public Sprite IconLevel;
         /// <summary>Statistics icon. Figma: statics.png</summary>
         public Sprite IconStatics;
+        /// <summary>Settings gear (profile header → settings overlay, phase 07). Figma: gear.png</summary>
+        public Sprite IconSettings;
 
         [Header("Sprites — button shapes (pre-colored Figma, use Color.white)")]
         /// <summary>Red pill button for ВЫЙТИ. Figma: red_btn.png</summary>

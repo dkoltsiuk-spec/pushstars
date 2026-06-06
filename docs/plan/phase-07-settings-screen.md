@@ -19,15 +19,27 @@
 
 ## Файлы
 
-- `Assets/_Project/Scripts/UI/Settings/SettingsScreen.cs`
-- Интеграция с `PlayerPrefs` / обёртка `ISettingsStore`
-- Кнопка «Удалить аккаунту» → Firebase Auth `DeleteAsync()` после подтверждения + выход на экран логина.
+- `Assets/_Project/Scripts/Core/ISettingsStore.cs` — интерфейс настроек (звук/вибрация/уведомления/язык).
+- `Assets/_Project/Scripts/Core/PlayerPrefsSettingsStore.cs` — реализация поверх `PlayerPrefs`.
+- `Assets/_Project/Scripts/UI/Settings/SettingsScreen.cs` — контроллер оверлея (тумблеры, язык, ссылки, версия, удаление).
+- `Assets/_Project/Scripts/Firebase/FirebaseAuthService.cs` — добавлен `DeleteAccountAsync()` (триггерит `onUserDeleted` CF).
+- `Assets/_Project/Scripts/UI/Theme/PushStarsTheme.cs` — слот `IconSettings` (gear).
+- `Assets/_Project/Editor/UIGallerySetup.cs` — привязка `gear.png` → `IconSettings`.
+- `Assets/_Project/Editor/MainVsScreenSetup.cs` — шестерёнка в хедере профиля + `BuildSettingsOverlay` + проводка `SettingsScreen`.
+
+Точка входа: иконка-шестерёнка в правом верхнем углу экрана профиля → full-screen оверлей в Main-сцене
+(тот же паттерн, что `SearchOpponentController`). Кнопка «Удалить аккаунт» → подтверждение → Firebase Auth
+`DeleteAccountAsync()` → перезапуск с Boot (там новый анонимный вход).
+
+> Художнику: положить `gear.png` в папку спрайтов (`Assets/_Project/Art/Sprites/`, где остальные иконки —
+> поиск по имени найдёт её в любой подпапке), затем Tools → Push Stars → Build Main VS Screen.
+> Без него шестерёнка рисуется глифом-заглушкой.
 
 ## Acceptance criteria
 
-- [ ] Все тумблеры сохраняются между сессиями.
-- [ ] Удаление аккаунта вызывает CF очистку (проверить staging).
-- [ ] Ссылки на Privacy/Terms открываются in-app WebView или браузер.
+- [x] Все тумблеры сохраняются между сессиями. *(PlayerPrefs, запись по каждому изменению)*
+- [~] Удаление аккаунта вызывает CF очистку. *(клиент вызывает `DeleteAsync`; ручная проверка на staging — при следующем прогоне)*
+- [x] Ссылки на Privacy/Terms открываются. *(`Application.OpenURL` → системный браузер; in-app WebView отложен. URL — плейсхолдеры в `SettingsScreen`, заменить перед стором)*
 
 ## Тестирование
 

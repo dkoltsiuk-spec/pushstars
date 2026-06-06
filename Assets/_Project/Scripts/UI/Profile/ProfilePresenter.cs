@@ -1,3 +1,5 @@
+using System;
+using System.Collections.Generic;
 using Cysharp.Threading.Tasks;
 using PushStars.Core;
 using PushStars.Services;
@@ -7,13 +9,9 @@ using UnityEngine;
 namespace PushStars.UI
 {
     /// <summary>
-    /// Binds the Profile tab to the player's <c>users/{uid}</c> document: name, rank, streak and
-    /// the three KPI badges (wins / win-rate / total reps). Also kicks off the first page of match
-    /// history and toggles the empty state. Reads happen on enable; defaults render when the
-    /// document or backend isn't available yet.
-    ///
-    /// Match-row rendering and "load more" land once real matches exist (phases 12–14); the
-    /// repository and empty-state plumbing are already wired here.
+    /// Binds the Profile tab to <c>users/{uid}</c> (name, rank, streak, KPI badges) and renders the
+    /// "RECENT MATCHES" list from <see cref="MatchHistoryRepository"/>, falling back to mock cards
+    /// when no real matches exist. The TYPE / MODE dropdowns filter the cached list client-side.
     /// </summary>
     public class ProfilePresenter : MonoBehaviour
     {
@@ -28,12 +26,43 @@ namespace PushStars.UI
         [SerializeField] private StatBadge _repsBadge;
 
         [Header("History")]
+        [SerializeField] private Transform  _historyContent;
+        [SerializeField] private MatchRow   _matchRowTemplate;
         [SerializeField] private GameObject _historyEmptyState;
+        [SerializeField] private bool       _useMockData = true; // demo cards until real matches exist
+
+        [Header("Filters")]
+        [SerializeField] private FilterDropdown _typeFilter; // by exercise
+        [SerializeField] private FilterDropdown _modeFilter; // by mode (pvp/ghost)
 
         private readonly UserProfileRepository  _profileRepo = new UserProfileRepository();
         private readonly MatchHistoryRepository _historyRepo = new MatchHistoryRepository();
+        private readonly List<GameObject>       _rows        = new List<GameObject>();
 
-        private void OnEnable() => Refresh().Forget();
+        private List<MatchRecord> _allMatches = new List<MatchRecord>();
+        private string _typeValue = "";
+        private string _modeValue = "";
+        private bool   _wired;
+
+        private void OnEnable()
+        {
+            if (!_wired)
+            {
+                if (_typeFilter != null) _typeFilter.OnChanged += OnTypeChanged;
+                if (_modeFilter != null) _modeFilter.OnChanged += OnModeChanged;
+                _wired = true;
+            }
+            Refresh().Forget();
+        }
+
+        private void OnDestroy()
+        {
+            if (_typeFilter != null) _typeFilter.OnChanged -= OnTypeChanged;
+            if (_modeFilter != null) _modeFilter.OnChanged -= OnModeChanged;
+        }
+
+        private void OnTypeChanged(string v) { _typeValue = v; ApplyFilter(); }
+        private void OnModeChanged(string v) { _modeValue = v; ApplyFilter(); }
 
         private async UniTask Refresh()
         {
@@ -42,9 +71,12 @@ namespace PushStars.UI
             Bind(profile);
 
             _historyRepo.Reset();
-            var page = await _historyRepo.GetNextPageAsync();
+            var matches = await _historyRepo.GetNextPageAsync();
             await UniTask.SwitchToMainThread();
-            if (_historyEmptyState != null) _historyEmptyState.SetActive(page.Count == 0);
+
+            if (matches.Count == 0 && _useMockData) matches = MockMatches();
+            _allMatches = matches;
+            ApplyFilter();
         }
 
         private void Bind(UserProfile p)
@@ -58,6 +90,35 @@ namespace PushStars.UI
             if (_repsBadge    != null) _repsBadge.SetStat(p.TotalReps.ToString("N0"), "ВСЕГО");
         }
 
+        private void ApplyFilter()
+        {
+            var filtered = new List<MatchRecord>();
+            foreach (var m in _allMatches)
+            {
+                if (!string.IsNullOrEmpty(_typeValue) && m.Exercise != _typeValue) continue;
+                if (!string.IsNullOrEmpty(_modeValue) && m.Mode     != _modeValue) continue;
+                filtered.Add(m);
+            }
+            RenderHistory(filtered);
+        }
+
+        private void RenderHistory(List<MatchRecord> matches)
+        {
+            foreach (var row in _rows) if (row != null) Destroy(row);
+            _rows.Clear();
+
+            if (_historyEmptyState != null) _historyEmptyState.SetActive(matches.Count == 0);
+
+            if (_matchRowTemplate == null || _historyContent == null) return;
+            foreach (var m in matches)
+            {
+                var go = Instantiate(_matchRowTemplate.gameObject, _historyContent);
+                go.SetActive(true);
+                go.GetComponent<MatchRow>().Set(m);
+                _rows.Add(go);
+            }
+        }
+
         private static string RankLabel(string rank) => rank switch
         {
             "silver"  => "СЕРЕБРО",
@@ -65,5 +126,23 @@ namespace PushStars.UI
             "diamond" => "АЛМАЗ",
             _         => "БРОНЗА",
         };
+
+        // Demo history (matches the design cards) — replaced once real matches exist (phases 12–14).
+        private static List<MatchRecord> MockMatches()
+        {
+            var now = DateTime.UtcNow;
+            return new List<MatchRecord>
+            {
+                new MatchRecord { OpponentName = "NOX_92",    Won = true,  MyReps = 18, OpponentReps = 16,
+                                  Exercise = "pushups", Mode = "pvp",   DurationSec = 60, IsRecord = true,
+                                  CreatedAt = now.AddHours(-2) },
+                new MatchRecord { OpponentName = "kara.bear", Won = false, MyReps = 15, OpponentReps = 22,
+                                  Exercise = "pushups", Mode = "pvp",   DurationSec = 60,
+                                  CreatedAt = now.AddHours(-5) },
+                new MatchRecord { OpponentName = "GHOST",     Won = true,  MyReps = 24, OpponentReps = 20,
+                                  Exercise = "pushups", Mode = "ghost", DurationSec = 60,
+                                  CreatedAt = now.AddHours(-26) },
+            };
+        }
     }
 }

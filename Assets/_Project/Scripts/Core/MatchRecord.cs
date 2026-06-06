@@ -9,12 +9,15 @@ namespace PushStars.Core
     public class MatchRecord
     {
         public string   MatchId;
-        public string   Mode;        // "pvp" | "ghost"
-        public string   Exercise;    // "pushups"
+        public string   Mode;         // "pvp" | "ghost"
+        public string   Exercise;     // "pushups"
+        public string   OpponentName; // display name (denormalised / mock until lookups land)
         public bool     Won;
         public int      MyReps;
         public int      OpponentReps;
-        public int      TrophyDelta; // signed (+win / -loss)
+        public int      TrophyDelta;  // signed (+win / -loss)
+        public int      DurationSec;  // 60
+        public bool     IsRecord;     // "NEW RECORD" tag
         public DateTime CreatedAt;
     }
 }

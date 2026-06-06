@@ -194,6 +194,12 @@ namespace PushStars.Editor
             theme.IconPlus    = TryLoadSprite("plus");
             theme.IconLevel   = TryLoadSprite("lvl");
             theme.IconStatics = TryLoadSprite("statics");
+
+            // Settings gear (phase 07). Drop gear.png into the Sprites folder; null is fine until then
+            // (the builder falls back to a text "⚙" / "НАСТРОЙКИ" label).
+            theme.IconSettings = TryLoadSprite("gear")
+                              ?? TryLoadSprite("settings")
+                              ?? TryLoadSprite("icon_settings");
         }
 
         static Sprite TryLoadSprite(string name)

@@ -33,5 +33,26 @@ namespace PushStars.Services
             Uid = result.User.UserId;
             Debug.Log($"[Auth] Signed in anonymously. uid={Uid}");
         }
+
+        /// <summary>
+        /// Deletes the currently signed-in account (GDPR / store requirement, phase 07). Server-side
+        /// cleanup of <c>users/{uid}</c> and related docs is handled by the <c>onUserDeleted</c> Cloud
+        /// Function (phase 05) — the client only triggers the auth deletion. After this returns the
+        /// app should restart from Boot, which signs in a fresh anonymous account.
+        /// </summary>
+        public async Task DeleteAccountAsync()
+        {
+            var user = _auth?.CurrentUser ?? FirebaseAuth.DefaultInstance.CurrentUser;
+            if (user == null)
+            {
+                Debug.LogWarning("[Auth] DeleteAccountAsync called with no signed-in user.");
+                Uid = null;
+                return;
+            }
+
+            await user.DeleteAsync();
+            Debug.Log($"[Auth] Account deleted. uid={Uid}");
+            Uid = null;
+        }
     }
 }

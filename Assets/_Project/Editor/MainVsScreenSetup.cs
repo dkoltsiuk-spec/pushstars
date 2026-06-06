@@ -45,6 +45,7 @@ namespace PushStars.Editor
         static int _charLayer;
         static RenderTexture _previewRt;
         static GameObject _findButtonGO; // НАЙТИ СОПЕРНИКА — captured so the search overlay can wire to it
+        static GameObject _gearButtonGO; // profile settings gear — captured so the settings overlay can wire to it
 
         [MenuItem("Tools/Push Stars/Build Main VS Screen", priority = 20)]
         public static void Run()
@@ -113,6 +114,17 @@ namespace PushStars.Editor
 
             // ── UI ───────────────────────────────────────────────────────────────────
             new GameObject("EventSystem", typeof(EventSystem), typeof(StandaloneInputModule));
+
+            // Display camera — without one the Game view shows "Display 1: No cameras rendering".
+            // It only clears the screen to the dark base; the 3D avatar renders via the stage camera
+            // into a RenderTexture, and the ScreenSpaceOverlay UI draws on top.
+            var dispCamGO = new GameObject("MainCamera", typeof(Camera), typeof(AudioListener));
+            var dispCam   = dispCamGO.GetComponent<Camera>();
+            dispCam.clearFlags      = CameraClearFlags.SolidColor;
+            dispCam.backgroundColor = _theme.BgDark;
+            dispCam.cullingMask     = ~(1 << _charLayer); // exclude the 3D avatar (it lives in the RT)
+            dispCam.orthographic    = true;
+            dispCam.depth           = -1;
 
             var canvasGO = new GameObject("MainCanvas", typeof(RectTransform));
             var canvas   = canvasGO.AddComponent<Canvas>();
@@ -186,6 +198,11 @@ namespace PushStars.Editor
             // hidden until the player taps the Find-Opponent CTA. The main screen recedes
             // behind it (scale + fade) via the mainContent/mainGroup it's handed here.
             BuildSearchOverlay(canvasGO.transform, mirror, safe, mainGroup);
+
+            // ── Settings overlay (profile gear → settings screen, phase 07) ────────────
+            // Same toggled-root + main-recede pattern as the search overlay; opened by the
+            // gear captured in BuildProfilePanel, closed by its own back button.
+            BuildSettingsOverlay(canvasGO.transform, mirror, safe, mainGroup);
 
             EditorSceneManager.MarkSceneDirty(scene);
             EditorSceneManager.SaveScene(scene, MainScenePath);
@@ -461,8 +478,21 @@ namespace PushStars.Editor
             return primary;
         }
 
+        // Covers the shared lightning background with the flat base background, so a tab reads as a
+        // calm screen (no animated bolts). Inserted as the first child of the panel.
+        static void AddFlatBackground(RectTransform panel)
+        {
+            var bg = _theme.BgImage != null
+                ? MakeImage(panel, "Background", Color.white, _theme.BgImage)
+                : MakeImage(panel, "Background", _theme.BgDark);
+            Stretch(bg.rectTransform, 0, 0, 0, 0);
+            bg.raycastTarget = false;
+            bg.rectTransform.SetAsFirstSibling();
+        }
+
         static void BuildPlaceholderPanel(RectTransform panel, string title, string phase)
         {
+            AddFlatBackground(panel); // ЛИГА / статистика: no lightning behind it
             var label = MakeTMP(panel, "Label", _theme.TextPrimary, $"{title}\n{phase}", 28, FontStyles.Bold);
             Anchor(label.rectTransform, new Vector2(0.5f, 0.5f), new Vector2(0.5f, 0.5f), new Vector2(0.5f, 0.5f));
             label.rectTransform.sizeDelta = new Vector2(300, 120);
@@ -473,103 +503,414 @@ namespace PushStars.Editor
         // ════════════════════════════════════════════════════════════════════════
         static void BuildProfilePanel(RectTransform panel)
         {
-            // ── Avatar placeholder (circle + profile icon; real avatar = Genies, phase 10) ──
-            var avatar = MakeImage(panel, "Avatar", new Color(1f, 1f, 1f, 0.06f), _theme.CircleShape);
-            var art    = avatar.rectTransform;
-            Anchor(art, new Vector2(0.5f, 1f), new Vector2(0.5f, 1f), new Vector2(0.5f, 1f));
-            art.anchoredPosition = new Vector2(0, -84);
-            art.sizeDelta        = new Vector2(104, 104);
+            AddFlatBackground(panel); // профиль / статистика: no lightning behind it
+
+            // ── Settings gear (top-right) → opens the Settings overlay (phase 07) ───────
+            // Circular tappable target consistent with the nav buttons; the gear glyph/sprite
+            // sits on top. Captured into _gearButtonGO so BuildSettingsOverlay can wire its click.
+            var gear   = new GameObject("GearButton", typeof(RectTransform), typeof(CanvasRenderer), typeof(Image));
+            gear.transform.SetParent(panel, false);
+            var gearRT = (RectTransform)gear.transform;
+            Anchor(gearRT, new Vector2(1f, 1f), new Vector2(1f, 1f), new Vector2(1f, 1f));
+            gearRT.anchoredPosition = new Vector2(-18f, -22f);
+            gearRT.sizeDelta        = new Vector2(44f, 44f);
+            var gearBg = gear.GetComponent<Image>();
+            gearBg.sprite         = _theme.CircleShape;
+            gearBg.color          = new Color(1f, 1f, 1f, 0.06f); // subtle circular hit target
+            gearBg.preserveAspect = true;
+            gear.AddComponent<Button>().targetGraphic = gearBg;
+
+            var gIcon   = MakeImage(gearRT, "Icon", Color.white, _theme.IconSettings);
+            var gIconRT = gIcon.rectTransform;
+            Anchor(gIconRT, new Vector2(0.5f, 0.5f), new Vector2(0.5f, 0.5f), new Vector2(0.5f, 0.5f));
+            gIconRT.sizeDelta     = new Vector2(26f, 26f);
+            gIcon.preserveAspect  = true;
+            gIcon.raycastTarget   = false;
+            if (_theme.IconSettings == null)
+            {
+                // gear.png not imported yet — keep a tappable circle and a best-effort glyph.
+                gIcon.enabled = false;
+                var glyph = MakeTMP(gearRT, "Glyph", _theme.TextPrimary, "⚙", 22, FontStyles.Bold);
+                Stretch(glyph.rectTransform, 0, 0, 0, 0);
+                glyph.alignment    = TextAlignmentOptions.Center;
+                glyph.raycastTarget = false;
+                Debug.LogWarning("[MainVsScreen] gear.png not found — settings gear uses a glyph fallback. " +
+                                 "Drop gear.png into the Sprites folder and rebuild for the real icon.");
+            }
+            _gearButtonGO = gear;
+
+            // ── Everything scrolls together: one ScrollRect whose content is a vertical stack
+            //    (avatar → name → KPIs → history). The gear and bottom nav stay fixed on top. ──
+            var scroll = MakeRect(panel, "Scroll");
+            Stretch(scroll, 0, 4, 0, 0); // fills the panel; bottom extends under the floating nav
+            var scrollRect = scroll.gameObject.AddComponent<ScrollRect>();
+            scrollRect.horizontal        = false;
+            scrollRect.vertical          = true;
+            scrollRect.movementType      = ScrollRect.MovementType.Elastic;
+            scrollRect.scrollSensitivity = 26f;
+
+            var viewport = MakeRect(scroll, "Viewport");
+            Stretch(viewport, 0, 0, 0, 0);
+            var vpImg = viewport.gameObject.AddComponent<Image>();
+            vpImg.color = new Color(0f, 0f, 0f, 0f); // transparent raycast target → the whole area drags
+            viewport.gameObject.AddComponent<RectMask2D>();
+            scrollRect.viewport = viewport;
+
+            var content = MakeRect(viewport, "Content");
+            Anchor(content, new Vector2(0, 1), new Vector2(1, 1), new Vector2(0.5f, 1));
+            content.anchoredPosition = Vector2.zero;
+            content.sizeDelta        = Vector2.zero;
+            var cVL = content.gameObject.AddComponent<VerticalLayoutGroup>();
+            cVL.spacing                = 6;
+            cVL.padding                = new RectOffset(0, 0, 22, 110); // top room; bottom clears the nav
+            cVL.childAlignment         = TextAnchor.UpperCenter;
+            cVL.childControlWidth      = true;
+            cVL.childControlHeight     = true;
+            cVL.childForceExpandWidth  = true;
+            cVL.childForceExpandHeight = false;
+            content.gameObject.AddComponent<ContentSizeFitter>().verticalFit = ContentSizeFitter.FitMode.PreferredSize;
+            scrollRect.content = content;
+
+            // ── Avatar (centered in a full-width row) ───────────────────────────────────
+            var avatarRow = ContentRow(content, "AvatarRow", 100);
+            var avatar = MakeImage(avatarRow, "Avatar", new Color(1f, 1f, 1f, 0.06f), _theme.CircleShape);
+            Anchor(avatar.rectTransform, new Vector2(0.5f, 0.5f), new Vector2(0.5f, 0.5f), new Vector2(0.5f, 0.5f));
+            avatar.rectTransform.sizeDelta = new Vector2(100, 100);
             avatar.raycastTarget = false;
             if (_theme.NavProfile != null)
             {
-                var ic = MakeImage(art, "Icon", Color.white, _theme.NavProfile);
+                var ic = MakeImage(avatar.rectTransform, "Icon", Color.white, _theme.NavProfile);
                 Anchor(ic.rectTransform, new Vector2(0.5f, 0.5f), new Vector2(0.5f, 0.5f), new Vector2(0.5f, 0.5f));
-                ic.rectTransform.sizeDelta = new Vector2(104, 104);
+                ic.rectTransform.sizeDelta = new Vector2(100, 100);
                 ic.preserveAspect = true;
                 ic.raycastTarget  = false;
             }
 
-            // ── Name ──────────────────────────────────────────────────────────────────
-            var name = MakeTMP(panel, "Name", _theme.TextPrimary, "Игрок", 26, FontStyles.Bold);
-            Anchor(name.rectTransform, new Vector2(0.5f, 1f), new Vector2(0.5f, 1f), new Vector2(0.5f, 1f));
-            name.rectTransform.anchoredPosition = new Vector2(0, -158);
-            name.rectTransform.sizeDelta        = new Vector2(320, 34);
-            name.alignment = TextAlignmentOptions.Center;
+            // ── Name / rank / streak ────────────────────────────────────────────────────
+            var name   = ContentLabel(content, "Name",   "Игрок",          26, FontStyles.Bold, _theme.TextPrimary,   34);
+            var rank   = ContentLabel(content, "Rank",   "БРОНЗА",         15, FontStyles.Bold, _theme.TrophyGold,    22);
+            var streak = ContentLabel(content, "Streak", "СЕРИЯ ПОБЕД: 0", 13, FontStyles.Bold, _theme.TextSecondary, 20);
 
-            // ── Rank + win streak (single centered lines — no glyph risk) ───────────────
-            var rank = MakeTMP(panel, "Rank", _theme.TrophyGold, "БРОНЗА", 15, FontStyles.Bold);
-            Anchor(rank.rectTransform, new Vector2(0.5f, 1f), new Vector2(0.5f, 1f), new Vector2(0.5f, 1f));
-            rank.rectTransform.anchoredPosition = new Vector2(0, -196);
-            rank.rectTransform.sizeDelta        = new Vector2(280, 22);
-            rank.alignment = TextAlignmentOptions.Center;
-
-            var streak = MakeTMP(panel, "Streak", _theme.TextSecondary, "СЕРИЯ ПОБЕД: 0", 13, FontStyles.Bold);
-            Anchor(streak.rectTransform, new Vector2(0.5f, 1f), new Vector2(0.5f, 1f), new Vector2(0.5f, 1f));
-            streak.rectTransform.anchoredPosition = new Vector2(0, -220);
-            streak.rectTransform.sizeDelta        = new Vector2(280, 20);
-            streak.alignment = TextAlignmentOptions.Center;
-
-            // ── Wardrobe button (decorative — full wardrobe is phase 10) ────────────────
-            var wardrobe = Spawn(Load("SecondaryChip"), panel);
+            // ── Wardrobe button (centered in a row) ─────────────────────────────────────
+            var wardRow  = ContentRow(content, "WardrobeRow", 54);
+            var wardrobe = Spawn(Load("SecondaryChip"), wardRow);
             if (wardrobe != null)
             {
                 wardrobe.GetComponent<SecondaryChip>()?.SetLabel("ГАРДЕРОБ");
                 var wrt = (RectTransform)wardrobe.transform;
-                Anchor(wrt, new Vector2(0.5f, 1f), new Vector2(0.5f, 1f), new Vector2(0.5f, 1f));
-                wrt.anchoredPosition = new Vector2(0, -262);
-                wrt.sizeDelta        = new Vector2(168, 44); // wide enough so "ГАРДЕРОБ" never wraps
+                Anchor(wrt, new Vector2(0.5f, 0.5f), new Vector2(0.5f, 0.5f), new Vector2(0.5f, 0.5f));
+                wrt.anchoredPosition = Vector2.zero;
+                wrt.sizeDelta        = new Vector2(168, 44);
                 var wle = wardrobe.GetComponent<LayoutElement>();
                 if (wle != null) { wle.preferredWidth = 168; wle.preferredHeight = 44; }
                 var wlbl = wardrobe.GetComponentInChildren<TextMeshProUGUI>(true);
-                if (wlbl != null)
-                {
-                    wlbl.enableWordWrapping = false;
-                    wlbl.enableAutoSizing   = false;
-                    wlbl.fontSize           = 14;
-                }
+                if (wlbl != null) { wlbl.enableWordWrapping = false; wlbl.enableAutoSizing = false; wlbl.fontSize = 14; }
             }
 
-            // ── KPI badges: wins / win-rate / total reps (design-system StatBadge ×3) ───
-            var kpis = MakeRect(panel, "KPIs");
-            Anchor(kpis, new Vector2(0.5f, 1f), new Vector2(0.5f, 1f), new Vector2(0.5f, 1f));
-            kpis.anchoredPosition = new Vector2(0, -340);
-            kpis.sizeDelta        = new Vector2(0, 84);
+            // ── KPI badges (centered row) ───────────────────────────────────────────────
+            var kpis = ContentRow(content, "KPIs", 86);
             var kHL = kpis.gameObject.AddComponent<HorizontalLayoutGroup>();
             kHL.spacing               = 12;
             kHL.childAlignment        = TextAnchor.MiddleCenter;
             kHL.childControlWidth     = false;
             kHL.childControlHeight    = false;
             kHL.childForceExpandWidth = false;
-            kpis.gameObject.AddComponent<ContentSizeFitter>().horizontalFit = ContentSizeFitter.FitMode.PreferredSize;
 
             var winsBadge    = SpawnStat(kpis, "0",   "ПОБЕДЫ");
             var winRateBadge = SpawnStat(kpis, "0%",  "ВИНРЕЙТ");
             var repsBadge    = SpawnStat(kpis, "0",   "ВСЕГО");
 
-            // ── Match history section (empty until matches exist; repo wired in presenter) ──
-            var histTitle = MakeTMP(panel, "HistoryTitle", _theme.TextPrimary, "ИСТОРИЯ МАТЧЕЙ", 15, FontStyles.Bold);
-            Anchor(histTitle.rectTransform, new Vector2(0.5f, 1f), new Vector2(0.5f, 1f), new Vector2(0.5f, 1f));
-            histTitle.rectTransform.anchoredPosition = new Vector2(0, -440);
-            histTitle.rectTransform.sizeDelta        = new Vector2(320, 22);
-            histTitle.alignment = TextAlignmentOptions.Center;
+            // ── History header row: "RECENT MATCHES" + cycle filters (TYPE / MODE) ──────
+            var head = ContentRow(content, "HistoryHeader", 30);
+            var histTitle = MakeTMP(head, "Title", _theme.TextSecondary, "RECENT MATCHES", 13, FontStyles.Bold);
+            Anchor(histTitle.rectTransform, new Vector2(0, 0.5f), new Vector2(0, 0.5f), new Vector2(0, 0.5f));
+            histTitle.rectTransform.anchoredPosition = new Vector2(4, 0);
+            histTitle.rectTransform.sizeDelta        = new Vector2(220, 22);
+            histTitle.alignment = TextAlignmentOptions.MidlineLeft;
+            histTitle.characterSpacing = 3f;
 
-            var empty = MakeTMP(panel, "HistoryEmpty", _theme.TextSecondary, "Пока нет сыгранных матчей", 14, FontStyles.Normal);
-            Anchor(empty.rectTransform, new Vector2(0.5f, 1f), new Vector2(0.5f, 1f), new Vector2(0.5f, 1f));
-            empty.rectTransform.anchoredPosition = new Vector2(0, -480);
-            empty.rectTransform.sizeDelta        = new Vector2(320, 24);
-            empty.alignment = TextAlignmentOptions.Center;
+            var typeFilter = BuildCycleFilter(head, "TYPE", -84,
+                new (string, string)[] { ("ВСЕ", ""), ("ОТЖИМ.", "pushups") });
+            var modeFilter = BuildCycleFilter(head, "MODE", 0,
+                new (string, string)[] { ("ВСЕ", ""), ("ДУЭЛЬ", "pvp"), ("ГОСТ", "ghost") });
+
+            // ── Match cards (prefab template; the presenter clones it per match) ────────
+            var template = BuildMatchRowTemplate(content);
+
+            var empty = ContentLabel(content, "HistoryEmpty", "Пока нет сыгранных матчей",
+                                     14, FontStyles.Normal, _theme.TextSecondary, 40);
+            empty.gameObject.SetActive(false);
+
+            // Keep the fixed gear above the scrolling content.
+            gear.transform.SetAsLastSibling();
 
             // ── Presenter (reads users/{uid} + history on enable) ───────────────────────
             var presenter = panel.gameObject.AddComponent<ProfilePresenter>();
             var so = new SerializedObject(presenter);
-            so.FindProperty("_nameText").objectReferenceValue         = name;
-            so.FindProperty("_rankText").objectReferenceValue         = rank;
-            so.FindProperty("_streakText").objectReferenceValue       = streak;
-            so.FindProperty("_winsBadge").objectReferenceValue        = winsBadge;
-            so.FindProperty("_winRateBadge").objectReferenceValue     = winRateBadge;
-            so.FindProperty("_repsBadge").objectReferenceValue        = repsBadge;
+            so.FindProperty("_nameText").objectReferenceValue          = name;
+            so.FindProperty("_rankText").objectReferenceValue          = rank;
+            so.FindProperty("_streakText").objectReferenceValue        = streak;
+            so.FindProperty("_winsBadge").objectReferenceValue         = winsBadge;
+            so.FindProperty("_winRateBadge").objectReferenceValue      = winRateBadge;
+            so.FindProperty("_repsBadge").objectReferenceValue         = repsBadge;
+            so.FindProperty("_historyContent").objectReferenceValue    = content;
+            so.FindProperty("_matchRowTemplate").objectReferenceValue  = template;
             so.FindProperty("_historyEmptyState").objectReferenceValue = empty.gameObject;
+            so.FindProperty("_typeFilter").objectReferenceValue        = typeFilter;
+            so.FindProperty("_modeFilter").objectReferenceValue        = modeFilter;
             so.ApplyModifiedPropertiesWithoutUndo();
+        }
+
+        // A fixed-height row inside the scroll content (the VerticalLayoutGroup sizes it).
+        static RectTransform ContentRow(RectTransform content, string name, float height)
+        {
+            var r  = MakeRect(content, name);
+            var le = r.gameObject.AddComponent<LayoutElement>();
+            le.preferredHeight = height; le.minHeight = height;
+            return r;
+        }
+
+        // A centered text row inside the scroll content.
+        static TextMeshProUGUI ContentLabel(RectTransform content, string name, string text,
+                                            float size, FontStyles style, Color color, float height)
+        {
+            var tmp = MakeTMP(content, name, color, text, size, style);
+            tmp.alignment = TextAlignmentOptions.Center;
+            var le = tmp.gameObject.AddComponent<LayoutElement>();
+            le.preferredHeight = height; le.minHeight = height;
+            return tmp;
+        }
+
+        // "TITLE" filter that cycles options on tap (no popup — robust inside a ScrollRect).
+        static FilterDropdown BuildCycleFilter(RectTransform parent, string title, float xFromRight,
+                                               (string label, string value)[] options)
+        {
+            var root = MakeRect(parent, $"Filter_{title}");
+            Anchor(root, new Vector2(1, 0.5f), new Vector2(1, 0.5f), new Vector2(1, 0.5f));
+            root.anchoredPosition = new Vector2(xFromRight, 0);
+            root.sizeDelta        = new Vector2(78, 24);
+
+            var toggleImg = MakeImage(root, "Toggle", new Color(1f, 1f, 1f, 0.0001f), null);
+            Stretch(toggleImg.rectTransform, 0, 0, 0, 0);
+            var toggleBtn = toggleImg.gameObject.AddComponent<Button>();
+            toggleBtn.targetGraphic = toggleImg;
+            var label = MakeTMP(toggleImg.transform, "Label", _theme.TextSecondary, title, 13, FontStyles.Bold);
+            Stretch(label.rectTransform, 0, 0, 0, 0);
+            label.alignment = TextAlignmentOptions.MidlineRight;
+            label.raycastTarget = false;
+
+            var optLabels = new string[options.Length];
+            var optValues = new string[options.Length];
+            for (int i = 0; i < options.Length; i++) { optLabels[i] = options[i].label; optValues[i] = options[i].value; }
+
+            var fd = root.gameObject.AddComponent<FilterDropdown>();
+            var so = new SerializedObject(fd);
+            so.FindProperty("_toggle").objectReferenceValue = toggleBtn;
+            so.FindProperty("_label").objectReferenceValue  = label;
+            SetObjectArray(so, "_optionButtons", new Object[0]); // no popup → cycle mode
+            SetStringArray(so, "_optionLabels", optLabels);
+            SetStringArray(so, "_optionValues", optValues);
+            so.FindProperty("_title").stringValue = title;
+            so.ApplyModifiedPropertiesWithoutUndo();
+            return fd;
+        }
+
+        // Functional "TITLE ▾" filter: a clickable label that opens a popup of options.
+        // Returns the FilterDropdown the presenter listens to.
+        static FilterDropdown BuildFilter(RectTransform parent, string title, float xFromRight,
+                                          (string label, string value)[] options)
+        {
+            var root = MakeRect(parent, $"Filter_{title}");
+            Anchor(root, new Vector2(1, 0.5f), new Vector2(1, 0.5f), new Vector2(1, 0.5f));
+            root.anchoredPosition = new Vector2(xFromRight, 0);
+            root.sizeDelta        = new Vector2(78, 24);
+
+            // Toggle button (near-invisible image as the raycast target) + label.
+            var toggleImg = MakeImage(root, "Toggle", new Color(1f, 1f, 1f, 0.0001f), null);
+            Stretch(toggleImg.rectTransform, 0, 0, 0, 0);
+            var toggleBtn = toggleImg.gameObject.AddComponent<Button>();
+            toggleBtn.targetGraphic = toggleImg;
+            var label = MakeTMP(toggleImg.transform, "Label", _theme.TextSecondary, title, 13, FontStyles.Bold);
+            Stretch(label.rectTransform, 0, 0, 0, 0);
+            label.alignment = TextAlignmentOptions.MidlineRight;
+            label.raycastTarget = false;
+
+            // Popup (anchored just below the toggle, grows left from the right edge).
+            var popup = MakeRect(root, "Popup");
+            Anchor(popup, new Vector2(1, 0), new Vector2(1, 0), new Vector2(1, 1));
+            popup.anchoredPosition = new Vector2(0, -6);
+            popup.sizeDelta        = new Vector2(150, options.Length * 36 + 8);
+            var pbg = MakeImage(popup, "Bg", new Color32(0x22, 0x22, 0x30, 0xFF), ProcSprite("pill_16"));
+            pbg.type = Image.Type.Sliced;
+            Stretch(pbg.rectTransform, 0, 0, 0, 0);
+            var pvl = popup.gameObject.AddComponent<VerticalLayoutGroup>();
+            pvl.padding                = new RectOffset(4, 4, 4, 4);
+            pvl.spacing                = 2;
+            pvl.childControlWidth      = true;
+            pvl.childControlHeight     = true;
+            pvl.childForceExpandWidth  = true;
+            pvl.childForceExpandHeight = false;
+
+            var optBtns   = new Object[options.Length];
+            var optLabels = new string[options.Length];
+            var optValues = new string[options.Length];
+            for (int i = 0; i < options.Length; i++)
+            {
+                var ob = MakeRect(popup, $"Opt{i}");
+                ob.sizeDelta = new Vector2(0, 32);
+                ob.gameObject.AddComponent<LayoutElement>().preferredHeight = 32;
+                var obImg = MakeImage(ob, "Bg", new Color(1f, 1f, 1f, 0.04f), ProcSprite("pill_12"));
+                obImg.type = Image.Type.Sliced;
+                Stretch(obImg.rectTransform, 0, 0, 0, 0);
+                var obBtn = ob.gameObject.AddComponent<Button>();
+                obBtn.targetGraphic = obImg;
+                var obLbl = MakeTMP(ob.transform, "L", _theme.TextPrimary, options[i].label, 13, FontStyles.Bold);
+                Stretch(obLbl.rectTransform, 10, 0, 10, 0);
+                obLbl.alignment = TextAlignmentOptions.MidlineLeft;
+                obLbl.raycastTarget = false;
+
+                optBtns[i]   = obBtn;
+                optLabels[i] = options[i].label;
+                optValues[i] = options[i].value;
+            }
+            popup.gameObject.SetActive(false);
+
+            var fd = root.gameObject.AddComponent<FilterDropdown>();
+            var so = new SerializedObject(fd);
+            so.FindProperty("_toggle").objectReferenceValue = toggleBtn;
+            so.FindProperty("_label").objectReferenceValue  = label;
+            so.FindProperty("_popup").objectReferenceValue  = popup.gameObject;
+            SetObjectArray(so, "_optionButtons", optBtns);
+            SetStringArray(so, "_optionLabels", optLabels);
+            SetStringArray(so, "_optionValues", optValues);
+            so.FindProperty("_title").stringValue = title;
+            so.ApplyModifiedPropertiesWithoutUndo();
+            return fd;
+        }
+
+        static void SetStringArray(SerializedObject so, string propName, string[] items)
+        {
+            var arr = so.FindProperty(propName);
+            arr.arraySize = items.Length;
+            for (int i = 0; i < items.Length; i++)
+                arr.GetArrayElementAtIndex(i).stringValue = items[i];
+        }
+
+        // The match card is a REAL prefab now (Assets/_Project/UI/Prefabs/MatchCard.prefab) so you can
+        // hand-edit it in Unity (Prefab Mode) and the tweaks persist — the build tool only
+        // INSTANTIATES it here, never regenerates it.
+        static MatchRow BuildMatchRowTemplate(RectTransform parent)
+        {
+            EnsureMatchCardPrefab();
+            var go = Spawn(Load("MatchCard"), parent);
+            if (go == null) return null;
+            go.SetActive(false); // template — the presenter clones it per match
+            return go.GetComponent<MatchRow>();
+        }
+
+        // Creates MatchCard.prefab ONCE. Never overwritten afterwards, so manual visual edits
+        // (positions, colours, rounding, transparency) survive every rebuild.
+        static void EnsureMatchCardPrefab()
+        {
+            if (Load("MatchCard") != null) return;
+            CreateMatchCardPrefab();
+            AssetDatabase.SaveAssets();
+            AssetDatabase.Refresh();
+        }
+
+        static void CreateMatchCardPrefab()
+        {
+            var win        = (Color)new Color32(107, 255, 74, 255); // #6BFF4A — win score
+            var winSprite  = _theme.IconWin  != null ? _theme.IconWin  : ProcSprite("win");
+            var loseSprite = _theme.IconLose != null ? _theme.IconLose : ProcSprite("lose");
+            var cardSprite = _theme.BgCard   != null ? _theme.BgCard   : ProcSprite("bg_card"); // #181B21 rounded card
+
+            var rootGO = new GameObject("MatchCard", typeof(RectTransform));
+            var row    = rootGO.GetComponent<RectTransform>();
+            row.sizeDelta = new Vector2(360, 78);
+            var le = rootGO.AddComponent<LayoutElement>();
+            le.preferredHeight = 78; le.minHeight = 78;
+
+            var bg = MakeImage(row, "Bg", new Color(1f, 1f, 1f, 0.80f), cardSprite); // semi-transparent
+            bg.type = Image.Type.Sliced;
+            Stretch(bg.rectTransform, 0, 0, 0, 0);
+            bg.raycastTarget = false;
+
+            // W/L badge — ready icon (win.png / lose.png); MatchRow swaps the sprite by result.
+            var badge = MakeImage(row, "Badge", Color.white, winSprite);
+            Anchor(badge.rectTransform, new Vector2(0, 0.5f), new Vector2(0, 0.5f), new Vector2(0, 0.5f));
+            badge.rectTransform.anchoredPosition = new Vector2(30, 0); // hug the left edge (win.png has small padding)
+            badge.rectTransform.sizeDelta        = new Vector2(54, 54);
+            badge.preserveAspect = true;
+            badge.raycastTarget  = false;
+
+            // Opponent + meta (clearly to the right of the badge — no overlap).
+            var vsName = MakeTMP(row, "VsName", _theme.TextPrimary, "vs NOX_92", 17, FontStyles.Bold);
+            Anchor(vsName.rectTransform, new Vector2(0, 0.5f), new Vector2(0, 0.5f), new Vector2(0, 0.5f));
+            vsName.rectTransform.anchoredPosition = new Vector2(66, 13);
+            vsName.rectTransform.sizeDelta        = new Vector2(180, 24);
+            vsName.alignment = TextAlignmentOptions.MidlineLeft;
+            vsName.enableWordWrapping = false;
+            vsName.overflowMode = TextOverflowModes.Ellipsis;
+
+            var meta = MakeTMP(row, "Meta", _theme.TextSecondary, "2h - 60s - PUSHUPS", 11, FontStyles.Normal);
+            Anchor(meta.rectTransform, new Vector2(0, 0.5f), new Vector2(0, 0.5f), new Vector2(0, 0.5f));
+            meta.rectTransform.anchoredPosition = new Vector2(66, -13);
+            meta.rectTransform.sizeDelta        = new Vector2(210, 18);
+            meta.alignment = TextAlignmentOptions.MidlineLeft;
+            meta.enableWordWrapping = false;
+
+            // Score (own reps coloured win/loss) — right-anchored horizontal group, grows left.
+            var scoreRow = MakeRect(row, "Score");
+            Anchor(scoreRow, new Vector2(1, 0.5f), new Vector2(1, 0.5f), new Vector2(1, 0.5f));
+            scoreRow.anchoredPosition = new Vector2(-18, 12);
+            scoreRow.sizeDelta        = new Vector2(0, 30);
+            var sHL = scoreRow.gameObject.AddComponent<HorizontalLayoutGroup>();
+            sHL.spacing                = 5;
+            sHL.childAlignment         = TextAnchor.MiddleRight;
+            sHL.childControlWidth      = true;
+            sHL.childControlHeight     = true;
+            sHL.childForceExpandWidth  = false;
+            sHL.childForceExpandHeight = false;
+            scoreRow.gameObject.AddComponent<ContentSizeFitter>().horizontalFit = ContentSizeFitter.FitMode.PreferredSize;
+
+            var myScore  = MakeScoreCell(scoreRow, "MyScore",  "18", 24, win);
+            MakeScoreCell(scoreRow, "Dash", "-", 22, _theme.TextSecondary);
+            var oppScore = MakeScoreCell(scoreRow, "OppScore", "16", 24, _theme.TextSecondary);
+
+            var record = MakeTMP(row, "Record", win, "NEW RECORD", 10, FontStyles.Bold);
+            Anchor(record.rectTransform, new Vector2(1, 0.5f), new Vector2(1, 0.5f), new Vector2(1, 0.5f));
+            record.rectTransform.anchoredPosition = new Vector2(-18, -15);
+            record.rectTransform.sizeDelta        = new Vector2(150, 16);
+            record.alignment = TextAlignmentOptions.MidlineRight;
+
+            var mr = row.gameObject.AddComponent<MatchRow>();
+            var so = new SerializedObject(mr);
+            so.FindProperty("_badge").objectReferenceValue      = badge;
+            so.FindProperty("_winSprite").objectReferenceValue  = winSprite;
+            so.FindProperty("_loseSprite").objectReferenceValue = loseSprite;
+            so.FindProperty("_vsName").objectReferenceValue     = vsName;
+            so.FindProperty("_meta").objectReferenceValue       = meta;
+            so.FindProperty("_myScore").objectReferenceValue    = myScore;
+            so.FindProperty("_oppScore").objectReferenceValue   = oppScore;
+            so.FindProperty("_record").objectReferenceValue     = record;
+            so.ApplyModifiedPropertiesWithoutUndo();
+
+            EnsureFolder(PrefabsDir);
+            PrefabUtility.SaveAsPrefabAsset(rootGO, $"{PrefabsDir}/MatchCard.prefab");
+            Object.DestroyImmediate(rootGO);
+        }
+
+        static TextMeshProUGUI MakeScoreCell(RectTransform parent, string name, string text, float size, Color color)
+        {
+            var tmp = MakeTMP(parent.transform, name, color, text, size, FontStyles.Bold);
+            tmp.alignment           = TextAlignmentOptions.Center;
+            tmp.enableWordWrapping  = false; // never wrap a 2-digit score onto two lines
+            tmp.overflowMode        = TextOverflowModes.Overflow;
+            var le = tmp.gameObject.AddComponent<LayoutElement>();
+            le.preferredWidth  = name == "Dash" ? 10 : 30;
+            le.preferredHeight = 28;
+            return tmp;
         }
 
         // Spawns a design-system StatBadge, previews value/label in edit mode, returns the component.
@@ -736,6 +1077,300 @@ namespace PushStars.Editor
             so.FindProperty("_exitButton").objectReferenceValue  = exitButton;
             so.FindProperty("_ring").objectReferenceValue        = ring;
             so.ApplyModifiedPropertiesWithoutUndo();
+        }
+
+        // ════════════════════════════════════════════════════════════════════════
+        //  SETTINGS OVERLAY  (phase 07 — store-required settings + GDPR delete)
+        // ════════════════════════════════════════════════════════════════════════
+        // Full-screen overlay reached from the profile gear. Toggles (sound / vibration /
+        // notifications) persist via PlayerPrefsSettingsStore; language is RU/EN; Privacy &
+        // Terms open in the browser; delete-account runs FirebaseAuth.DeleteAsync after an
+        // explicit confirmation, then restarts from Boot. Everything is wired to SettingsScreen.
+        static void BuildSettingsOverlay(Transform canvasRoot, RectTransform mirror,
+                                         RectTransform mainContent, CanvasGroup mainGroup)
+        {
+            // ── Overlay root: full-screen, fades in, swallows input ─────────────────────
+            var overlay = MakeRect(mirror, "SettingsOverlay");
+            Stretch(overlay, 0, 0, 0, 0);
+            var canvasGroup = overlay.gameObject.AddComponent<CanvasGroup>();
+
+            // Settings is a flat solid screen (#1F2229) — no background image, no lightning.
+            var bg = MakeImage(overlay, "Background", new Color32(0x1F, 0x22, 0x29, 0xFF));
+            Stretch(bg.rectTransform, 0, 0, 0, 0);
+            bg.raycastTarget = true;
+
+            var safe = MakeRect(overlay, "SafeArea");
+            Stretch(safe, 0, 0, 0, 0);
+            safe.gameObject.AddComponent<SafeAreaFitter>();
+
+            var content = MakeRect(safe, "Content");
+            Stretch(content, 0, 0, 0, 0);
+
+            // ── Header: back button (left) + title ───────────────────────────────────────
+            var backBtn = MakePillButton(content, "BackButton", "НАЗАД", _theme.BtnSecondaryBg, _theme.TextPrimary, 92, 40, out _);
+            var backRT  = (RectTransform)backBtn.transform;
+            Anchor(backRT, new Vector2(0f, 1f), new Vector2(0f, 1f), new Vector2(0f, 1f));
+            backRT.anchoredPosition = new Vector2(16f, -26f);
+
+            var title = MakeTMP(content, "Title", _theme.TextPrimary, "НАСТРОЙКИ", 22, FontStyles.Bold);
+            Anchor(title.rectTransform, new Vector2(0f, 1f), new Vector2(1f, 1f), new Vector2(0.5f, 1f));
+            title.rectTransform.anchoredPosition = new Vector2(0f, -30f);
+            title.rectTransform.sizeDelta        = new Vector2(-32f, 32f);
+            title.alignment = TextAlignmentOptions.Center;
+            // Full-width title overlaps the back button — must not eat its clicks (TMP defaults to true).
+            title.raycastTarget = false;
+
+            // ── Vertical list of setting rows (top-anchored, sized by its content) ──────
+            var list = MakeRect(content, "List");
+            Anchor(list, new Vector2(0f, 1f), new Vector2(1f, 1f), new Vector2(0.5f, 1f));
+            list.anchoredPosition = new Vector2(0f, -90f);
+            list.sizeDelta        = new Vector2(-48f, 0f); // 24 px inset each side; height from fitter
+            var vl = list.gameObject.AddComponent<VerticalLayoutGroup>();
+            vl.spacing                = 10;
+            vl.childAlignment         = TextAnchor.UpperCenter;
+            vl.childControlWidth      = true;
+            vl.childControlHeight     = true;
+            vl.childForceExpandWidth  = true;
+            vl.childForceExpandHeight = false;
+            list.gameObject.AddComponent<ContentSizeFitter>().verticalFit = ContentSizeFitter.FitMode.PreferredSize;
+
+            // Toggles (persisted via PlayerPrefsSettingsStore in SettingsScreen) ──────────
+            var soundRow = MakeCardRow(list, "Row_Sound", "Звук", out _, out _);
+            var soundToggle = MakeSwitch(soundRow);
+
+            var vibrationRow = MakeCardRow(list, "Row_Vibration", "Вибрация", out _, out _);
+            var vibrationToggle = MakeSwitch(vibrationRow);
+
+            var notificationsRow = MakeCardRow(list, "Row_Notifications", "Уведомления", out _, out _);
+            var notificationsToggle = MakeSwitch(notificationsRow);
+
+            // Language RU / EN ───────────────────────────────────────────────────────────
+            var langRow = MakeCardRow(list, "Row_Language", "Язык", out _, out _);
+            var langGroup = MakeRect(langRow, "LangGroup");
+            var lgLE = langGroup.gameObject.AddComponent<LayoutElement>();
+            lgLE.preferredWidth = 132; lgLE.preferredHeight = 40; lgLE.flexibleWidth = 0;
+            var lgHL = langGroup.gameObject.AddComponent<HorizontalLayoutGroup>();
+            lgHL.spacing = 8; lgHL.childAlignment = TextAnchor.MiddleRight;
+            lgHL.childControlWidth = false; lgHL.childControlHeight = false; lgHL.childForceExpandWidth = false;
+            var ruBtn = MakePillButton(langGroup, "LangRu", "RU", _theme.BtnSecondaryBg, _theme.TextPrimary, 60, 40, out var ruLbl);
+            var enBtn = MakePillButton(langGroup, "LangEn", "EN", _theme.BtnSecondaryBg, _theme.TextSecondary, 60, 40, out var enLbl);
+
+            // Legal links (open in browser) ───────────────────────────────────────────────
+            var privacyBtn = MakeLinkRow(list, "Row_Privacy", "Политика конфиденциальности");
+            var termsBtn   = MakeLinkRow(list, "Row_Terms",   "Условия использования");
+
+            // App version (read-only) ──────────────────────────────────────────────────────
+            var versionRow = MakeCardRow(list, "Row_Version", "Версия", out _, out _);
+            var versionText = MakeTMP(versionRow, "Value", _theme.TextSecondary, "v—", 15, FontStyles.Bold);
+            versionText.alignment = TextAlignmentOptions.MidlineRight;
+            versionText.raycastTarget = false;
+            var verLE = versionText.gameObject.AddComponent<LayoutElement>();
+            verLE.preferredWidth = 96; verLE.preferredHeight = 24; verLE.flexibleWidth = 0;
+
+            // Delete account (danger, full width) ────────────────────────────────────────
+            var deleteBtn = MakePillButton(list, "DeleteButton", "УДАЛИТЬ АККАУНТ", _theme.BtnDangerBg, _theme.BtnDangerFg, 0, 54, out _);
+            var delLE = deleteBtn.GetComponent<LayoutElement>();
+            delLE.preferredHeight = 54; delLE.flexibleWidth = 1;
+
+            // ── Confirm-delete dialog (above content; hidden until delete is tapped) ─────
+            var confirm = MakeRect(overlay, "ConfirmDialog");
+            Stretch(confirm, 0, 0, 0, 0);
+            var scrim = MakeImage(confirm, "Scrim", new Color(0f, 0f, 0f, 0.72f));
+            Stretch(scrim.rectTransform, 0, 0, 0, 0);
+            scrim.raycastTarget = true;
+
+            var card = MakeRect(confirm, "Card");
+            Anchor(card, new Vector2(0.5f, 0.5f), new Vector2(0.5f, 0.5f), new Vector2(0.5f, 0.5f));
+            card.sizeDelta = new Vector2(322f, 244f);
+            var cardBg = MakeImage(card, "Bg", _theme.NavBg, ProcSprite("pill_24"));
+            cardBg.type = Image.Type.Sliced; Stretch(cardBg.rectTransform, 0, 0, 0, 0);
+
+            var cTitle = MakeTMP(card, "Title", _theme.TextPrimary, "Удалить аккаунт?", 20, FontStyles.Bold);
+            Anchor(cTitle.rectTransform, new Vector2(0f, 1f), new Vector2(1f, 1f), new Vector2(0.5f, 1f));
+            cTitle.rectTransform.anchoredPosition = new Vector2(0f, -26f);
+            cTitle.rectTransform.sizeDelta        = new Vector2(-32f, 28f);
+            cTitle.alignment = TextAlignmentOptions.Center;
+            cTitle.raycastTarget = false;
+
+            var cBody = MakeTMP(card, "Body", _theme.TextSecondary,
+                "Это действие необратимо. Весь прогресс,\nтрофеи и история матчей будут удалены.",
+                14, FontStyles.Normal);
+            Anchor(cBody.rectTransform, new Vector2(0.5f, 0.5f), new Vector2(0.5f, 0.5f), new Vector2(0.5f, 0.5f));
+            cBody.rectTransform.anchoredPosition = new Vector2(0f, 14f);
+            cBody.rectTransform.sizeDelta        = new Vector2(280f, 80f);
+            cBody.alignment = TextAlignmentOptions.Center;
+            cBody.raycastTarget = false;
+
+            var noBtn = MakePillButton(card, "ConfirmNo", "ОТМЕНА", _theme.BtnSecondaryBg, _theme.TextPrimary, 130, 46, out _);
+            var noRT = (RectTransform)noBtn.transform;
+            Anchor(noRT, new Vector2(0f, 0f), new Vector2(0f, 0f), new Vector2(0f, 0f));
+            noRT.anchoredPosition = new Vector2(20f, 22f);
+
+            var yesBtn = MakePillButton(card, "ConfirmYes", "УДАЛИТЬ", _theme.BtnDangerBg, _theme.BtnDangerFg, 130, 46, out _);
+            var yesRT = (RectTransform)yesBtn.transform;
+            Anchor(yesRT, new Vector2(1f, 0f), new Vector2(1f, 0f), new Vector2(1f, 0f));
+            yesRT.anchoredPosition = new Vector2(-20f, 22f);
+
+            confirm.gameObject.SetActive(false);
+
+            // ── Juicy entrance (matches the search overlay's calm staggered feel) ────────
+            var juicy = overlay.gameObject.AddComponent<JuicyScreen>();
+            var jso   = new SerializedObject(juicy);
+            jso.FindProperty("_overlayGroup").objectReferenceValue = canvasGroup;
+            jso.FindProperty("_root").objectReferenceValue         = content;
+            var elements = new (RectTransform target, int entrance, float dist, float delay, float dur)[]
+            {
+                (title.rectTransform, 2, 40f, 0.06f, 0.46f), // title eases down from the top
+                (backRT,              2, 30f, 0.08f, 0.46f), // back button slides down
+                (list,                0,  0f, 0.14f, 0.50f), // rows pop in together
+            };
+            var arr = jso.FindProperty("_elements");
+            arr.arraySize = elements.Length;
+            for (int i = 0; i < elements.Length; i++)
+            {
+                var el = arr.GetArrayElementAtIndex(i);
+                el.FindPropertyRelative("target").objectReferenceValue = elements[i].target;
+                el.FindPropertyRelative("entrance").enumValueIndex      = elements[i].entrance;
+                el.FindPropertyRelative("moveDistance").floatValue      = elements[i].dist;
+                el.FindPropertyRelative("delay").floatValue             = elements[i].delay;
+                el.FindPropertyRelative("duration").floatValue          = elements[i].dur;
+            }
+            jso.ApplyModifiedPropertiesWithoutUndo();
+
+            // Hidden until the player taps the profile gear.
+            overlay.gameObject.SetActive(false);
+
+            // ── Controller: always-active GO so it keeps running while the overlay toggles ─
+            var ctrlGO = new GameObject("SettingsScreenController");
+            ctrlGO.transform.SetParent(canvasRoot, false);
+            var ctrl = ctrlGO.AddComponent<SettingsScreen>();
+
+            var gearButton = _gearButtonGO != null ? _gearButtonGO.GetComponent<Button>() : null;
+
+            var so = new SerializedObject(ctrl);
+            so.FindProperty("_overlay").objectReferenceValue            = overlay.gameObject;
+            so.FindProperty("_juicy").objectReferenceValue              = juicy;
+            so.FindProperty("_mainContent").objectReferenceValue        = mainContent;
+            so.FindProperty("_mainGroup").objectReferenceValue          = mainGroup;
+            so.FindProperty("_gearButton").objectReferenceValue         = gearButton;
+            so.FindProperty("_backButton").objectReferenceValue         = backBtn;
+            so.FindProperty("_soundToggle").objectReferenceValue        = soundToggle;
+            so.FindProperty("_vibrationToggle").objectReferenceValue    = vibrationToggle;
+            so.FindProperty("_notificationsToggle").objectReferenceValue = notificationsToggle;
+            so.FindProperty("_langRuButton").objectReferenceValue       = ruBtn;
+            so.FindProperty("_langEnButton").objectReferenceValue       = enBtn;
+            so.FindProperty("_langRuLabel").objectReferenceValue        = ruLbl;
+            so.FindProperty("_langEnLabel").objectReferenceValue        = enLbl;
+            so.FindProperty("_privacyButton").objectReferenceValue      = privacyBtn;
+            so.FindProperty("_termsButton").objectReferenceValue        = termsBtn;
+            so.FindProperty("_versionText").objectReferenceValue        = versionText;
+            so.FindProperty("_deleteButton").objectReferenceValue       = deleteBtn;
+            so.FindProperty("_confirmDialog").objectReferenceValue      = confirm.gameObject;
+            so.FindProperty("_confirmYesButton").objectReferenceValue   = yesBtn;
+            so.FindProperty("_confirmNoButton").objectReferenceValue    = noBtn;
+            so.ApplyModifiedPropertiesWithoutUndo();
+        }
+
+        // A settings row "card": rounded background, a left-aligned label, and room on the right
+        // for a control (added by the caller as the next layout child). Label flex-expands so the
+        // control hugs the right edge. The background is layout-ignored so the row's HLG never
+        // resizes it.
+        static RectTransform MakeCardRow(RectTransform list, string name, string label,
+                                         out TextMeshProUGUI lbl, out Image bg, float height = 58f)
+        {
+            var row = MakeRect(list, name);
+            var le  = row.gameObject.AddComponent<LayoutElement>();
+            le.preferredHeight = height; le.minHeight = height; le.flexibleWidth = 1;
+
+            bg = MakeImage(row, "Bg", new Color(1f, 1f, 1f, 0.05f), ProcSprite("pill_16"));
+            bg.type = Image.Type.Sliced;
+            Stretch(bg.rectTransform, 0, 0, 0, 0);
+            bg.gameObject.AddComponent<LayoutElement>().ignoreLayout = true;
+
+            var hl = row.gameObject.AddComponent<HorizontalLayoutGroup>();
+            hl.padding                = new RectOffset(18, 14, 0, 0);
+            hl.spacing                = 10;
+            hl.childAlignment         = TextAnchor.MiddleLeft;
+            hl.childControlWidth      = true;  hl.childControlHeight      = true;
+            hl.childForceExpandWidth  = false; hl.childForceExpandHeight  = false;
+
+            lbl = MakeTMP(row, "Label", _theme.TextPrimary, label, 16, FontStyles.Normal);
+            lbl.alignment = TextAlignmentOptions.MidlineLeft;
+            var lle = lbl.gameObject.AddComponent<LayoutElement>();
+            lle.flexibleWidth = 1; lle.preferredHeight = 24;
+            return row;
+        }
+
+        // A full-row link (the whole card is the button) that opens a URL. A ">" affordance sits
+        // on the right.
+        static Button MakeLinkRow(RectTransform list, string name, string label)
+        {
+            var row = MakeCardRow(list, name, label, out _, out var bg);
+            bg.raycastTarget = true;
+            var btn = row.gameObject.AddComponent<Button>();
+            btn.targetGraphic = bg;
+
+            var chevron = MakeTMP(row, "Chevron", _theme.TextSecondary, ">", 18, FontStyles.Bold);
+            chevron.alignment = TextAlignmentOptions.MidlineRight;
+            var cle = chevron.gameObject.AddComponent<LayoutElement>();
+            cle.preferredWidth = 18; cle.preferredHeight = 24; cle.flexibleWidth = 0;
+            return btn;
+        }
+
+        // A binary switch built on Unity's Toggle: a dark capsule track, filled lime when on
+        // (Toggle.graphic). No knob animation — the colour fill is the on/off signal.
+        static Toggle MakeSwitch(RectTransform parent)
+        {
+            var go = new GameObject("Switch", typeof(RectTransform));
+            go.transform.SetParent(parent, false);
+            var rt = (RectTransform)go.transform;
+            rt.sizeDelta = new Vector2(54f, 30f);
+            var le = go.AddComponent<LayoutElement>();
+            le.preferredWidth = 54f; le.preferredHeight = 30f; le.flexibleWidth = 0;
+
+            var toggle = go.AddComponent<Toggle>();
+
+            var track = MakeImage(rt, "Track", new Color(1f, 1f, 1f, 0.12f), ProcSprite("pill_capsule"));
+            track.type = Image.Type.Sliced;
+            Stretch(track.rectTransform, 0, 0, 0, 0);
+            toggle.targetGraphic = track;
+
+            var fill = MakeImage(track.rectTransform, "OnFill", _theme.AccentLime, ProcSprite("pill_capsule"));
+            fill.type = Image.Type.Sliced;
+            Stretch(fill.rectTransform, 3, 3, 3, 3);
+            fill.raycastTarget = false;
+            toggle.graphic = fill;
+
+            toggle.isOn = true; // SettingsScreen syncs the real value from the store on enable
+            return toggle;
+        }
+
+        // A solid pill button with a centred label. Pass w = 0 when the parent layout controls the
+        // width (e.g. the full-width delete button inside the rows list).
+        static Button MakePillButton(RectTransform parent, string name, string label,
+                                     Color bg, Color fg, float w, float h, out TextMeshProUGUI lbl)
+        {
+            var go = new GameObject(name, typeof(RectTransform), typeof(CanvasRenderer), typeof(Image));
+            go.transform.SetParent(parent, false);
+            var rt  = (RectTransform)go.transform;
+            rt.sizeDelta = new Vector2(w, h);
+
+            var img = go.GetComponent<Image>();
+            img.sprite = ProcSprite("pill_16");
+            img.type   = Image.Type.Sliced;
+            img.color  = bg;
+
+            var le = go.AddComponent<LayoutElement>();
+            le.preferredWidth = w; le.preferredHeight = h; le.flexibleWidth = 0;
+
+            var btn = go.AddComponent<Button>();
+            btn.targetGraphic = img;
+
+            lbl = MakeTMP(rt, "Label", fg, label, 14, FontStyles.Bold);
+            lbl.alignment = TextAlignmentOptions.Center;
+            Stretch(lbl.rectTransform, 6, 0, 6, 0);
+            lbl.raycastTarget = false;
+            return btn;
         }
 
         // ════════════════════════════════════════════════════════════════════════
