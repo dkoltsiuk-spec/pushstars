@@ -1,4 +1,38 @@
 workflows:
+
+  # Lightweight validation: Unity Personal activation + plugin import + iOS Xcode-project
+  # generation, WITHOUT code signing / App Store Connect. Run this FIRST to de-risk the
+  # Unity side before wiring signing. Success here = the hard part works.
+  ios-unity-check:
+    name: Push Stars — Unity iOS build check (no signing)
+    max_build_duration: 90
+    instance_type: mac_mini_m2
+    environment:
+      unity: 2022.3.62f3
+      groups:
+        - unity_credentials                    # UNITY_EMAIL + UNITY_PASSWORD
+      vars:
+        UNITY_IOS_DIR: ios_build
+        MEDIAPIPE_URL: "https://github.com/homuler/MediaPipeUnityPlugin/releases/download/v0.16.3/MediaPipeUnity.0.16.3.unitypackage"
+    scripts:
+      - name: Download MediaPipe plugin
+        script: curl -fL -o "$CM_BUILD_DIR/mediapipe.unitypackage" "$MEDIAPIPE_URL"
+      - name: Activate Unity license (Personal)
+        script: |
+          "$UNITY_HOME/Contents/MacOS/Unity" -batchmode -nographics -quit -logFile - \
+            -username "$UNITY_EMAIL" -password "$UNITY_PASSWORD" || true
+      - name: Import MediaPipe plugin
+        script: |
+          "$UNITY_HOME/Contents/MacOS/Unity" -batchmode -nographics -quit -logFile - \
+            -projectPath . -importPackage "$CM_BUILD_DIR/mediapipe.unitypackage"
+      - name: Build Unity iOS Xcode project (no signing)
+        script: |
+          "$UNITY_HOME/Contents/MacOS/Unity" -batchmode -nographics -quit -logFile - \
+            -projectPath . -executeMethod PushStars.Editor.BuildScript.BuildiOS \
+            -buildOutput "$CM_BUILD_DIR/$UNITY_IOS_DIR"
+    artifacts:
+      - "*.log"
+
   ios-pushstars:
     name: Push Stars — iOS (CV test)
     max_build_duration: 120
