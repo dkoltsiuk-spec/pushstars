@@ -38,7 +38,9 @@ namespace PushStars.CV
         [SerializeField] private int _requestedWidth = 640;
         [SerializeField] private int _requestedHeight = 480;
         [SerializeField] private int _requestedFps = 30;
-        [SerializeField] private string _deviceName = ""; // empty = default camera
+        [Tooltip("Use the front (selfie) camera. If no explicit Device Name is set, picks a front/back device accordingly.")]
+        [SerializeField] private bool _useFrontCamera = true;
+        [SerializeField] private string _deviceName = ""; // explicit device name overrides the front/back pick
 
         [Header("Image orientation (toggle if the skeleton doesn't track)")]
         [SerializeField] private bool _flipHorizontally = false;
@@ -128,10 +130,11 @@ namespace PushStars.CV
 
             // ── 2) Start the camera (independent of MediaPipe — the preview must work even if the
             //       pose model fails to load). ──
-            SetStatus("starting camera");
-            _webCam = string.IsNullOrEmpty(_deviceName)
+            string device = ResolveCameraDevice();
+            SetStatus(string.IsNullOrEmpty(device) ? "starting camera (default)" : $"starting camera: {device}");
+            _webCam = string.IsNullOrEmpty(device)
                 ? new WebCamTexture(_requestedWidth, _requestedHeight, _requestedFps)
-                : new WebCamTexture(_deviceName, _requestedWidth, _requestedHeight, _requestedFps);
+                : new WebCamTexture(device, _requestedWidth, _requestedHeight, _requestedFps);
             _webCam.Play();
             float camStart = Time.realtimeSinceStartup;
             yield return new WaitUntil(() => _webCam.width > 16 || Time.realtimeSinceStartup - camStart > 6f);
@@ -288,6 +291,17 @@ namespace PushStars.CV
             if (q == Quality) return;
             Quality = q;
             OnQualityChanged?.Invoke(q);
+        }
+
+        /// <summary>Picks the camera device: an explicit <see cref="_deviceName"/> wins; otherwise the
+        /// first front- or back-facing device per <see cref="_useFrontCamera"/>; else the default.</summary>
+        private string ResolveCameraDevice()
+        {
+            if (!string.IsNullOrEmpty(_deviceName)) return _deviceName;
+            var devices = WebCamTexture.devices;
+            foreach (var d in devices)
+                if (d.isFrontFacing == _useFrontCamera) return d.name;
+            return devices.Length > 0 ? devices[0].name : "";
         }
 
         /// <summary>Editor: returns the model name (loaded from the package via LocalResourceManager).
