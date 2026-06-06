@@ -81,3 +81,8 @@ functions/.env
 Packages/com.github.homuler.mediapipe/
 Assets/MediaPipeUnity/
 Assets/MediaPipeUnity.meta
+
+# Unity license activation files — НЕ коммитить (это лицензия/секрет). Для CI .ulf хранится
+# как секрет UNITY_LICENSE в Codemagic, не в git.
+*.alf
+*.ulf

@@ -18,7 +18,7 @@ workflows:
         distribution_type: app_store          # app_store → TestFlight. Use `development` for ad-hoc.
         bundle_identifier: com.pushstars.app
       groups:
-        - unity_credentials                    # secrets: UNITY_EMAIL, UNITY_PASSWORD, UNITY_SERIAL
+        - unity_credentials                    # Personal license: secret UNITY_LICENSE = full .ulf text
       vars:
         UNITY_IOS_DIR: ios_build
         XCODE_PROJECT: "Unity-iPhone.xcodeproj"
@@ -31,15 +31,17 @@ workflows:
         script: |
           curl -fL -o "$CM_BUILD_DIR/mediapipe.unitypackage" "$MEDIAPIPE_URL"
 
-      # ── Unity license ────────────────────────────────────────────────────────────
-      # Plus/Pro: the line below works as-is (serial + account).
-      # Personal (no serial): replace this step with a manual-license-file activation
-      #   (-createManualActivationFile → upload .alf → store the returned .ulf as a secret
-      #    UNITY_LICENSE and write it before activating). Ask if you're on Personal.
-      - name: Activate Unity license
+      # ── Unity license (Personal) ─────────────────────────────────────────────────
+      # UNITY_LICENSE secret = full text of the .ulf file obtained via manual activation:
+      #   1) locally: Unity.exe -batchmode -nographics -createManualActivationFile -quit  → .alf
+      #   2) upload the .alf at https://license.unity3d.com/manual → download the .ulf
+      #   3) paste the whole .ulf content into the Codemagic secret UNITY_LICENSE
+      # -manualLicenseFile exits non-zero even on success, so we tolerate it with `|| true`.
+      - name: Activate Unity license (Personal)
         script: |
-          "$UNITY_HOME/Contents/MacOS/Unity" -batchmode -quit -logFile - \
-            -serial "${UNITY_SERIAL}" -username "${UNITY_EMAIL}" -password "${UNITY_PASSWORD}"
+          printf '%s' "$UNITY_LICENSE" > "$CM_BUILD_DIR/unity.ulf"
+          "$UNITY_HOME/Contents/MacOS/Unity" -batchmode -nographics -quit -logFile - \
+            -manualLicenseFile "$CM_BUILD_DIR/unity.ulf" || true
 
       - name: Import MediaPipe plugin
         script: |
