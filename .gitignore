@@ -86,3 +86,11 @@ Assets/MediaPipeUnity.meta
 # как секрет UNITY_LICENSE в Codemagic, не в git.
 *.alf
 *.ulf
+
+# iOS signing — приватный ключ/сертификат/профиль НИКОГДА не коммитить.
+/signing/
+*.key
+*.csr
+*.cer
+*.p12
+*.mobileprovision

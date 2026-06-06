@@ -55,6 +55,25 @@ namespace PushStars.Editor
             EditorApplication.Exit(0);
         }
 
+        /// <summary>
+        /// Pre-export hook for Unity Build Automation (set as the build target's "Pre-export method":
+        /// <c>PushStars.Editor.BuildScript.PrepareForUBA</c>). UBA runs its own BuildPlayer, so this
+        /// only prepares the project: makes the CV test scene the one that ships, copies the pose
+        /// model into StreamingAssets, and sets the iOS camera string + bundle id. The
+        /// PUSHSTARS_MEDIAPIPE define is committed in ProjectSettings; the plugin itself is fetched by
+        /// the UBA pre-build script before the editor opens.
+        /// </summary>
+        public static void PrepareForUBA()
+        {
+            EditorBuildSettings.scenes = new[]
+            {
+                new EditorBuildSettingsScene("Assets/testCV.unity", true),
+            };
+            CopyModelToStreamingAssets();
+            ConfigureIOS();
+            Debug.Log("[Build] PrepareForUBA done: scene=testCV, model copied, iOS configured.");
+        }
+
         private static void EnableMediaPipeDefine(NamedBuildTarget target)
         {
             var defines = PlayerSettings.GetScriptingDefineSymbols(target);
