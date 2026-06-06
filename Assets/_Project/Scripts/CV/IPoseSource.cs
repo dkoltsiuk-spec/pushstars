@@ -33,6 +33,9 @@ namespace PushStars.CV
         TrackingQuality Quality { get; }
         bool IsRunning { get; }
 
+        /// <summary>Human-readable status / last error for on-screen diagnostics.</summary>
+        string StatusMessage { get; }
+
         void StartTracking();
         void StopTracking();
     }

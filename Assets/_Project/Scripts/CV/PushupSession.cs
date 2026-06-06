@@ -30,6 +30,9 @@ namespace PushStars.CV
         public float TempoRpm => Counter.TempoRpm;
         public float Form => LastForm.Form;
 
+        /// <summary>Status/error from the pose source (for the on-screen debug HUD).</summary>
+        public string SourceStatus => _source != null ? _source.StatusMessage : "(no source)";
+
         /// <summary>Forwarded from the rep counter (new total each completed rep).</summary>
         public event Action<int> OnRep;
         /// <summary>Raised every processed frame with the latest form reading.</summary>

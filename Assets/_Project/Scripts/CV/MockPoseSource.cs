@@ -29,6 +29,7 @@ namespace PushStars.CV
 
         public TrackingQuality Quality { get; private set; } = TrackingQuality.None;
         public bool IsRunning { get; private set; }
+        public string StatusMessage => IsRunning ? (simulateLost ? "mock (lost)" : "mock running") : "mock stopped";
 
         private float _phase; // radians through the pushup cycle
         private readonly Landmark[] _buf = new Landmark[PoseLandmarks.Count];

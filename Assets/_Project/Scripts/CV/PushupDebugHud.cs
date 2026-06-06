@@ -32,7 +32,9 @@ namespace PushStars.CV
                 $"FORM:  {f.Form:0}   (depth {f.DepthScore:0}, line {f.BodyLineScore:0})\n" +
                 $"ELBOW: {f.ElbowAngleDeg:0}°\n" +
                 $"TEMPO: {_session.TempoRpm:0} rpm\n" +
-                $"TRACK: {_session.Quality}";
+                $"TRACK: {_session.Quality}\n" +
+                $"FPS:   {(1f / Mathf.Max(Time.smoothDeltaTime, 0.0001f)):0}\n" +
+                $"STATUS: {_session.SourceStatus}";
 
             // Shadow for readability over the camera feed.
             var shadow = new GUIStyle(_style) { normal = { textColor = Color.black } };

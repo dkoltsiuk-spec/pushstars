@@ -55,6 +55,15 @@ namespace PushStars.CV
         public TrackingQuality Quality { get; private set; } = TrackingQuality.None;
         public bool IsRunning { get; private set; }
 
+        /// <summary>Human-readable last status / error — surfaced on the debug HUD for on-device diagnosis.</summary>
+        public string StatusMessage { get; private set; } = "idle";
+
+        private void SetStatus(string s)
+        {
+            StatusMessage = s;
+            Debug.Log($"[MediaPipe] {s}");
+        }
+
         /// <summary>The live camera texture — assign to a RawImage for a preview if desired.</summary>
         public WebCamTexture CameraTexture => _webCam;
 
@@ -105,68 +114,92 @@ namespace PushStars.CV
 
         private IEnumerator RunAsync()
         {
-            // NOTE: do NOT call Glog.Initialize()/InitGoogleLogging here — glog aborts the process if
-            // initialized twice (and native glog state survives editor domain reloads / the plugin's
-            // own Bootstrap). The Pose Landmarker Tasks API does not require it.
+            // glog is intentionally NOT initialized (it aborts the process if init twice).
 
-            // 1) Resource manager + model. Editor reads from the package; builds read StreamingAssets.
-            IResourceManager resources =
-#if UNITY_EDITOR
-                new LocalResourceManager();
-#else
-                new StreamingAssetsResourceManager();
-#endif
-            yield return StartCoroutine(resources.PrepareAssetAsync(_modelFileName, _modelFileName, false));
-
-            // 2) Build the Pose Landmarker (CPU on desktop; LIVE_STREAM → async callback).
-            var baseOptions = new Mediapipe.Tasks.Core.BaseOptions(
-                Mediapipe.Tasks.Core.BaseOptions.Delegate.CPU, modelAssetPath: _modelFileName);
-            var options = new PoseLandmarkerOptions(
-                baseOptions,
-                runningMode: Mediapipe.Tasks.Vision.Core.RunningMode.LIVE_STREAM,
-                numPoses: 1,
-                minPoseDetectionConfidence: _minPoseDetectionConfidence,
-                minPosePresenceConfidence: _minPosePresenceConfidence,
-                minTrackingConfidence: _minTrackingConfidence,
-                outputSegmentationMasks: false,
-                resultCallback: OnPoseResult);
-
-            try
-            {
-                _poseLandmarker = PoseLandmarker.CreateFromOptions(options, GpuManager.GpuResources);
-            }
-            catch (Exception e)
-            {
-                Debug.LogError($"[MediaPipe] Failed to create PoseLandmarker: {e}");
-                IsRunning = false;
-                yield break;
-            }
-
-            _imageProcessingOptions = new Mediapipe.Tasks.Vision.Core.ImageProcessingOptions(rotationDegrees: 0);
-
-            // 3) Camera permission (iOS/Android prompt at runtime; instant-granted on desktop).
+            // ── 1) Camera permission FIRST, so the iOS prompt appears regardless of MediaPipe init. ──
+            SetStatus("requesting camera permission");
             yield return Application.RequestUserAuthorization(UserAuthorization.WebCam);
             if (!Application.HasUserAuthorization(UserAuthorization.WebCam))
             {
-                Debug.LogError("[MediaPipe] Camera permission was not granted.");
+                SetStatus("CAMERA PERMISSION DENIED");
                 IsRunning = false;
                 yield break;
             }
 
-            // 4) Camera.
+            // ── 2) Start the camera (independent of MediaPipe — the preview must work even if the
+            //       pose model fails to load). ──
+            SetStatus("starting camera");
             _webCam = string.IsNullOrEmpty(_deviceName)
                 ? new WebCamTexture(_requestedWidth, _requestedHeight, _requestedFps)
                 : new WebCamTexture(_deviceName, _requestedWidth, _requestedHeight, _requestedFps);
             _webCam.Play();
-            yield return new WaitUntil(() => _webCam.width > 16); // wait for the device to warm up
+            float camStart = Time.realtimeSinceStartup;
+            yield return new WaitUntil(() => _webCam.width > 16 || Time.realtimeSinceStartup - camStart > 6f);
+            if (_webCam.width <= 16) { SetStatus("CAMERA NOT STARTING"); }
+            else SetStatus($"camera {_webCam.width}x{_webCam.height}");
 
-            _framePool = new TextureFramePool(_webCam.width, _webCam.height, TextureFormat.RGBA32, 10);
+            int w = Mathf.Max(_webCam.width, 16), h = Mathf.Max(_webCam.height, 16);
+            _framePool = new TextureFramePool(w, h, TextureFormat.RGBA32, 10);
+
+            // ── 3) Make the model available, then build the Pose Landmarker. Any failure here leaves
+            //       the camera preview running but disables detection (status shows why). ──
+            string modelPath = StageModel(); // editor: model name; device: absolute persistentData path
+            if (modelPath == null)
+            {
+                SetStatus("MODEL NOT FOUND (skipping detection)");
+            }
+            else
+            {
+                SetStatus("preparing model");
+                bool prepareFailed = false;
+#if UNITY_EDITOR
+                IResourceManager resources = new LocalResourceManager();
+                yield return RunSafely(resources.PrepareAssetAsync(_modelFileName, _modelFileName, false),
+                                       e => { prepareFailed = true; SetStatus("PREPARE ERROR: " + e.Message); });
+                string assetPath = _modelFileName;
+#else
+                // Device: we already copied the model to persistentData (StageModel); point MediaPipe at it.
+                string assetPath = modelPath;
+#endif
+                if (!prepareFailed)
+                {
+                    SetStatus("creating pose landmarker");
+                    try
+                    {
+                        var baseOptions = new Mediapipe.Tasks.Core.BaseOptions(
+                            Mediapipe.Tasks.Core.BaseOptions.Delegate.CPU, modelAssetPath: assetPath);
+                        var options = new PoseLandmarkerOptions(
+                            baseOptions,
+                            runningMode: Mediapipe.Tasks.Vision.Core.RunningMode.LIVE_STREAM,
+                            numPoses: 1,
+                            minPoseDetectionConfidence: _minPoseDetectionConfidence,
+                            minPosePresenceConfidence: _minPosePresenceConfidence,
+                            minTrackingConfidence: _minTrackingConfidence,
+                            outputSegmentationMasks: false,
+                            resultCallback: OnPoseResult);
+                        _poseLandmarker = PoseLandmarker.CreateFromOptions(options, GpuManager.GpuResources);
+                        _imageProcessingOptions = new Mediapipe.Tasks.Vision.Core.ImageProcessingOptions(rotationDegrees: 0);
+                        SetStatus("running");
+                    }
+                    catch (Exception e)
+                    {
+                        SetStatus("LANDMARKER ERROR: " + e.Message);
+                        _poseLandmarker = null;
+                    }
+                }
+            }
+
             _clock.Restart();
 
-            // 4) Capture loop — read each camera frame and submit it for async detection.
+            // ── 4) Capture loop. If the landmarker failed, we still keep the camera preview alive. ──
             var waitForEndOfFrame = new WaitForEndOfFrame();
             while (IsRunning)
             {
+                if (_poseLandmarker == null || _webCam == null || _webCam.width <= 16)
+                {
+                    yield return waitForEndOfFrame; // camera-preview-only / not ready
+                    continue;
+                }
                 if (!_framePool.TryGetTextureFrame(out var textureFrame))
                 {
                     yield return waitForEndOfFrame;
@@ -255,6 +288,50 @@ namespace PushStars.CV
             if (q == Quality) return;
             Quality = q;
             OnQualityChanged?.Invoke(q);
+        }
+
+        /// <summary>Editor: returns the model name (loaded from the package via LocalResourceManager).
+        /// Device: copies the model from the read-only StreamingAssets into persistentData (where the
+        /// native loader can open it) and returns that absolute path, or null if the model is missing.</summary>
+        private string StageModel()
+        {
+#if UNITY_EDITOR
+            return _modelFileName;
+#else
+            try
+            {
+                string src = System.IO.Path.Combine(Application.streamingAssetsPath, _modelFileName);
+                string dst = System.IO.Path.Combine(Application.persistentDataPath, _modelFileName);
+                if (!System.IO.File.Exists(dst))
+                {
+                    if (!System.IO.File.Exists(src)) return null; // (Android packs StreamingAssets in the APK — needs UnityWebRequest; iOS is a real path)
+                    System.IO.File.Copy(src, dst, true);
+                }
+                return dst;
+            }
+            catch (Exception e)
+            {
+                SetStatus("STAGE ERROR: " + e.Message);
+                return null;
+            }
+#endif
+        }
+
+        /// <summary>Runs an inner coroutine, routing any thrown exception to <paramref name="onError"/>
+        /// instead of letting it kill the parent coroutine.</summary>
+        private IEnumerator RunSafely(IEnumerator inner, Action<Exception> onError)
+        {
+            while (true)
+            {
+                object current;
+                try
+                {
+                    if (!inner.MoveNext()) yield break;
+                    current = inner.Current;
+                }
+                catch (Exception e) { onError(e); yield break; }
+                yield return current;
+            }
         }
     }
 }
