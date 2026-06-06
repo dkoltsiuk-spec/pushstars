@@ -10,7 +10,7 @@ workflows:
     environment:
       unity: 2022.3.62f3
       groups:
-        - unity_credentials                    # UNITY_EMAIL + UNITY_PASSWORD
+        - app  # UNITY_EMAIL + UNITY_PASSWORD
       vars:
         UNITY_IOS_DIR: ios_build
         MEDIAPIPE_URL: "https://github.com/homuler/MediaPipeUnityPlugin/releases/download/v0.16.3/MediaPipeUnity.0.16.3.unitypackage"
@@ -52,7 +52,7 @@ workflows:
         distribution_type: app_store          # app_store → TestFlight. Use `development` for ad-hoc.
         bundle_identifier: com.pushstars.app
       groups:
-        - unity_credentials                    # Personal: secrets UNITY_EMAIL + UNITY_PASSWORD (no serial)
+        - app  # Personal: secrets UNITY_EMAIL + UNITY_PASSWORD (no serial)
       vars:
         UNITY_IOS_DIR: ios_build
         XCODE_PROJECT: "Unity-iPhone.xcodeproj"
