@@ -14,6 +14,12 @@
     "defineConstraints": [
         "PUSHSTARS_MEDIAPIPE"
     ],
-    "versionDefines": [],
+    "versionDefines": [
+        {
+            "name": "com.github.homuler.mediapipe",
+            "expression": "",
+            "define": "PUSHSTARS_MEDIAPIPE"
+        }
+    ],
     "noEngineReferences": false
 }

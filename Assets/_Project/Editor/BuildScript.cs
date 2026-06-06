@@ -75,9 +75,18 @@ namespace PushStars.Editor
             var scene = EditorSceneManager.NewScene(NewSceneSetup.EmptyScene, NewSceneMode.Single);
             var go = CvTestSceneSetup.CreateCvTestObject();
             if (go == null)
-                Debug.LogError("[Build] CVTest could not be created — PUSHSTARS_MEDIAPIPE off or plugin missing.");
-            else
-                Debug.Log("[Build] CVTest regenerated and wired.");
+            {
+                // Fail loudly instead of shipping an empty scene (= black screen, no text on device).
+                // Root cause if this fires: the PushStars.CV.MediaPipe assembly didn't compile, i.e. the
+                // PUSHSTARS_MEDIAPIPE define wasn't active (UBA's "Inject Scripting Define Symbols" can
+                // overwrite the committed iOS defines) or the MediaPipe package wasn't fetched. The
+                // asmdef's versionDefines now auto-sets the define when the package is present, so this
+                // should not happen on CI — but if it does, abort rather than ship a black screen.
+                Debug.LogError("[Build] CVTest could not be created — PUSHSTARS_MEDIAPIPE off or plugin missing. ABORTING.");
+                EditorApplication.Exit(1);
+                return;
+            }
+            Debug.Log("[Build] CVTest regenerated and wired.");
 
             const string scenePath = "Assets/testCV.unity";
             EditorSceneManager.SaveScene(scene, scenePath);
