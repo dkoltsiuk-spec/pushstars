@@ -32,11 +32,11 @@ namespace PushStars.CV
     {
         [Header("Model")]
         [Tooltip("pose_landmarker_lite.bytes / _full.bytes / _heavy.bytes. Lite = fastest on CPU.")]
-        [SerializeField] private string _modelFileName = "pose_landmarker_full.bytes";
+        [SerializeField] private string _modelFileName = "pose_landmarker_lite.bytes";
 
-        [Header("Camera")]
-        [SerializeField] private int _requestedWidth = 1280;
-        [SerializeField] private int _requestedHeight = 720;
+        [Header("Camera (landscape — webcams don't do portrait)")]
+        [SerializeField] private int _requestedWidth = 640;
+        [SerializeField] private int _requestedHeight = 480;
         [SerializeField] private int _requestedFps = 30;
         [SerializeField] private string _deviceName = ""; // empty = default camera
 
@@ -57,8 +57,6 @@ namespace PushStars.CV
 
         /// <summary>The live camera texture — assign to a RawImage for a preview if desired.</summary>
         public WebCamTexture CameraTexture => _webCam;
-
-        private static bool _pluginInitialized;
 
         private WebCamTexture     _webCam;
         private PoseLandmarker    _poseLandmarker;
@@ -107,7 +105,9 @@ namespace PushStars.CV
 
         private IEnumerator RunAsync()
         {
-            EnsurePluginInitialized();
+            // NOTE: do NOT call Glog.Initialize()/InitGoogleLogging here — glog aborts the process if
+            // initialized twice (and native glog state survives editor domain reloads / the plugin's
+            // own Bootstrap). The Pose Landmarker Tasks API does not require it.
 
             // 1) Resource manager + model. Editor reads from the package; builds read StreamingAssets.
             IResourceManager resources =
@@ -246,14 +246,6 @@ namespace PushStars.CV
             if (q == Quality) return;
             Quality = q;
             OnQualityChanged?.Invoke(q);
-        }
-
-        private static void EnsurePluginInitialized()
-        {
-            if (_pluginInitialized) return;
-            _pluginInitialized = true;
-            try { Protobuf.SetLogHandler(Protobuf.DefaultLogHandler); } catch (Exception e) { Debug.LogWarning($"[MediaPipe] Protobuf init: {e.Message}"); }
-            try { Glog.Initialize("MediaPipeUnityPlugin"); } catch (Exception e) { Debug.LogWarning($"[MediaPipe] Glog init: {e.Message}"); }
         }
     }
 }
