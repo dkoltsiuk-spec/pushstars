@@ -74,3 +74,10 @@ Assets/Firebase/Plugins/x86_64/*.so
 # Node (будущий functions/, фаза 05)
 functions/node_modules/
 functions/.env
+
+# MediaPipeUnityPlugin (Homuler, фаза 08) — ~391 МБ нативных либ под все платформы,
+# в git не тащим. На новой машине импортировать MediaPipeUnity.0.16.3.unitypackage
+# из релизов github.com/homuler/MediaPipeUnityPlugin, затем Tools → Push Stars → MediaPipe → Enable.
+Packages/com.github.homuler.mediapipe/
+Assets/MediaPipeUnity/
+Assets/MediaPipeUnity.meta

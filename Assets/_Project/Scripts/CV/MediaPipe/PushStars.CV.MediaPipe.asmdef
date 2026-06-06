@@ -1,12 +1,9 @@
 {
-    "name": "PushStars.UI",
-    "rootNamespace": "PushStars.UI",
+    "name": "PushStars.CV.MediaPipe",
+    "rootNamespace": "PushStars.CV",
     "references": [
-        "PushStars.Core",
-        "PushStars.Firebase",
         "PushStars.CV",
-        "UniTask",
-        "Unity.TextMeshPro"
+        "Mediapipe.Runtime"
     ],
     "includePlatforms": [],
     "excludePlatforms": [],
@@ -14,7 +11,9 @@
     "overrideReferences": false,
     "precompiledReferences": [],
     "autoReferenced": true,
-    "defineConstraints": [],
+    "defineConstraints": [
+        "PUSHSTARS_MEDIAPIPE"
+    ],
     "versionDefines": [],
     "noEngineReferences": false
 }
