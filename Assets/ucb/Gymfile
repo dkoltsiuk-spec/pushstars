@@ -1,0 +1,6 @@
+# Fastlane Gymfile for Unity Build Automation (referenced by ucb_xcode_fastlane.json).
+# Inject the Apple Team ID into xcodebuild so EVERY target — including Firebase's Swift Package
+# Manager sub-packages (GoogleUtilities / abseil / gRPC / nanopb / Promises / Firebase_*) — gets
+# DEVELOPMENT_TEAM and can be code-signed. Without this they fail with
+# "Signing ... requires a development team".
+xcargs "DEVELOPMENT_TEAM=Y4N58LLV3T"
