@@ -3,6 +3,7 @@ using System.Linq;
 using UnityEditor;
 using UnityEditor.Build;
 using UnityEditor.Build.Reporting;
+using UnityEditor.SceneManagement;
 using UnityEngine;
 
 namespace PushStars.Editor
@@ -65,21 +66,24 @@ namespace PushStars.Editor
         /// </summary>
         public static void PrepareForUBA()
         {
-            EditorBuildSettings.scenes = new[]
-            {
-                new EditorBuildSettingsScene("Assets/testCV.unity", true),
-            };
             CopyModelToStreamingAssets();
             ConfigureIOS();
 
-            // Loud diagnostic: did the MediaPipe adapter actually compile into the build?
-            bool pluginPresent = Directory.Exists("Packages/com.github.homuler.mediapipe");
-            var mpType = System.Type.GetType("PushStars.CV.MediaPipePoseSource, PushStars.CV.MediaPipe");
-            Debug.Log($"[Build] MediaPipe plugin present={pluginPresent}; MediaPipePoseSource compiled={(mpType != null)}");
-            if (mpType == null)
-                Debug.LogError("[Build] MediaPipePoseSource NOT compiled — pre-build plugin fetch or PUSHSTARS_MEDIAPIPE define failed. CV won't work on device.");
+            // Regenerate the CV test scene FRESH so the build never depends on stale serialized
+            // references (e.g. a MediaPipePoseSource saved as a "missing script" when the define was
+            // off — which left PushupSession with no pose source → STATUS "no source" on device).
+            var scene = EditorSceneManager.NewScene(NewSceneSetup.EmptyScene, NewSceneMode.Single);
+            var go = CvTestSceneSetup.CreateCvTestObject();
+            if (go == null)
+                Debug.LogError("[Build] CVTest could not be created — PUSHSTARS_MEDIAPIPE off or plugin missing.");
+            else
+                Debug.Log("[Build] CVTest regenerated and wired.");
 
-            Debug.Log("[Build] PrepareForUBA done: scene=testCV, model copied, iOS configured.");
+            const string scenePath = "Assets/testCV.unity";
+            EditorSceneManager.SaveScene(scene, scenePath);
+            EditorBuildSettings.scenes = new[] { new EditorBuildSettingsScene(scenePath, true) };
+
+            Debug.Log("[Build] PrepareForUBA done: scene regenerated, model copied, iOS configured.");
         }
 
         private static void EnableMediaPipeDefine(NamedBuildTarget target)
