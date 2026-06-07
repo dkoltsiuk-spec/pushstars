@@ -15,14 +15,15 @@ namespace PushStars.CV
     public sealed class WebCamPreview : MonoBehaviour
     {
         [SerializeField] private MediaPipePoseSource _source;
+        // Defaults verified on-device (iPhone front camera): CAM rot=90 H=off V=off, SKEL H=off V=off.
         [Tooltip("Flip the feed vertically.")]
         [SerializeField] private bool _flipVertical = false;
         [Tooltip("Mirror horizontally (natural for a front/selfie preview).")]
-        [SerializeField] private bool _flipHorizontal = true;
+        [SerializeField] private bool _flipHorizontal = false;
         [Tooltip("Rotation in degrees (CW). -1 = auto: use WebCamTexture.videoRotationAngle.")]
-        [SerializeField] private int _rotationOverride = -1;
-        [Tooltip("Show the on-screen orientation controls.")]
-        [SerializeField] private bool _showControls = true;
+        [SerializeField] private int _rotationOverride = 90;
+        [Tooltip("Show the on-screen orientation debug controls (off for players).")]
+        [SerializeField] private bool _showControls = false;
         [Tooltip("Draw the pose skeleton over the camera feed.")]
         [SerializeField] private bool _showSkeleton = true;
 
@@ -40,9 +41,9 @@ namespace PushStars.CV
         };
 
         [Tooltip("Mirror the skeleton landmarks horizontally to match the displayed feed.")]
-        [SerializeField] private bool _skeletonFlipH = true;
+        [SerializeField] private bool _skeletonFlipH = false;
         [Tooltip("Mirror the skeleton landmarks vertically to match the displayed feed.")]
-        [SerializeField] private bool _skeletonFlipV = true;
+        [SerializeField] private bool _skeletonFlipV = false;
 
         private bool _initialized;
         private int  _rotation;
