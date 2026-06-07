@@ -69,6 +69,11 @@ namespace PushStars.CV
         /// <summary>The live camera texture — assign to a RawImage for a preview if desired.</summary>
         public WebCamTexture CameraTexture => _webCam;
 
+        /// <summary>The horizontal/vertical flips applied when the camera frame is handed to MediaPipe.
+        /// A skeleton overlay must apply the same flips to align landmarks with the raw camera texture.</summary>
+        public bool SourceFlipHorizontally => _flipHorizontally;
+        public bool SourceFlipVertically   => _flipVertically;
+
         private WebCamTexture     _webCam;
         private PoseLandmarker    _poseLandmarker;
         private TextureFramePool  _framePool;
