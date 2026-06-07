@@ -16,6 +16,13 @@ namespace PushStars.CV
         // ── Anti-cheat / match ───────────────────────────────────────────────────────
         public const int MaxRepsPerMatch = 65; // == MAX_REPS_PER_MATCH
 
+        // ── Pushup-pose gate (rejects phantom reps from non-pushup motion, e.g. waving arms) ──
+        /// <summary>Body-line angle (shoulder–hip–knee/ankle) must be at least this for the pose to
+        /// count as a plank — rejects sitting/lying/curled poses where the body isn't extended.</summary>
+        public const float MinPlankBodyLine = 140f;
+        /// <summary>A rep must take at least this long (bottom→top) — rejects fast arm-flapping.</summary>
+        public const float MinRepSeconds = 0.45f;
+
         // ── Tracking quality gates (visibility ∈ [0,1]) ────────────────────────────────
         /// <summary>Below this, a single key joint is treated as not visible.</summary>
         public const float MinJointVisibility = 0.5f;

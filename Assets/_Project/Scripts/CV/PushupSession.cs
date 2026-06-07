@@ -77,10 +77,13 @@ namespace PushStars.CV
 
         private void HandleFrame(PoseFrame frame)
         {
-            bool ok = Quality != TrackingQuality.Lost;
-            Counter.Process(frame, ok);
+            // Count only on a confidently-tracked skeleton (Good). The rep counter additionally gates on
+            // a plausible pushup pose (PoseMath.LooksLikePushup), so phantom reps from a partially-seen
+            // or non-pushup body never get credited.
+            Counter.Process(frame, Quality == TrackingQuality.Good);
 
-            if (ok)
+            // Form/HUD can still update on any non-lost frame so the user sees live feedback.
+            if (Quality != TrackingQuality.Lost)
             {
                 LastForm = FormScoreCalculator.Evaluate(frame);
                 OnFormUpdated?.Invoke(LastForm);

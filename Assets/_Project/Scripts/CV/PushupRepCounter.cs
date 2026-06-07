@@ -43,6 +43,7 @@ namespace PushStars.CV
         public event Action<PushupPhase> OnPhaseChanged;
 
         private bool _reachedBottom;
+        private float _bottomTime = -1f;   // when the current rep reached the bottom (for min-duration gate)
         private float _lastAngle = 180f;
         private float _firstRepTime = -1f;
         private float _lastRepTime = -1f;
@@ -54,6 +55,7 @@ namespace PushStars.CV
             CurrentElbowAngle = 180f;
             TempoRpm = 0f;
             _reachedBottom = false;
+            _bottomTime = -1f;
             _lastAngle = 180f;
             _firstRepTime = -1f;
             _lastRepTime = -1f;
@@ -64,6 +66,17 @@ namespace PushStars.CV
         public void Process(in PoseFrame frame, bool trackingOk)
         {
             if (!trackingOk || !frame.IsValid) return;
+
+            // Sanity gate: only run the FSM while the frame actually looks like a pushup/plank. This
+            // rejects phantom reps from non-pushup motion (e.g. lying down and waving the arms, which
+            // still swings the elbow angle through the bottom→top thresholds). When the pose isn't
+            // plausible we drop any in-progress descent so a half-rep can't carry over.
+            if (!PoseMath.LooksLikePushup(frame))
+            {
+                _reachedBottom = false;
+                _bottomTime = -1f;
+                return;
+            }
 
             float angle = PoseMath.ElbowAngle(frame);
             CurrentElbowAngle = angle;
@@ -78,16 +91,25 @@ namespace PushStars.CV
             // Bottom reached?
             if (angle <= CVConstants.BottomElbowAngle)
             {
+                if (!_reachedBottom) _bottomTime = timeSec;
                 _reachedBottom = true;
                 SetPhase(PushupPhase.Bottom);
             }
             // Returned to the top after a valid descent → credit one rep.
             else if (angle >= CVConstants.TopElbowAngle)
             {
-                if (_reachedBottom)
+                // Reject reps that happened too fast to be a real rep (anti arm-flapping).
+                bool longEnough = _bottomTime >= 0f && (timeSec - _bottomTime) >= CVConstants.MinRepSeconds;
+                if (_reachedBottom && longEnough)
                 {
                     _reachedBottom = false;
+                    _bottomTime = -1f;
                     CreditRep(timeSec);
+                }
+                else if (_reachedBottom)
+                {
+                    _reachedBottom = false; // too fast — discard this attempt without crediting
+                    _bottomTime = -1f;
                 }
                 SetPhase(PushupPhase.Top);
             }
