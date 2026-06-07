@@ -59,31 +59,31 @@ namespace PushStars.CV
 
         static bool Vis(in PoseFrame f, PoseLandmark j) => f.Visibility(j) >= CVConstants.MinJointVisibility;
 
-        /// <summary>Sanity gate: does this frame plausibly show a person in a pushup/plank position?
-        /// Rejects the common false positives (waving arms while lying/sitting, only the torso in
-        /// frame) so the rep counter can't credit non-pushup motion. All checks are rotation-invariant
+        /// <summary>Sanity gate: does this frame plausibly show a person doing a pushup? Rejects casual
+        /// non-pushup motion (e.g. waving the arms) without rejecting real reps when the camera framing
+        /// tightens at the bottom (legs/lower body leave the frame). All checks are rotation-invariant
         /// (joint visibility + interior angles), so they hold regardless of camera orientation.</summary>
         public static bool LooksLikePushup(in PoseFrame f)
         {
             if (!f.IsValid) return false;
 
-            // 1) Torso must be in frame: both shoulders and both hips visible.
+            // 1) Both shoulders in frame.
             if (!Vis(f, PoseLandmark.LeftShoulder) || !Vis(f, PoseLandmark.RightShoulder)) return false;
-            if (!Vis(f, PoseLandmark.LeftHip)      || !Vis(f, PoseLandmark.RightHip))      return false;
 
             // 2) At least one full arm (to read the elbow angle that drives the FSM).
             bool armL = SideVisible(f, PoseLandmark.LeftShoulder,  PoseLandmark.LeftElbow,  PoseLandmark.LeftWrist);
             bool armR = SideVisible(f, PoseLandmark.RightShoulder, PoseLandmark.RightElbow, PoseLandmark.RightWrist);
             if (!armL && !armR) return false;
 
-            // 3) Legs must be in frame too (a real pushup shows the whole body; casual arm-waving at the
-            //    phone usually shows only the upper body). Use ankle, falling back to knee.
-            bool legL = Vis(f, PoseLandmark.LeftAnkle)  || Vis(f, PoseLandmark.LeftKnee);
-            bool legR = Vis(f, PoseLandmark.RightAnkle) || Vis(f, PoseLandmark.RightKnee);
-            if (!legL && !legR) return false;
+            // 3) If — and only if — the lower body is visible, require an extended (plank) line so a
+            //    curled/sitting pose is rejected. At the bottom of a real pushup the legs often leave
+            //    the frame; then this check is simply skipped and the elbow-angle + min-duration gates
+            //    in PushupRepCounter carry the detection. This is what previously broke counting: the
+            //    bottom frame was dropped because the legs weren't visible.
+            if (PlankBodyLine(f, out float plank) && plank < CVConstants.MinPlankBodyLine)
+                return false;
 
-            // 4) Body must be extended (plank), not curled/sitting. shoulder–hip–(ankle|knee) angle.
-            return PlankBodyLine(f, out float plank) && plank >= CVConstants.MinPlankBodyLine;
+            return true;
         }
 
         /// <summary>Body-line angle using the ankle (preferred) or knee as the lower joint, averaged
