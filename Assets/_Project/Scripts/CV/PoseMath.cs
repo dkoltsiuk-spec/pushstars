@@ -56,5 +56,58 @@ namespace PushStars.CV
             => f.Visibility(a) >= CVConstants.MinJointVisibility
             && f.Visibility(b) >= CVConstants.MinJointVisibility
             && f.Visibility(c) >= CVConstants.MinJointVisibility;
+
+        static bool Vis(in PoseFrame f, PoseLandmark j) => f.Visibility(j) >= CVConstants.MinJointVisibility;
+
+        /// <summary>Sanity gate: does this frame plausibly show a person in a pushup/plank position?
+        /// Rejects the common false positives (waving arms while lying/sitting, only the torso in
+        /// frame) so the rep counter can't credit non-pushup motion. All checks are rotation-invariant
+        /// (joint visibility + interior angles), so they hold regardless of camera orientation.</summary>
+        public static bool LooksLikePushup(in PoseFrame f)
+        {
+            if (!f.IsValid) return false;
+
+            // 1) Torso must be in frame: both shoulders and both hips visible.
+            if (!Vis(f, PoseLandmark.LeftShoulder) || !Vis(f, PoseLandmark.RightShoulder)) return false;
+            if (!Vis(f, PoseLandmark.LeftHip)      || !Vis(f, PoseLandmark.RightHip))      return false;
+
+            // 2) At least one full arm (to read the elbow angle that drives the FSM).
+            bool armL = SideVisible(f, PoseLandmark.LeftShoulder,  PoseLandmark.LeftElbow,  PoseLandmark.LeftWrist);
+            bool armR = SideVisible(f, PoseLandmark.RightShoulder, PoseLandmark.RightElbow, PoseLandmark.RightWrist);
+            if (!armL && !armR) return false;
+
+            // 3) Legs must be in frame too (a real pushup shows the whole body; casual arm-waving at the
+            //    phone usually shows only the upper body). Use ankle, falling back to knee.
+            bool legL = Vis(f, PoseLandmark.LeftAnkle)  || Vis(f, PoseLandmark.LeftKnee);
+            bool legR = Vis(f, PoseLandmark.RightAnkle) || Vis(f, PoseLandmark.RightKnee);
+            if (!legL && !legR) return false;
+
+            // 4) Body must be extended (plank), not curled/sitting. shoulder–hip–(ankle|knee) angle.
+            return PlankBodyLine(f, out float plank) && plank >= CVConstants.MinPlankBodyLine;
+        }
+
+        /// <summary>Body-line angle using the ankle (preferred) or knee as the lower joint, averaged
+        /// across visible sides. Returns false if neither side is computable.</summary>
+        static bool PlankBodyLine(in PoseFrame f, out float angle)
+        {
+            float sum = 0f; int n = 0;
+            if (TrySideLine(f, PoseLandmark.LeftShoulder,  PoseLandmark.LeftHip,  PoseLandmark.LeftAnkle,  PoseLandmark.LeftKnee,  out float l)) { sum += l; n++; }
+            if (TrySideLine(f, PoseLandmark.RightShoulder, PoseLandmark.RightHip, PoseLandmark.RightAnkle, PoseLandmark.RightKnee, out float r)) { sum += r; n++; }
+            angle = n > 0 ? sum / n : 0f;
+            return n > 0;
+        }
+
+        static bool TrySideLine(in PoseFrame f, PoseLandmark shoulder, PoseLandmark hip,
+                                PoseLandmark ankle, PoseLandmark knee, out float angle)
+        {
+            angle = 0f;
+            if (!Vis(f, shoulder) || !Vis(f, hip)) return false;
+            PoseLandmark lower;
+            if (Vis(f, ankle))     lower = ankle;
+            else if (Vis(f, knee)) lower = knee;
+            else return false;
+            angle = AngleDeg(f, shoulder, hip, lower);
+            return true;
+        }
     }
 }
