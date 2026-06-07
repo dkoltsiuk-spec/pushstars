@@ -4,24 +4,24 @@ using UnityEngine;
 namespace PushStars.CV
 {
     /// <summary>
-    /// Synthetic <see cref="IPoseSource"/> that fakes a person doing pushups — drives the whole CV
-    /// pipeline (rep counter, form, HUD, calibration UI) in the editor with no camera and no
-    /// MediaPipe plugin. The elbow angle oscillates between a top and bottom angle at a configurable
-    /// tempo; a side-on skeleton is synthesized so <see cref="PoseMath"/> produces sensible elbow and
-    /// body-line angles.
+    /// Synthetic <see cref="IPoseSource"/> that fakes a person doing KNEE push-ups — knees planted
+    /// on the floor, shins lifted, hip-knee-ankle interior angle ~90°. Body-line (shoulder-hip-ankle)
+    /// stays plausible because the ankles are lifted but still roughly along the body line, so the
+    /// legacy <see cref="PoseMath.LooksLikePushup"/> gate would PASS this — only the new
+    /// <see cref="AntiCheat.KneeBendDetector"/> catches it.
     ///
-    /// Toggle <see cref="simulateLost"/> at runtime to test the "skeleton lost" UI path.
+    /// Expected behaviour under the phase 08.1 anti-cheat: <c>PushupSession.Armer</c> never reaches
+    /// <c>Armed</c> (reason = <see cref="AntiCheat.PlankRejectReason.KneesBent"/>) and
+    /// <c>Counter.Reps</c> stays at 0.
     /// </summary>
-    public sealed class MockPoseSource : MonoBehaviour, IPoseSource
+    public sealed class MockKneePushupPoseSource : MonoBehaviour, IPoseSource
     {
         [Header("Motion")]
-        [Tooltip("Reps per minute the fake lifter performs.")]
         [SerializeField] private float _tempoRpm = 40f;
         [SerializeField] private float _topElbowAngle = 172f;
         [SerializeField] private float _bottomElbowAngle = 72f;
 
         [Header("Debug")]
-        [Tooltip("When on, frames report no visible skeleton (TrackingQuality.Lost).")]
         [SerializeField] private bool simulateLost;
 
         public event Action<PoseFrame> OnFrame;
@@ -29,21 +29,15 @@ namespace PushStars.CV
 
         public TrackingQuality Quality { get; private set; } = TrackingQuality.None;
         public bool IsRunning { get; private set; }
-        public string StatusMessage => IsRunning ? (simulateLost ? "mock (lost)" : "mock running") : "mock stopped";
+        public string StatusMessage => IsRunning ? "mock kneepushup" : "mock stopped";
 
-        private float _phase; // radians through the pushup cycle
+        private float _phase;
         private readonly Landmark[] _buf = new Landmark[PoseLandmarks.Count];
         private readonly Landmark[] _worldBuf = new Landmark[PoseLandmarks.Count];
-
-        // Synthetic world-frame scale. The mock side-on plank has shoulder→ankle distance ~0.5 in
-        // normalized image coords; a real adult plank is ~1.0m shoulder-to-ankle. So 1 image unit
-        // ≈ 2m. Anti-cheat tests only need a self-consistent metric frame, not the precise scale
-        // MediaPipe would emit.
         private const float MockImageToMeters = 2.0f;
 
         public void StartTracking() => IsRunning = true;
         public void StopTracking()  => IsRunning = false;
-
         private void OnEnable()  => StartTracking();
         private void OnDisable() => StopTracking();
 
@@ -67,46 +61,42 @@ namespace PushStars.CV
 
         private PoseFrame BuildFrame(float timeSec)
         {
-            // Elbow angle as a cosine sweep: top at cos=+1, bottom at cos=-1.
-            float s = (Mathf.Cos(_phase) + 1f) * 0.5f; // 1 at top, 0 at bottom
+            float s = (Mathf.Cos(_phase) + 1f) * 0.5f;
             float elbow = Mathf.Lerp(_bottomElbowAngle, _topElbowAngle, s);
 
             float vis = simulateLost ? 0f : 0.95f;
             for (int i = 0; i < _buf.Length; i++) _buf[i] = new Landmark(0.5f, 0.5f, 0f, vis);
 
-            // Side-on plank, person facing left. Coords normalized (origin top-left, y down).
-            // Body line is a straight horizontal plank; arms bend by `elbow`. As the elbows bend,
-            // the WHOLE torso descends toward the wrists (rigid body) — this is what gives
-            // `FullRomGate` a real chest-travel signal. Without this descent the mock would look
-            // like a wrist-only fake to the Stage 2 auditor.
+            // Side-on, facing left. Same shoulder/hip layout as the perfect-plank mock, but the
+            // knees are placed on the floor (same Y as wrists) and the ankles are LIFTED above
+            // the knees — the cheat posture. Torso still descends with the rep so FullRom passes
+            // — we want the rejection to be unambiguously KneesBent, not chest-travel.
             const float bodyY = 0.55f;
-            const float chestDescentAtBottom = 0.10f; // image units; ~30cm at the mock's body scale
-            float descent = chestDescentAtBottom * (1f - s); // 0 at top, full at bottom
+            const float chestDescentAtBottom = 0.06f; // smaller than full pushup — knee variant has less ROM
+            float descent = chestDescentAtBottom * (1f - s);
             float torsoY  = bodyY + descent;
             Set(PoseLandmark.LeftShoulder,  0.45f, torsoY,         vis);
             Set(PoseLandmark.RightShoulder, 0.45f, torsoY + 0.01f, vis);
             Set(PoseLandmark.LeftHip,       0.70f, torsoY,         vis);
             Set(PoseLandmark.RightHip,      0.70f, torsoY + 0.01f, vis);
-            Set(PoseLandmark.LeftAnkle,     0.92f, torsoY,         vis);
-            Set(PoseLandmark.RightAnkle,    0.92f, torsoY + 0.01f, vis);
 
-            // Wrists STAY PLANTED (not moving with the torso) — WristAnchorMonitor depends on this.
-            // Elbow placement uses the (descended) shoulder + planted wrist + target angle.
             const float wristY = bodyY + 0.18f;
             PlaceArm(PoseLandmark.LeftShoulder, PoseLandmark.LeftElbow, PoseLandmark.LeftWrist,
                      0.40f, wristY, elbow, vis);
             PlaceArm(PoseLandmark.RightShoulder, PoseLandmark.RightElbow, PoseLandmark.RightWrist,
                      0.40f, wristY + 0.01f, elbow, vis);
 
-            // Knees & feet ride the torso (rigid lower body, no bent knees).
-            Set(PoseLandmark.LeftKnee,      0.80f, torsoY,         vis);
-            Set(PoseLandmark.RightKnee,     0.80f, torsoY + 0.01f, vis);
-            Set(PoseLandmark.LeftFootIndex, 0.95f, torsoY,         vis);
-            Set(PoseLandmark.RightFootIndex,0.95f, torsoY + 0.01f, vis);
+            // KNEES on the floor (same Y as wrists). ANKLES lifted upward (smaller Y in top-left
+            // origin = "higher in the image"). hip→knee horizontal-ish, knee→ankle nearly vertical
+            // up → interior angle at knee ≈ 90°.
+            Set(PoseLandmark.LeftKnee,        0.78f, wristY,         vis);
+            Set(PoseLandmark.RightKnee,       0.78f, wristY + 0.01f, vis);
+            Set(PoseLandmark.LeftAnkle,       0.82f, bodyY - 0.05f,  vis);
+            Set(PoseLandmark.RightAnkle,      0.82f, bodyY - 0.04f,  vis);
+            Set(PoseLandmark.LeftFootIndex,   0.83f, bodyY - 0.05f,  vis);
+            Set(PoseLandmark.RightFootIndex,  0.83f, bodyY - 0.04f,  vis);
 
-            // Synthesize world landmarks. Convention: origin at midhip, scaled image coords by
-            // MockImageToMeters. Same orientation as image (anti-cheat code is convention-agnostic
-            // — uses n_torso from cross product, not raw axes). Visibility shared from image.
+            // World landmarks — same shift+scale convention as MockPoseSource.
             Vector2 imgMidHip = (_buf[(int)PoseLandmark.LeftHip].Pos2D
                                + _buf[(int)PoseLandmark.RightHip].Pos2D) * 0.5f;
             for (int i = 0; i < _buf.Length; i++)
@@ -122,22 +112,18 @@ namespace PushStars.CV
             return new PoseFrame((Landmark[])_buf.Clone(), (Landmark[])_worldBuf.Clone(), timeSec);
         }
 
-        // Builds a shoulder–elbow–wrist triangle whose interior angle at the elbow ≈ targetAngle.
+        // Same arm construction as MockPoseSource (interior angle at elbow == target).
         private void PlaceArm(PoseLandmark shoulder, PoseLandmark elbow, PoseLandmark wrist,
                               float wristX, float wristY, float targetAngle, float vis)
         {
             Vector2 sh = _buf[(int)shoulder].Pos2D;
             Vector2 wr = new Vector2(wristX, wristY);
-
-            // Elbow sits between shoulder and wrist, pushed outward so the bend matches targetAngle.
             Vector2 mid = (sh + wr) * 0.5f;
             float half = Vector2.Distance(sh, wr) * 0.5f;
-            // Larger bend (smaller angle) → elbow further from the shoulder–wrist line.
             float bend = Mathf.Tan(Mathf.Deg2Rad * (180f - targetAngle) * 0.5f) * half;
             Vector2 dir = (wr - sh).normalized;
             Vector2 normal = new Vector2(-dir.y, dir.x);
             Vector2 el = mid + normal * bend;
-
             Set(wrist, wristX, wristY, vis);
             Set(elbow, el.x, el.y, vis);
         }

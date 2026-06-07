@@ -86,6 +86,7 @@ namespace PushStars.CV
         // Cross-thread hand-off from the MediaPipe callback to Update().
         private readonly object _gate = new object();
         private Landmark[] _pending;
+        private Landmark[] _pendingWorld; // optional, null when not provided this frame
         private float _pendingTime;
         private bool _hasPending;
 
@@ -241,6 +242,7 @@ namespace PushStars.CV
         private void OnPoseResult(PoseLandmarkerResult result, Image image, long timestamp)
         {
             Landmark[] arr = null;
+            Landmark[] world = null;
 
             var poses = result.poseLandmarks;
             if (poses != null && poses.Count > 0)
@@ -258,9 +260,32 @@ namespace PushStars.CV
                 }
             }
 
+            // World landmarks (meters, hip-centered, body frame). MediaPipe does not always populate
+            // visibility on world landmarks — we reuse the per-keypoint visibility from the image
+            // landmarks since it's the same skeleton. If `arr` is null (no image landmarks this
+            // frame), world is also skipped — we don't want a partially-populated frame.
+            var worldPoses = result.poseWorldLandmarks;
+            if (arr != null && worldPoses != null && worldPoses.Count > 0)
+            {
+                var wlms = worldPoses[0].landmarks;
+                if (wlms != null && wlms.Count >= PoseLandmarks.Count)
+                {
+                    world = new Landmark[PoseLandmarks.Count];
+                    for (int i = 0; i < PoseLandmarks.Count; i++)
+                    {
+                        var wlm = wlms[i];
+                        // Reuse visibility from the image landmark (set above on arr[i]) — world
+                        // landmarks share the same per-keypoint presence/visibility scores.
+                        float vis = arr[i].Visibility;
+                        world[i] = new Landmark(wlm.x, wlm.y, wlm.z, vis);
+                    }
+                }
+            }
+
             lock (_gate)
             {
                 _pending = arr;
+                _pendingWorld = world;
                 _pendingTime = timestamp / 1000f;
                 _hasPending = true;
             }
@@ -269,12 +294,14 @@ namespace PushStars.CV
         private void Update()
         {
             Landmark[] arr;
+            Landmark[] world;
             float t;
             bool has;
             lock (_gate)
             {
                 has = _hasPending;
                 arr = _pending;
+                world = _pendingWorld;
                 t = _pendingTime;
                 _hasPending = false;
             }
@@ -286,7 +313,11 @@ namespace PushStars.CV
                 return;
             }
 
-            var frame = new PoseFrame(arr, t);
+            // World landmarks are optional — `world` may be null and consumers must guard via
+            // PoseFrame.HasWorldLandmarks. With the Pose Landmarker (Tasks API, LIVE_STREAM) world
+            // landmarks are normally provided alongside image landmarks; the null branch is the
+            // future-proofing path for backends that don't emit them.
+            var frame = new PoseFrame(arr, world, t);
             OnFrame?.Invoke(frame);
             SetQuality(PoseQuality.Classify(frame));
         }

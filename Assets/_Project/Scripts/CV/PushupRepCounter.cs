@@ -1,4 +1,5 @@
 using System;
+using PushStars.CV.AntiCheat;
 
 namespace PushStars.CV
 {
@@ -36,8 +37,27 @@ namespace PushStars.CV
         /// <summary>Average reps per minute across all completed reps (0 until the 2nd rep).</summary>
         public float TempoRpm { get; private set; }
 
-        /// <summary>Fires with the new rep count each time a rep completes.</summary>
+        /// <summary>Vote returned by the per-rep auditor for the most recent rep CANDIDATE — set on
+        /// both accepted and rejected reps. Default <see cref="RepVote.Pass"/> until first rep
+        /// arc completes. Phase-08.1, Stage 2.</summary>
+        public RepVote LastRepVote { get; private set; } = RepVote.Pass;
+
+        /// <summary>How many rep candidates were vetoed by the auditor across this session. For
+        /// telemetry / HUD diagnostics.</summary>
+        public int VetoedReps { get; private set; }
+
+        /// <summary>Optional per-rep auditor hook. Phase-08.1 Stage 2 wiring — when set, called
+        /// once per rep arc completion. Return Pass/SoftDock to credit the rep (with the penalty
+        /// stored on <see cref="LastRepVote"/>), HardVeto to reject. Unset → all reps pass (Stage 1
+        /// behaviour, preserved for unit tests that don't construct an auditor).</summary>
+        public Func<RepVote> RepAuditor { get; set; }
+
+        /// <summary>Fires with the new rep count each time a rep is CREDITED (Pass or SoftDock).</summary>
         public event Action<int> OnRep;
+
+        /// <summary>Fires when a rep candidate is vetoed by the auditor. Argument is the verdict
+        /// (with <see cref="RepVote.Reason"/> for HUD feedback).</summary>
+        public event Action<RepVote> OnRepRejected;
 
         /// <summary>Fires whenever the movement phase changes.</summary>
         public event Action<PushupPhase> OnPhaseChanged;
@@ -51,9 +71,11 @@ namespace PushStars.CV
         public void Reset()
         {
             Reps = 0;
+            VetoedReps = 0;
             Phase = PushupPhase.Top;
             CurrentElbowAngle = 180f;
             TempoRpm = 0f;
+            LastRepVote = RepVote.Pass;
             _reachedBottom = false;
             _bottomTime = -1f;
             _lastAngle = 180f;
@@ -62,15 +84,28 @@ namespace PushStars.CV
         }
 
         /// <summary>Feed one tracked frame. <paramref name="trackingOk"/> should be false when the
-        /// source reports <see cref="TrackingQuality.Lost"/> so the FSM holds its state.</summary>
-        public void Process(in PoseFrame frame, bool trackingOk)
+        /// source reports <see cref="TrackingQuality.Lost"/> so the FSM holds its state.
+        /// <paramref name="isArmed"/> is the <see cref="AntiCheat.PlankArmer.IsArmed"/> gate — when
+        /// false the descent state is cleared so a half-rep from a kneeling/sitting pose doesn't
+        /// carry across into the next valid plank. Defaults to true for backwards compatibility
+        /// with callers (and unit tests) that pre-date the anti-cheat layer.</summary>
+        public void Process(in PoseFrame frame, bool trackingOk, bool isArmed = true)
         {
             if (!trackingOk || !frame.IsValid) return;
 
-            // Sanity gate: only run the FSM while the frame actually looks like a pushup/plank. This
-            // rejects phantom reps from non-pushup motion (e.g. lying down and waving the arms, which
-            // still swings the elbow angle through the bottom→top thresholds). When the pose isn't
-            // plausible we drop any in-progress descent so a half-rep can't carry over.
+            // PlankArmer (phase 08.1) is now the primary gate. When the user is not in a valid plank
+            // we forget any in-progress descent — otherwise a "half-rep" started before disarming
+            // could complete the moment they re-arm and credit a false rep.
+            if (!isArmed)
+            {
+                _reachedBottom = false;
+                _bottomTime = -1f;
+                SetPhase(PushupPhase.Top);
+                return;
+            }
+
+            // LEGACY redundant sanity gate. PlankArmer is strictly stronger; this stays as a belt-
+            // and-braces during the Stage 1 rollout. Stage 2 (per-rep auditor) will remove it.
             if (!PoseMath.LooksLikePushup(frame))
             {
                 _reachedBottom = false;
@@ -122,6 +157,19 @@ namespace PushStars.CV
 
         private void CreditRep(float timeSec)
         {
+            // Phase-08.1 Stage 2: per-rep audit hook. When unset (legacy / tests), behaves as if
+            // every rep passes — preserves Stage 1 semantics. When set, the auditor runs all
+            // registered IRepValidators and short-circuits on the first HardVeto.
+            RepVote vote = RepAuditor != null ? RepAuditor.Invoke() : RepVote.Pass;
+            LastRepVote = vote;
+
+            if (vote.Kind == RepVoteKind.HardVeto)
+            {
+                VetoedReps++;
+                OnRepRejected?.Invoke(vote);
+                return;
+            }
+
             if (Reps >= CVConstants.MaxRepsPerMatch) return;
 
             Reps++;

@@ -1,4 +1,5 @@
 using UnityEngine;
+using PushStars.CV.AntiCheat;
 
 namespace PushStars.CV
 {
@@ -44,6 +45,66 @@ namespace PushStars.CV
                 _audio.PlayOneShot(_beep);
         }
 
+        /// <summary>Plank-armer state + arming progress / cooling timeleft + last reject reason.
+        /// Lets the dev watch the FSM transitions live during anti-cheat tuning.</summary>
+        private string BuildArmerLine()
+        {
+            var armer = _session != null ? _session.Armer : null;
+            if (armer == null) return "(not initialized)";
+            string tail = armer.State switch
+            {
+                PlankArmerState.Arming  => $"  prog={armer.ArmingProgress01:0.00}",
+                PlankArmerState.Cooling => $"  cool={armer.CoolingTimeLeftSec:0.0}s",
+                _ => "",
+            };
+            return $"{armer.State}{tail}  reason={armer.LastRejectReason}";
+        }
+
+        /// <summary>Most recent per-rep audit vote + source validator + rejected-rep count for the
+        /// session. Set on EVERY rep arc (passed or vetoed) by the auditor.</summary>
+        private string BuildLastVoteLine()
+        {
+            if (_session == null || _session.Auditor == null) return "(no auditor)";
+            var v = _session.Counter.LastRepVote;
+            string src = string.IsNullOrEmpty(_session.Auditor.LastVoteSource)
+                ? ""
+                : $"  src={_session.Auditor.LastVoteSource}";
+            return $"{v}{src}  vetoed={_session.Counter.VetoedReps}  win={_session.Auditor.LastWindowFrameCount}f/{_session.Auditor.LastWindowDurationSec:0.0}s";
+        }
+
+        /// <summary>Wrist-anchor verdict + per-side drift, and the knee classification + raw angle.
+        /// These are the inputs to the plank-armer predicate — surfacing them makes failed armings
+        /// debuggable.</summary>
+        private string BuildAntiCheatLine()
+        {
+            if (_session == null) return "(no session)";
+            var anchor = _session.WristAnchor;
+            var knee   = _session.KneeBend;
+            string kneeAngle = float.IsNaN(knee.LastMinKneeAngleDeg)
+                ? "--"
+                : $"{knee.LastMinKneeAngleDeg:0}°";
+            return $"anchor={anchor.LastVerdict} L{anchor.LastLeftDriftFrac:0.00}/R{anchor.LastRightDriftFrac:0.00}  " +
+                   $"knee={knee.Classification} ({kneeAngle})";
+        }
+
+        /// <summary>Stage 0 axis-convention probe (see docs/plan/phase-08.1-pushup-anticheat.md §4).
+        /// On a real device, stand in plank and read these numbers — they tell us whether the
+        /// MediaPipe world frame is body-aligned (wrist.y differs from shoulder.y by ~30-50cm) or
+        /// image-aligned (axes vary with phone orientation). Numbers go into the design doc.</summary>
+        private string BuildWorldProbeLine()
+        {
+            var src = _session != null ? _session.LastFrame : default;
+            if (!src.IsValid) return "(no frame)";
+            if (!src.HasWorldLandmarks) return "(no world landmarks)";
+
+            var lw = src.GetWorld(PoseLandmark.LeftWrist);
+            var ls = src.GetWorld(PoseLandmark.LeftShoulder);
+            var lh = src.GetWorld(PoseLandmark.LeftHip);
+            return $"LW({lw.X:0.00},{lw.Y:0.00},{lw.Z:0.00})  " +
+                   $"LS({ls.X:0.00},{ls.Y:0.00},{ls.Z:0.00})  " +
+                   $"LH({lh.X:0.00},{lh.Y:0.00},{lh.Z:0.00})";
+        }
+
         private void OnGUI()
         {
             if (_session == null) return;
@@ -67,6 +128,10 @@ namespace PushStars.CV
 
             // ── Diagnostics block ──
             var f = _session.LastForm;
+            string worldLine = BuildWorldProbeLine();
+            string armerLine = BuildArmerLine();
+            string acLine    = BuildAntiCheatLine();
+            string voteLine  = BuildLastVoteLine();
             string info =
                 $"PHASE: {_session.Phase}\n" +
                 $"FORM:  {f.Form:0}   (depth {f.DepthScore:0}, line {f.BodyLineScore:0})\n" +
@@ -74,7 +139,11 @@ namespace PushStars.CV
                 $"TEMPO: {_session.TempoRpm:0} rpm\n" +
                 $"TRACK: {_session.Quality}\n" +
                 $"FPS:   {(1f / Mathf.Max(Time.smoothDeltaTime, 0.0001f)):0}\n" +
-                $"STATUS: {_session.SourceStatus}";
+                $"STATUS: {_session.SourceStatus}\n" +
+                $"ARMER: {armerLine}\n" +
+                $"AC:    {acLine}\n" +
+                $"VOTE:  {voteLine}\n" +
+                $"WORLD: {worldLine}";
 
             float infoTop = top + repsFont * 1.5f;
             DrawWithShadow(new Rect(22, infoTop, Screen.width - 40, sh), info, _infoStyle, Color.white);

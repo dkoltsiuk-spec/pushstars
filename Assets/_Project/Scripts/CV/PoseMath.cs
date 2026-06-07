@@ -36,6 +36,18 @@ namespace PushStars.CV
             return 180f;
         }
 
+        /// <summary>Per-side elbow angle, NaN when that arm isn't fully visible. Used by anti-cheat
+        /// (phase 08.1) bilateral symmetry — averaging the two sides hides the cheat where one arm
+        /// stays straight while the other does the work.</summary>
+        public static float SideElbowAngle(in PoseFrame f, bool left)
+        {
+            PoseLandmark shoulder = left ? PoseLandmark.LeftShoulder : PoseLandmark.RightShoulder;
+            PoseLandmark elbow    = left ? PoseLandmark.LeftElbow    : PoseLandmark.RightElbow;
+            PoseLandmark wrist    = left ? PoseLandmark.LeftWrist    : PoseLandmark.RightWrist;
+            if (!SideVisible(f, shoulder, elbow, wrist)) return float.NaN;
+            return AngleDeg(f, shoulder, elbow, wrist);
+        }
+
         /// <summary>Body-line angle (shoulder–hip–ankle), averaged across visible sides. 180 = straight
         /// plank; smaller = hips sagging or piking.</summary>
         public static float BodyLineAngle(in PoseFrame f)

@@ -46,21 +46,54 @@ namespace PushStars.CV
     /// A single tracked frame: the 33 landmarks plus a capture timestamp. Immutable snapshot passed
     /// from an <see cref="IPoseSource"/> to the consumers. The landmark array is always length 33
     /// (<see cref="PoseLandmarks.Count"/>); missing joints carry Visibility ≈ 0.
+    ///
+    /// <para><b>Coordinate spaces.</b> <see cref="Landmarks"/> are normalized image coordinates
+    /// (x,y ∈ [0,1], origin TOP-LEFT, Y points down). <see cref="WorldLandmarks"/> (optional) are
+    /// the MediaPipe "world" landmarks in <b>meters</b>, <b>hip-centered</b> (origin = midpoint
+    /// between LeftHip/RightHip). <b>Axes match the image axes</b> — +X = image right, +Y = image
+    /// down, +Z = away from the camera — so world.Y is still camera-aligned, NOT gravity-aligned.
+    /// What world coords buy us vs. image coords: (1) metric scale so anti-cheat thresholds can be
+    /// expressed in meters instead of "fraction of body length"; (2) hip-centering so camera zoom
+    /// no longer biases distances; (3) consistent units across frames. "Down toward the floor" must
+    /// still be derived from the pose itself (e.g. the torso normal n_torso = cross(shoulderMid -
+    /// hipMid, leftShoulder - rightShoulder), which points out of the chest and — for a person in
+    /// plank — toward the floor). Visibility on world landmarks is populated from the image
+    /// landmarks (per-keypoint visibility is shared by BlazePose).</para>
     /// </summary>
     public readonly struct PoseFrame
     {
         public readonly Landmark[] Landmarks;
+
+        /// <summary>Optional world-space landmarks (meters, hip-centered, body frame). Null when the
+        /// backend does not provide them — consumers must check <see cref="HasWorldLandmarks"/>
+        /// before calling <see cref="GetWorld"/>.</summary>
+        public readonly Landmark[] WorldLandmarks;
+
         public readonly float TimestampSec;
 
         public PoseFrame(Landmark[] landmarks, float timestampSec)
+            : this(landmarks, null, timestampSec) { }
+
+        public PoseFrame(Landmark[] landmarks, Landmark[] worldLandmarks, float timestampSec)
         {
             Landmarks = landmarks;
+            WorldLandmarks = worldLandmarks;
             TimestampSec = timestampSec;
         }
 
         public bool IsValid => Landmarks != null && Landmarks.Length == PoseLandmarks.Count;
 
+        /// <summary>True iff the backend filled in <see cref="WorldLandmarks"/> for this frame.
+        /// Anti-cheat signals S9/S10 require this; S1/S5/S6 use world coords when available and fall
+        /// back to image-space otherwise.</summary>
+        public bool HasWorldLandmarks
+            => WorldLandmarks != null && WorldLandmarks.Length == PoseLandmarks.Count;
+
         public Landmark Get(PoseLandmark id) => Landmarks[(int)id];
+
+        /// <summary>World-space landmark (meters, hip-centered, body frame). Caller must guard with
+        /// <see cref="HasWorldLandmarks"/>; this method indexes blindly.</summary>
+        public Landmark GetWorld(PoseLandmark id) => WorldLandmarks[(int)id];
 
         public float Visibility(PoseLandmark id) => Landmarks[(int)id].Visibility;
     }
