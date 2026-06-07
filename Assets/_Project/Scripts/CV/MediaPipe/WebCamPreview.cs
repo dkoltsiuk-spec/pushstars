@@ -39,10 +39,16 @@ namespace PushStars.CV
             27, 31, 28, 32,         // feet
         };
 
+        [Tooltip("Mirror the skeleton landmarks horizontally to match the displayed feed.")]
+        [SerializeField] private bool _skeletonFlipH = true;
+        [Tooltip("Mirror the skeleton landmarks vertically to match the displayed feed.")]
+        [SerializeField] private bool _skeletonFlipV = true;
+
         private bool _initialized;
         private int  _rotation;
         private bool _autoRotation;
         private bool _flipH, _flipV;
+        private bool _skelH, _skelV;
 
         private PoseFrame _frame;
         private bool _hasFrame;
@@ -70,6 +76,8 @@ namespace PushStars.CV
             _rotation     = _autoRotation ? tex.videoRotationAngle : _rotationOverride;
             _flipH        = _flipHorizontal;
             _flipV        = _flipVertical;
+            _skelH        = _skeletonFlipH;
+            _skelV        = _skeletonFlipV;
             _initialized  = true;
         }
 
@@ -99,8 +107,12 @@ namespace PushStars.CV
                 Matrix4x4.Scale(new Vector3(cover, cover, 1f)) *
                 Matrix4x4.Translate(new Vector3(-texW * 0.5f, -texH * 0.5f, 0f));
 
+            // Everything this component draws (camera, skeleton, controls) sits at a high GUI.depth so
+            // it stays BEHIND the PushupDebugHud text (which draws at a lower/negative depth). Lower
+            // depth renders on top in IMGUI.
+            GUI.depth = 5;
+
             // ── Camera feed (behind the HUD) ──
-            GUI.depth = 1;
             var prev = GUI.matrix;
             GUI.matrix = M;
             GUI.DrawTexture(new Rect(0f, 0f, texW, texH), tex, ScaleMode.StretchToFill);
@@ -123,8 +135,8 @@ namespace PushStars.CV
             {
                 var lm = _frame.Get((PoseLandmark)idx);
                 float nx = lm.X, ny = lm.Y;
-                if (_source.SourceFlipHorizontally) nx = 1f - nx;
-                if (_source.SourceFlipVertically)   ny = 1f - ny;
+                if (_skelH) nx = 1f - nx;
+                if (_skelV) ny = 1f - ny;
                 var p = M.MultiplyPoint3x4(new Vector3(nx * texW, ny * texH, 0f));
                 return new Vector2(p.x, p.y);
             }
@@ -168,24 +180,31 @@ namespace PushStars.CV
 
         private void DrawControls(float sw, float sh, int angle)
         {
-            GUI.depth = 0;
+            float pad = 6f;
+            float bw = (sw - pad * 4f) / 3f;          // 3 buttons per row
+            float bh = Mathf.Max(44f, sh * 0.045f);
+            float labelY = sh - 20f;
+            float row1Y = labelY - bh - pad;          // camera controls
+            float row2Y = row1Y - bh - pad;           // skeleton controls
 
-            float bw = Mathf.Min(140f, sw * 0.23f);
-            float bh = Mathf.Max(48f, sh * 0.05f);
-            float pad = 8f;
-            float y = sh - bh - pad - 24f;
+            GUI.Label(new Rect(pad, labelY, sw - pad, 20f),
+                $"cam rot {angle} H:{B(_flipH)} V:{B(_flipV)}{(_autoRotation ? "(auto)" : "")}   skel {B(_showSkeleton)} H:{B(_skelH)} V:{B(_skelV)}");
 
-            GUI.Label(new Rect(pad, sh - 22f, sw - pad, 22f),
-                $"rot {angle}  H:{(_flipH ? "on" : "off")}  V:{(_flipV ? "on" : "off")}  skel:{(_showSkeleton ? "on" : "off")}{(_autoRotation ? "  (auto)" : "")}");
+            // Row 2 — skeleton.
+            if (GUI.Button(new Rect(pad, row2Y, bw, bh), "Skel " + (_showSkeleton ? "Off" : "On"))) _showSkeleton = !_showSkeleton;
+            if (GUI.Button(new Rect(pad * 2 + bw, row2Y, bw, bh), "Skel H")) _skelH = !_skelH;
+            if (GUI.Button(new Rect(pad * 3 + bw * 2, row2Y, bw, bh), "Skel V")) _skelV = !_skelV;
 
-            if (GUI.Button(new Rect(pad, y, bw, bh), "Rotate 90"))
+            // Row 1 — camera.
+            if (GUI.Button(new Rect(pad, row1Y, bw, bh), "Rotate 90"))
             {
                 _autoRotation = false;
                 _rotation = ((_rotation + 90) % 360 + 360) % 360;
             }
-            if (GUI.Button(new Rect(pad * 2 + bw, y, bw, bh), "Flip H"))   _flipH = !_flipH;
-            if (GUI.Button(new Rect(pad * 3 + bw * 2, y, bw, bh), "Flip V")) _flipV = !_flipV;
-            if (GUI.Button(new Rect(pad * 4 + bw * 3, y, bw, bh), "Skeleton")) _showSkeleton = !_showSkeleton;
+            if (GUI.Button(new Rect(pad * 2 + bw, row1Y, bw, bh), "Flip H")) _flipH = !_flipH;
+            if (GUI.Button(new Rect(pad * 3 + bw * 2, row1Y, bw, bh), "Flip V")) _flipV = !_flipV;
         }
+
+        static string B(bool v) => v ? "on" : "off";
     }
 }
