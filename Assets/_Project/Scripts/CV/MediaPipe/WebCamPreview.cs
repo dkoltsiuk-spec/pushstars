@@ -178,17 +178,33 @@ namespace PushStars.CV
             GUI.matrix = prev;
         }
 
+        private GUIStyle _statusStyle;
+
         private void DrawControls(float sw, float sh, int angle)
         {
             float pad = 6f;
             float bw = (sw - pad * 4f) / 3f;          // 3 buttons per row
             float bh = Mathf.Max(44f, sh * 0.045f);
-            float labelY = sh - 20f;
-            float row1Y = labelY - bh - pad;          // camera controls
+            float row1Y = sh - bh - pad;              // camera controls (bottom row)
             float row2Y = row1Y - bh - pad;           // skeleton controls
+            float statusH = Mathf.Max(28f, sh * 0.03f);
+            float statusY = row2Y - statusH - pad;
 
-            GUI.Label(new Rect(pad, labelY, sw - pad, 20f),
-                $"cam rot {angle} H:{B(_flipH)} V:{B(_flipV)}{(_autoRotation ? "(auto)" : "")}   skel {B(_showSkeleton)} H:{B(_skelH)} V:{B(_skelV)}");
+            // Big, high-contrast readout of the current settings — set them with the buttons, screenshot
+            // this line, and these values become the baked-in defaults (then the buttons go away).
+            _statusStyle ??= new GUIStyle(GUI.skin.label) { fontStyle = FontStyle.Bold, alignment = TextAnchor.MiddleLeft };
+            _statusStyle.fontSize = Mathf.RoundToInt(Mathf.Clamp(sh * 0.022f, 16f, 30f));
+            string status = $"CAM rot={angle} H={B(_flipH)} V={B(_flipV)}   SKEL H={B(_skelH)} V={B(_skelV)}";
+            var statusRect = new Rect(pad, statusY, sw - pad * 2f, statusH);
+            GUI.color = new Color(0f, 0f, 0f, 0.55f);
+            GUI.DrawTexture(statusRect, Texture2D.whiteTexture);
+            GUI.color = Color.white;
+            var shadow = _statusStyle; var prevC = shadow.normal.textColor;
+            shadow.normal.textColor = Color.black;
+            GUI.Label(new Rect(statusRect.x + 2, statusRect.y + 2, statusRect.width, statusRect.height), status, shadow);
+            shadow.normal.textColor = new Color(0.4f, 1f, 0.6f);
+            GUI.Label(statusRect, status, shadow);
+            shadow.normal.textColor = prevC;
 
             // Row 2 — skeleton.
             if (GUI.Button(new Rect(pad, row2Y, bw, bh), "Skel " + (_showSkeleton ? "Off" : "On"))) _showSkeleton = !_showSkeleton;
