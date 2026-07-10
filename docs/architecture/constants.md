@@ -43,6 +43,43 @@
 | `WristAnchorGraceFramesAfterRep` | `45` | Grace после credited rep ≈ 1.5с — юзер может поправить руки |
 | `WristAnchorGraceFramesAfterArm` | `30` | Grace после `OnArmed` ≈ 1с — даём встать в позу |
 
+### Frontal addendum (фронтальная камера + точность верх/низ)
+
+Полная спецификация — [phase-08.1-frontal-addendum.md](../plan/phase-08.1-frontal-addendum.md).
+Неизменные анти-чит полы: `TopElbowAngle = 160`, `BottomElbowAngle = 95` — единственный источник латчей в этом релизе.
+**Изменено:** `MinRepSeconds` 0.45 → **0.30** (0.45 молча резал честных 1.5 повт/с).
+
+| Константа | Значение | Смысл |
+|-----------|----------|-------|
+| `ElbowFilterMinCutoffHz` | `2.5f` | One-Euro срез в покое (поднят с 1.5 — быстрый темп) |
+| `ElbowFilterBeta` / `DerivCutoffHz` | `0.05f` / `1.0f` | One-Euro параметры |
+| `ElbowSpikeClampDegPerFrame` | `40f` | Hampel-кламп выброса |
+| `TrackerRebaseAfterLostSec` | `0.5f` | пере-сид фильтра + дуга в Idle |
+| `ZoneLatchSec` / `ZoneDeepLatchMarginDeg` | `0.07f` / `4f` | дебаунс латча / однокадровый глубокий латч |
+| `ZoneExitHysteresisDeg` | `6f` | Enter→Exit гистерезис |
+| `GraceLatchMaxGapSec` / `NearZoneDeg` | `0.5f` / `3f` | ретро-латч Bottom при потере трекинга у дна |
+| `AdaptiveZonesAffectLatch` | `false` | адаптация — только HUD-полосы в этом релизе |
+| `AmplitudeGaugeTopDeg` / `BottomDeg` | `175f` / `75f` | фиксированная шкала d01 |
+| `BottomAltChannelEnabled` | `false` | канал B (прижатые локти) — после acceptance-записей |
+| `BottomTickFreqHz` / `RejectBuzzFreqHz` | `1320f` / `220f` | нижний тик / buzz на veto |
+| `ViewFrontalMaxRatio` / `ViewSideMinRatio` | `0.7f` / `1.6f` | гистерезис R_med классификатора вида |
+| `ViewSwitchVotes` / `ViewSwitchWindow` | `20` / `30` | «20 из 30 голосующих» для смены вида |
+| `FrontalMaxBodyInclineKappa` | `0.35f` | F3: κ армирования (поднят с 0.28) |
+| `KappaDriftSoftDock` / `HardVeto` | `0.08f` / `0.15f` | пер-реп κ-drift от baseline |
+| `SetupMinShoulderWidthImg` / `MaxImg` | `0.17f` / `0.38f` | F0: коридор дистанции ~1.3–2.3 м |
+| `SetupMaxPhonePitchDeg` | `30f` | F0: IMU-гейт наклона телефона |
+| `FrontalArmingHipAvailabilityMin` | `0.7f` | F0: hip fail-closed на армировании |
+| `MinChestTravelFracHard` / `Soft` | `0.25f` / `0.40f` | FullRom v2: HardVeto ниже 0.25, SoftDock в [0.25, 0.40) |
+| `BodySwingWidthRatioMin` / `MaxTravelFrac` | `1.15f` / `0.30f` | BodySwing: рост ширины при малом y-ходе → veto |
+| `WristDriftAbsDeadband` | `0.008f` | абсолютный deadband дрейфа запястий |
+| `KneeDropDeltaDisarm` / `HardVeto` / `SoftDock` | `0.12f` / `0.15f` / `0.10f` | S-KNEE-1 |
+| `FootVanishHighVis` / `LowVis` | `0.6f` / `0.35f` | S-KNEE-2 FootVanish |
+| `FootDriftEventFrac` | `0.25f` | S-KNEE-2 FootDrift |
+| `SupportWristBelowShoulderFrac` / `BelowHipFrac` | `0.15f` / `0.15f` | S-AIR-1 P1/P2 (стол/стена/воздух) |
+| `FrontalMinHipShoulderCorr` | `0.45f` | HipDecoupling frontal (перспектива давит ход таза) |
+| `HipDropRatioMin` / `Max` | `0.15f` / `1.1f` | HipDecoupling frontal полоса |
+| `KneeBendSideProjMinFrac` | `0.8f` | KneeBend — hard только при Side и ноге «в плоскости» |
+
 ### Per-rep auditor (Stage 2, `AntiCheatAuditor` + 5 валидаторов)
 
 | Константа | Значение | Примечание |

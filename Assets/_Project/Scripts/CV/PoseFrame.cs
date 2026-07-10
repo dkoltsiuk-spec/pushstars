@@ -71,14 +71,25 @@ namespace PushStars.CV
 
         public readonly float TimestampSec;
 
+        /// <summary>Source image aspect ratio (width / height). Normalized landmark x,y are
+        /// ANISOTROPIC — x is a fraction of image width, y of image height — so raw euclidean
+        /// distances mix units. All new (phase 08.1 frontal) metrics convert to the aspect-corrected
+        /// "square" space via <see cref="PoseMath.ToSquare"/> using this value. 1.0 when the source
+        /// doesn't report it (mocks — their synthetic geometry is authored square).</summary>
+        public readonly float Aspect;
+
         public PoseFrame(Landmark[] landmarks, float timestampSec)
-            : this(landmarks, null, timestampSec) { }
+            : this(landmarks, null, timestampSec, 1f) { }
 
         public PoseFrame(Landmark[] landmarks, Landmark[] worldLandmarks, float timestampSec)
+            : this(landmarks, worldLandmarks, timestampSec, 1f) { }
+
+        public PoseFrame(Landmark[] landmarks, Landmark[] worldLandmarks, float timestampSec, float aspect)
         {
             Landmarks = landmarks;
             WorldLandmarks = worldLandmarks;
             TimestampSec = timestampSec;
+            Aspect = aspect > 1e-3f ? aspect : 1f;
         }
 
         public bool IsValid => Landmarks != null && Landmarks.Length == PoseLandmarks.Count;

@@ -80,7 +80,7 @@ namespace PushStars.CV
             // `FullRomGate` a real chest-travel signal. Without this descent the mock would look
             // like a wrist-only fake to the Stage 2 auditor.
             const float bodyY = 0.55f;
-            const float chestDescentAtBottom = 0.10f; // image units; ~30cm at the mock's body scale
+            const float chestDescentAtBottom = 0.12f; // image units; comfortably above the 0.40 soft-travel threshold
             float descent = chestDescentAtBottom * (1f - s); // 0 at top, full at bottom
             float torsoY  = bodyY + descent;
             Set(PoseLandmark.LeftShoulder,  0.45f, torsoY,         vis);

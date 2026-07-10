@@ -36,6 +36,34 @@ namespace PushStars.CV
             return 180f;
         }
 
+        /// <summary>Convert a normalized-image point to the aspect-corrected "square" space where
+        /// x and y are metrically comparable (x' = x·(W/H)). All frontal-view (phase 08.1 addendum)
+        /// metrics — shoulder width, torso length, κ incline, drift — are computed here so a circle
+        /// on screen measures as a circle regardless of the source resolution.</summary>
+        public static Vector2 ToSquare(Vector2 p, float aspect)
+            => new Vector2(p.x * Mathf.Max(aspect, 1e-3f), p.y);
+
+        /// <summary>Like <see cref="ElbowAngle"/> but returns false instead of the 180° sentinel
+        /// when NEITHER full arm (shoulder+elbow+wrist) clears MinJointVisibility. The sentinel must
+        /// never enter the AmplitudeTracker filter chain: a one-frame visibility dropout at the
+        /// bottom of a rep would read as 92→180→92 and punch a false top-latch through the
+        /// One-Euro filter (which is deliberately fast on large jumps).</summary>
+        public static bool TryElbowAngle(in PoseFrame f, out float angleDeg)
+        {
+            bool left  = SideVisible(f, PoseLandmark.LeftShoulder, PoseLandmark.LeftElbow, PoseLandmark.LeftWrist);
+            bool right = SideVisible(f, PoseLandmark.RightShoulder, PoseLandmark.RightElbow, PoseLandmark.RightWrist);
+            if (!left && !right)
+            {
+                angleDeg = 180f;
+                return false;
+            }
+
+            float l = left  ? AngleDeg(f, PoseLandmark.LeftShoulder, PoseLandmark.LeftElbow, PoseLandmark.LeftWrist)  : 0f;
+            float r = right ? AngleDeg(f, PoseLandmark.RightShoulder, PoseLandmark.RightElbow, PoseLandmark.RightWrist) : 0f;
+            angleDeg = (left && right) ? 0.5f * (l + r) : (left ? l : r);
+            return true;
+        }
+
         /// <summary>Per-side elbow angle, NaN when that arm isn't fully visible. Used by anti-cheat
         /// (phase 08.1) bilateral symmetry — averaging the two sides hides the cheat where one arm
         /// stays straight while the other does the work.</summary>

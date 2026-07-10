@@ -20,8 +20,10 @@ namespace PushStars.CV
         /// <summary>Body-line angle (shoulder–hip–knee/ankle) must be at least this for the pose to
         /// count as a plank — rejects sitting/lying/curled poses where the body isn't extended.</summary>
         public const float MinPlankBodyLine = 140f;
-        /// <summary>A rep must take at least this long (bottom→top) — rejects fast arm-flapping.</summary>
-        public const float MinRepSeconds = 0.45f;
+        /// <summary>A rep must take at least this long (bottom→top) — rejects fast arm-flapping.
+        /// Lowered 0.45 → 0.30 (frontal addendum): 0.45 silently cut honest 1.5 rep/s athletes,
+        /// and flapping is now killed by the 95↔160 envelope + PlankArmer + SupportGeometryGate.</summary>
+        public const float MinRepSeconds = 0.30f;
 
         // ── Tracking quality gates (visibility ∈ [0,1]) ────────────────────────────────
         /// <summary>Below this, a single key joint is treated as not visible.</summary>
@@ -132,5 +134,145 @@ namespace PushStars.CV
         /// <summary>Aggregated soft-dock penalty cap — a single rep can have multiple sub-par
         /// signals but FORM never goes to zero from soft-docks alone.</summary>
         public const float MaxAggregatedSoftDockPenalty = 0.80f;
+
+        // ═════════════════════════════════════════════════════════════════════════════════════
+        // Frontal addendum (docs/plan/phase-08.1-frontal-addendum.md). All spatial thresholds in
+        // aspect-corrected "square" space unless noted. TopElbowAngle=160 / BottomElbowAngle=95
+        // remain the immutable anti-cheat envelope — the ONLY latch source this release.
+        // ═════════════════════════════════════════════════════════════════════════════════════
+
+        // ── AmplitudeTracker: One-Euro filter + spike gating ──
+        /// <summary>One-Euro cutoff at rest. Raised 1.5 → 2.5 after the fast-tempo review (at
+        /// 1.5 rep/s a 1.5Hz cutoff lifted the smoothed minimum above the bottom zone).</summary>
+        public const float ElbowFilterMinCutoffHz = 2.5f;
+        public const float ElbowFilterBeta = 0.05f;
+        public const float ElbowFilterDerivCutoffHz = 1.0f;
+        public const float FilterDtClampMinSec = 0.0167f;
+        public const float FilterDtClampMaxSec = 0.10f;
+        /// <summary>Hampel clamp — a raw-vs-smoothed jump above this per frame is an outlier; the
+        /// filtered signals hold their previous value for that frame.</summary>
+        public const float ElbowSpikeClampDegPerFrame = 40f;
+        /// <summary>Tracking gap longer than this → re-seed the filter, depth arc → Idle.</summary>
+        public const float TrackerRebaseAfterLostSec = 0.5f;
+
+        // ── AmplitudeTracker: zones & latching (median-of-3 raw signal, NOT the smoothed one) ──
+        /// <summary>Zone latch debounce measured by timestamps (≈2 frames @30fps, robust at 25fps).</summary>
+        public const float ZoneLatchSec = 0.07f;
+        /// <summary>Single-frame instant latch when this deep past the zone edge.</summary>
+        public const float ZoneDeepLatchMarginDeg = 4f;
+        /// <summary>Enter→Exit hysteresis (BottomExit = BottomEnter + 6, TopExit = TopEnter − 6).</summary>
+        public const float ZoneExitHysteresisDeg = 6f;
+        /// <summary>Retro bottom-latch after a tracking dropout near the bottom: max gap length.</summary>
+        public const float GraceLatchMaxGapSec = 0.5f;
+        /// <summary>...and how close to the bottom zone the last valid frame must have been.</summary>
+        public const float GraceLatchNearZoneDeg = 3f;
+
+        // ── AmplitudeTracker: adaptive zones (HUD-ONLY this release — ratchet-deadlock review) ──
+        public const bool  AdaptiveZonesAffectLatch = false;
+        public const float AdaptiveMarginDeg = 8f;
+        public const float AdaptiveMaxTightenTopDeg = 7f;
+        public const float AdaptiveMaxTightenBottomDeg = 3f;
+        public const int   AdaptiveMinReps = 3;
+        public const int   AdaptiveWindowReps = 5;
+        public const float AdaptiveDecayStepDeg = 3f;
+        public const int   AdaptiveDecayAfterMissedAttempts = 2;
+
+        // ── AmplitudeTracker: fixed HUD depth scale (the gauge must not "breathe") ──
+        public const float AmplitudeGaugeTopDeg = 175f;    // d01 = 0
+        public const float AmplitudeGaugeBottomDeg = 75f;  // d01 = 1
+
+        // ── Bottom latch channel B (tucked elbows / wide grip) — OFF until acceptance recordings ──
+        public const bool  BottomAltChannelEnabled = false;
+        public const float BottomAltMaxElbowDeg = 120f;
+        public const float BottomAltShoulderDropFracSw = 0.6f;
+        public const float BottomAltNoseWristBandFracSw = 0.15f;
+
+        // ── Audio feedback ──
+        public const float BottomTickFreqHz = 1320f;  // E6 — perceptually distinct from the 880Hz rep beep
+        public const float BottomTickDurSec = 0.04f;
+        public const float RejectBuzzFreqHz = 220f;
+        public const float RejectBuzzDurSec = 0.25f;
+
+        // ── ViewClassifier ──
+        public const float ViewFrontalMaxRatio = 0.7f;
+        public const float ViewSideMinRatio = 1.6f;
+        public const int   ViewMedianWindowFrames = 9;
+        public const int   ViewSwitchVotes = 20;
+        public const int   ViewSwitchWindow = 30;
+        /// <summary>Hip visibility for a frame to "vote" (ONE hip suffices) — frontal hip vis
+        /// routinely sits at 0.4–0.75, requiring 0.5 on both starved the classifier.</summary>
+        public const float ViewHipVoteVisibility = 0.35f;
+
+        // ── PlankArmer frontal branch F0–F6 ──
+        /// <summary>F3: |κ| = |(hipMid_y − shoulderMid_y)/sw| ceiling for arming. Raised 0.28 →
+        /// 0.35 (narrow shoulders ×1.2–1.3 and moderate tilt broke honest users).</summary>
+        public const float FrontalMaxBodyInclineKappa = 0.35f;
+        public const float FrontalMinBodyInclineKappa = -0.35f;
+        public const float FrontalWristBelowShoulderFrac = 0.4f;   // F1
+        public const float FrontalElbowBelowShoulderFrac = 0.25f;  // F1 fallback via elbows
+        public const float FrontalWristSpreadMinFrac = 0.4f;       // F2 (diamond grip un-banned)
+        public const float FrontalNarrowGripWristDropFrac = 0.6f;  // F2 narrow-grip strict branch
+        public const float FrontalNoseBetweenPalmsFrac = 0.5f;     // F6
+        /// <summary>F0 hip fail-closed: hipMid must be available this fraction of arming-window
+        /// frames (arming only — per-rep gates stay fail-open).</summary>
+        public const float FrontalArmingHipAvailabilityMin = 0.7f;
+
+        // ── PlankArmer F0 SetupGate (framing / distance / phone tilt) ──
+        public const float SetupMinShoulderWidthImg = 0.17f;  // ~2.3m
+        public const float SetupMaxShoulderWidthImg = 0.38f;  // ~1.3m
+        public const float SetupMaxNoseY = 0.85f;             // head would exit frame at the bottom
+        public const float SetupMaxPhonePitchDeg = 30f;       // IMU gate
+
+        // ── FullRomGate v2 ──
+        /// <summary>travelFrac below → HardVeto ChestNotLowered (0.25/0.45 conflict resolved).</summary>
+        public const float MinChestTravelFracHard = 0.25f;
+        /// <summary>travelFrac in [Hard, Soft) → SoftDock ShallowTravel.</summary>
+        public const float MinChestTravelFracSoft = 0.40f;
+        /// <summary>BodySwing veto: shoulder-width growth ≥ this with travelFrac below
+        /// BodySwingMaxTravelFrac = "approaching the camera without descending" signature.</summary>
+        public const float BodySwingWidthRatioMin = 1.15f;
+        public const float BodySwingMaxTravelFrac = 0.30f;
+
+        // ── WristAnchorMonitor (scale fix is unconditional, view-independent) ──
+        /// <summary>Absolute drift deadband (square-space norm): below this RMS the wrists are
+        /// Anchored regardless of body-scale normalization — protects small/far silhouettes where
+        /// pixel jitter doesn't scale with the body.</summary>
+        public const float WristDriftAbsDeadband = 0.008f;
+
+        // ── S-KNEE-1 KneeDropDetector / KneeCheatGate ──
+        public const float KneeDropDeltaDisarm = 0.12f;    // per-frame ribbon (10 frames) → disarm
+        public const float KneeDropDeltaRelease = 0.06f;
+        public const float KneeDropDeltaHardVeto = 0.15f;  // per-rep mean over Top frames
+        public const float KneeDropDeltaSoftDock = 0.10f;
+        public const int   KneeDropDisarmRibbonFrames = 10;
+        /// <summary>κ-drift from the arming baseline (works WITHOUT knee landmarks — catches
+        /// "armed honestly, then dropped to knees" even with knees invisible).</summary>
+        public const float KappaDriftSoftDock = 0.08f;
+        public const float KappaDriftHardVeto = 0.15f;
+
+        // ── S-KNEE-2 FootEventMonitor ──
+        public const float FootVanishHighVis = 0.6f;
+        public const float FootVanishLowVis = 0.35f;
+        public const float FootVanishMinHeldSec = 2f;
+        public const float FootVanishMinLostSec = 1f;
+        /// <summary>Ankle RMS drift relative to wristMid (camera-shake subtracted) / sw.</summary>
+        public const float FootDriftEventFrac = 0.25f;
+
+        // ── S-AIR-1 SupportGeometryGate (ordering checks — phone-tilt invariant) ──
+        public const float SupportWristBelowShoulderFrac = 0.15f;  // P1
+        public const float SupportWristBelowHipFrac = 0.15f;       // P2 (kills table/wall pushups)
+        public const float SupportWristVsLegMarginFrac = 0.10f;    // P3 (soft)
+
+        // ── HipDecouplingGate frontal branch ──
+        /// <summary>Pearson floor lowered 0.6 → 0.45 frontally (perspective squeezes hip travel).</summary>
+        public const float FrontalMinHipShoulderCorr = 0.45f;
+        public const float HipDropRatioMin = 0.15f;  // below → soft "worm"/knee hint
+        public const float HipDropRatioMax = 1.1f;
+
+        // ── KneeBendDetector view gating ──
+        /// <summary>KneeBend is a HARD signal only when View==Side AND the leg is in the image
+        /// plane: |hip→ankle| / sw ≥ this. Frontally the knee angle is uninformative (sagittal
+        /// bend projects collinear).</summary>
+        public const float KneeBendSideProjMinFrac = 0.8f;
     }
 }

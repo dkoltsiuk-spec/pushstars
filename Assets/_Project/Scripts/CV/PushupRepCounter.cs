@@ -62,11 +62,25 @@ namespace PushStars.CV
         /// <summary>Fires whenever the movement phase changes.</summary>
         public event Action<PushupPhase> OnPhaseChanged;
 
+        private readonly AmplitudeTracker _tracker; // null → legacy raw-angle path (unit tests)
+
         private bool _reachedBottom;
         private float _bottomTime = -1f;   // when the current rep reached the bottom (for min-duration gate)
         private float _lastAngle = 180f;
         private float _firstRepTime = -1f;
         private float _lastRepTime = -1f;
+
+        public PushupRepCounter() : this(null) { }
+
+        /// <summary>Frontal-addendum ctor: with a tracker, top/bottom latching is delegated to the
+        /// <see cref="AmplitudeTracker"/> arc automaton (median-of-3 + debounced zone latches) and
+        /// this class keeps only the rep arc, audit hook, MinRepSeconds and tempo. The caller
+        /// (PushupSession) MUST tick the tracker before each <see cref="Process"/> call. With null
+        /// the legacy raw-angle hysteresis path is used unchanged — Stage 1/2 unit tests intact.</summary>
+        public PushupRepCounter(AmplitudeTracker tracker)
+        {
+            _tracker = tracker;
+        }
 
         public void Reset()
         {
@@ -96,6 +110,9 @@ namespace PushStars.CV
             // PlankArmer (phase 08.1) is now the primary gate. When the user is not in a valid plank
             // we forget any in-progress descent — otherwise a "half-rep" started before disarming
             // could complete the moment they re-arm and credit a false rep.
+            // (The legacy LooksLikePushup gate was removed in the frontal addendum: its plank
+            // body-line check flapped on frontal knee visibility and reset _reachedBottom mid-rep;
+            // PlankArmer + the per-rep auditor fully cover its role.)
             if (!isArmed)
             {
                 _reachedBottom = false;
@@ -104,12 +121,9 @@ namespace PushStars.CV
                 return;
             }
 
-            // LEGACY redundant sanity gate. PlankArmer is strictly stronger; this stays as a belt-
-            // and-braces during the Stage 1 rollout. Stage 2 (per-rep auditor) will remove it.
-            if (!PoseMath.LooksLikePushup(frame))
+            if (_tracker != null)
             {
-                _reachedBottom = false;
-                _bottomTime = -1f;
+                ProcessWithTracker(frame.TimestampSec);
                 return;
             }
 
@@ -117,6 +131,43 @@ namespace PushStars.CV
             CurrentElbowAngle = angle;
 
             UpdatePhase(angle, frame.TimestampSec);
+
+            _lastAngle = angle;
+        }
+
+        /// <summary>Tracker-driven path: the tracker's arc automaton owns the latches; we own the
+        /// rep credit (MinRepSeconds + audit + tempo) and the Phase readout.</summary>
+        private void ProcessWithTracker(float timeSec)
+        {
+            float angle = _tracker.SmoothedElbowDeg;
+            CurrentElbowAngle = angle;
+
+            if (_tracker.BottomLatchedThisTick)
+            {
+                _reachedBottom = true;
+                _bottomTime = _tracker.BottomLatchTimeSec;
+            }
+
+            if (_tracker.TopLatchedThisTick)
+            {
+                bool longEnough = _bottomTime >= 0f && (timeSec - _bottomTime) >= CVConstants.MinRepSeconds;
+                if (_reachedBottom && longEnough)
+                {
+                    _reachedBottom = false;
+                    _bottomTime = -1f;
+                    CreditRep(timeSec);
+                }
+                else if (_reachedBottom)
+                {
+                    _reachedBottom = false; // too fast — discard without crediting
+                    _bottomTime = -1f;
+                }
+            }
+
+            // Phase readout: zones first, then direction from the smoothed-angle delta.
+            if (_tracker.InBottomZone) SetPhase(PushupPhase.Bottom);
+            else if (_tracker.InTopZone) SetPhase(PushupPhase.Top);
+            else SetPhase(angle < _lastAngle ? PushupPhase.Descending : PushupPhase.Ascending);
 
             _lastAngle = angle;
         }

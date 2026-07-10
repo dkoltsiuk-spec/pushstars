@@ -7,19 +7,24 @@ namespace PushStars.CV.AntiCheat
     /// Read-only view over the per-rep sample window accumulated by <see cref="AntiCheatAuditor"/>.
     /// Validators consume this; they do NOT mutate the underlying buffer.
     ///
-    /// <para>Common derived values (torso scale, body-axis projection, mean visibility) are exposed
-    /// as helpers so each validator doesn't reimplement them. All math is image-space — Stage 2
-    /// doesn't need world coordinates.</para>
+    /// <para>Carries the camera <see cref="View"/> snapshotted at audit time so gates can pick
+    /// their view-adaptive branch (frontal vertical axis vs side perpendicular vs PCA). Positions
+    /// in samples are square-space (see <see cref="RepSample"/>).</para>
     /// </summary>
     public readonly struct RepWindow
     {
         private readonly RepSample[] _items;
         private readonly int _count;
 
-        public RepWindow(RepSample[] items, int count)
+        /// <summary>Camera view at audit time — never changes mid-rep (ViewClassifier defers
+        /// switches to top-of-rep), so one snapshot is representative of the whole window.</summary>
+        public readonly ViewKind View;
+
+        public RepWindow(RepSample[] items, int count, ViewKind view)
         {
             _items = items;
             _count = count;
+            View = view;
         }
 
         public int Count => _count;
@@ -30,39 +35,43 @@ namespace PushStars.CV.AntiCheat
             : 0f;
 
         /// <summary>Average of (shoulderMid − hipMid) over the first <paramref name="leadFrames"/>
-        /// "Top"-phase frames — captures the body axis at the start of the rep, before any descent
-        /// would have shifted it. Returns (false, zero) if neither midpoint is reliably visible.</summary>
+        /// frames — the body axis at the start of the rep. Also returns the robust body scale
+        /// S = max(torsoLen, shoulderWidth) over the same lead frames (frontal fix: torso alone
+        /// collapses frontally). Returns false if nothing computable.</summary>
         public bool TryComputeBodyAxis(int leadFrames, out Vector2 axis, out float scale)
         {
             axis = Vector2.zero;
             scale = 0f;
             int used = 0;
             Vector2 sum = Vector2.zero;
+            float swSum = 0f;
             int limit = Mathf.Min(leadFrames, _count);
             for (int i = 0; i < limit; i++)
             {
                 var s = _items[i];
                 if (!s.HasShoulderMid || !s.HasHipMid) continue;
-                sum += (s.ShoulderMidImg - s.HipMidImg);
+                sum += (s.ShoulderMidSq - s.HipMidSq);
+                swSum += s.ShoulderWidthSq;
                 used++;
             }
             if (used == 0)
             {
-                // Fallback: scan the whole window — better noisy axis than no axis.
                 for (int i = 0; i < _count; i++)
                 {
                     var s = _items[i];
                     if (!s.HasShoulderMid || !s.HasHipMid) continue;
-                    sum += (s.ShoulderMidImg - s.HipMidImg);
+                    sum += (s.ShoulderMidSq - s.HipMidSq);
+                    swSum += s.ShoulderWidthSq;
                     used++;
                 }
                 if (used == 0) return false;
             }
             Vector2 mean = sum / used;
-            float mag = mean.magnitude;
-            if (mag < 1e-4f) return false;
-            axis = mean / mag;   // unit vector pointing shoulder → hip (the "head→feet" direction on a plank)
-            scale = mag;          // average |shoulder − hip| over Top frames; the body-relative unit
+            float torsoLen = mean.magnitude;
+            float sw = swSum / used;
+            scale = Mathf.Max(torsoLen, sw);
+            if (scale < 1e-4f) return false;
+            axis = torsoLen > 1e-4f ? mean / torsoLen : Vector2.up;
             return true;
         }
 
@@ -78,9 +87,7 @@ namespace PushStars.CV.AntiCheat
             }
         }
 
-        /// <summary>Fraction of frames in which the left arm chain (shoulder+elbow+wrist) was visible.</summary>
         public float LeftArmVisibilityFraction => CountFraction(true);
-        /// <summary>Fraction of frames in which the right arm chain was visible.</summary>
         public float RightArmVisibilityFraction => CountFraction(false);
 
         private float CountFraction(bool leftSide)
@@ -92,8 +99,21 @@ namespace PushStars.CV.AntiCheat
             return (float)n / _count;
         }
 
-        /// <summary>Project (point − origin) onto <paramref name="axis"/> (unit vector). Used to
-        /// turn 2D shoulder/hip positions into a 1D "depth along the body axis" time series.</summary>
+        /// <summary>Shoulder-width extremes across the whole window (BodySwing rule input).</summary>
+        public void ShoulderWidthRange(out float min, out float max)
+        {
+            min = float.PositiveInfinity;
+            max = 0f;
+            for (int i = 0; i < _count; i++)
+            {
+                float sw = _items[i].ShoulderWidthSq;
+                if (sw <= 0f) continue;
+                if (sw < min) min = sw;
+                if (sw > max) max = sw;
+            }
+            if (float.IsPositiveInfinity(min)) min = 0f;
+        }
+
         public static float Project(Vector2 point, Vector2 origin, Vector2 axis)
             => Vector2.Dot(point - origin, axis);
 

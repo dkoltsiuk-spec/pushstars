@@ -46,6 +46,15 @@ namespace PushStars.CV.AntiCheat
     {
         private readonly WristAnchorMonitor _anchor;
         private readonly KneeBendDetector _knee;
+        private readonly KneeDropDetector _kneeDrop; // frontal knee condition; null in legacy tests
+
+        // Rolling hip-availability window for the frontal F0 fail-closed check (~1s @30fps).
+        private readonly Util.RingBuffer<bool> _hipAvail = new Util.RingBuffer<bool>(30);
+
+        /// <summary>Phone pitch from the IMU, degrees from the expected propped-up orientation.
+        /// Set each frame by PushupSession (PlankArmer stays pure C#). NaN = no IMU data
+        /// (editor / mocks) — the tilt gate passes.</summary>
+        public float PhonePitchDeg { get; set; } = float.NaN;
 
         public PlankArmerState State { get; private set; } = PlankArmerState.Disarmed;
 
@@ -69,9 +78,13 @@ namespace PushStars.CV.AntiCheat
         private float _stateEnteredAt;
 
         public PlankArmer(WristAnchorMonitor anchor, KneeBendDetector knee)
+            : this(anchor, knee, null) { }
+
+        public PlankArmer(WristAnchorMonitor anchor, KneeBendDetector knee, KneeDropDetector kneeDrop)
         {
             _anchor = anchor ?? throw new ArgumentNullException(nameof(anchor));
             _knee   = knee   ?? throw new ArgumentNullException(nameof(knee));
+            _kneeDrop = kneeDrop;
         }
 
         public void Reset()
@@ -84,16 +97,23 @@ namespace PushStars.CV.AntiCheat
         }
 
         /// <summary>Advance the FSM with the current frame. Caller MUST have ticked
-        /// <see cref="WristAnchorMonitor"/> and <see cref="KneeBendDetector"/> first.</summary>
-        public void Tick(in PoseFrame frame, bool trackingOk, float nowSec)
+        /// <see cref="WristAnchorMonitor"/>, <see cref="KneeBendDetector"/> and (if present)
+        /// <see cref="KneeDropDetector"/> first. <paramref name="view"/> comes from the
+        /// ViewClassifier and picks the predicate branch.</summary>
+        public void Tick(in PoseFrame frame, bool trackingOk, float nowSec, ViewKind view = ViewKind.Side)
         {
             if (!trackingOk || !frame.IsValid)
             {
+                _hipAvail.Push(false);
                 ApplyInvalid(PlankRejectReason.TrackingLost, nowSec);
                 return;
             }
 
-            if (IsValidPlank(frame, out PlankRejectReason reason))
+            _hipAvail.Push(
+                frame.Visibility(PoseLandmark.LeftHip)  >= CVConstants.MinJointVisibility ||
+                frame.Visibility(PoseLandmark.RightHip) >= CVConstants.MinJointVisibility);
+
+            if (IsValidPlank(frame, view, out PlankRejectReason reason))
                 ApplyValid(nowSec);
             else
                 ApplyInvalid(reason, nowSec);
@@ -178,12 +198,34 @@ namespace PushStars.CV.AntiCheat
             _stateEnteredAt = nowSec;
         }
 
-        /// <summary>The plank predicate. Public so tests can probe it directly without driving the FSM.</summary>
-        public bool IsValidPlank(in PoseFrame f, out PlankRejectReason reason)
+        /// <summary>The plank predicate — view-adaptive (frontal addendum). Public so tests can
+        /// probe it directly without driving the FSM. Ambiguous/Unknown views take the OR of the
+        /// two branches: fail-open on arming (the per-rep auditor picks up the slack), because the
+        /// product's camera is frontal and a false refusal to arm is the worse failure.</summary>
+        public bool IsValidPlank(in PoseFrame f, ViewKind view, out PlankRejectReason reason)
         {
-            // 1) Lower body at least partially visible. Loose on purpose — side-camera framing
-            // often hides one side; we just need SOMETHING below the hips to confirm we're not
-            // looking at a head-and-arms wave.
+            switch (view)
+            {
+                case ViewKind.Side:
+                    return SidePlank(f, out reason);
+                case ViewKind.Frontal:
+                    return FrontalPlank(f, out reason);
+                default:
+                    if (FrontalPlank(f, out PlankRejectReason frontalReason)) { reason = PlankRejectReason.Ok; return true; }
+                    if (SidePlank(f, out _)) { reason = PlankRejectReason.Ok; return true; }
+                    reason = frontalReason; // report the frontal reason — the product's primary view
+                    return false;
+            }
+        }
+
+        /// <summary>Legacy signature — side branch (kept for existing tests).</summary>
+        public bool IsValidPlank(in PoseFrame f, out PlankRejectReason reason)
+            => IsValidPlank(f, ViewKind.Side, out reason);
+
+        // ── Side branch: phase-08.1 Stage 1 predicate, unchanged except the knee in-plane gate ──
+        private bool SidePlank(in PoseFrame f, out PlankRejectReason reason)
+        {
+            // 1) Lower body at least partially visible.
             bool lowerOk =
                 f.Visibility(PoseLandmark.LeftAnkle)       >= CVConstants.PlankLowerBodyVisibility ||
                 f.Visibility(PoseLandmark.RightAnkle)      >= CVConstants.PlankLowerBodyVisibility ||
@@ -193,28 +235,173 @@ namespace PushStars.CV.AntiCheat
                 f.Visibility(PoseLandmark.RightKnee)       >= CVConstants.PlankLowerBodyVisibility;
             if (!lowerOk) { reason = PlankRejectReason.LowerBodyNotVisible; return false; }
 
-            // 2) Body line straight enough — stricter than the legacy MinPlankBodyLine (140°) used
-            // by PoseMath.LooksLikePushup, because we're ARMING, not just sanity-checking a frame
-            // mid-rep.
+            // 2) Body line straight enough.
             float bodyLine = PoseMath.BodyLineAngle(f);
             if (bodyLine < CVConstants.ArmingBodyLineAngle) { reason = PlankRejectReason.BodySagging; return false; }
 
-            // 3) Knees not bent — the user is NOT in a knee push-up.
-            if (_knee.Classification == KneeClassification.Bent) { reason = PlankRejectReason.KneesBent; return false; }
+            // 3) Knees not bent — HARD only when the leg is actually in the image plane
+            // (|hip→ankle| ≥ 0.8·sw); a foreshortened leg's knee angle is projection noise.
+            if (_knee.Classification == KneeClassification.Bent && LegInImagePlane(f))
+            { reason = PlankRejectReason.KneesBent; return false; }
 
-            // 4) Elbows extended — arming starts from the top of a rep, not the middle.
+            // 4) Elbows extended.
             float elbow = PoseMath.ElbowAngle(f);
             if (elbow < CVConstants.ArmingElbowTopAngle) { reason = PlankRejectReason.NotAtTop; return false; }
 
-            // 5) Wrists not provably airborne. Anchored / Drifting / Unknown all OK — only the hard
-            // verdict blocks arming. Unknown is permissive because a fresh window legitimately hasn't
-            // filled yet.
+            // 5) Wrists not provably airborne.
             if (_anchor.LastVerdict == AnchorVerdict.Airborne) { reason = PlankRejectReason.WristsAirborne; return false; }
-
-            // 6) (Stage 2 / S10: BodyHorizontal world-only — reserved hook.)
 
             reason = PlankRejectReason.Ok;
             return true;
+        }
+
+        // ── Frontal branch F0–F6 (docs/plan/phase-08.1-frontal-addendum.md) ──
+        private bool FrontalPlank(in PoseFrame f, out PlankRejectReason reason)
+        {
+            float aspect = f.Aspect;
+
+            bool ls = f.Visibility(PoseLandmark.LeftShoulder)  >= CVConstants.MinJointVisibility;
+            bool rs = f.Visibility(PoseLandmark.RightShoulder) >= CVConstants.MinJointVisibility;
+            if (!ls || !rs) { reason = PlankRejectReason.TrackingLost; return false; }
+
+            Vector2 lsp = PoseMath.ToSquare(f.Get(PoseLandmark.LeftShoulder).Pos2D, aspect);
+            Vector2 rsp = PoseMath.ToSquare(f.Get(PoseLandmark.RightShoulder).Pos2D, aspect);
+            Vector2 shoulderMid = (lsp + rsp) * 0.5f;
+            float sw = Vector2.Distance(lsp, rsp);
+            if (sw < 1e-3f) { reason = PlankRejectReason.TrackingLost; return false; }
+
+            // ── F0: SetupGate — framing / distance / tilt / hip availability ──
+            if (sw < CVConstants.SetupMinShoulderWidthImg || sw > CVConstants.SetupMaxShoulderWidthImg)
+            { reason = PlankRejectReason.TooCloseOrFar; return false; }
+
+            bool noseVisible = f.Visibility(PoseLandmark.Nose) >= CVConstants.MinJointVisibility;
+            if (noseVisible && f.Get(PoseLandmark.Nose).Y > CVConstants.SetupMaxNoseY)
+            { reason = PlankRejectReason.BadFraming; return false; } // head would exit at the bottom
+
+            if (!float.IsNaN(PhonePitchDeg) && Mathf.Abs(PhonePitchDeg) > CVConstants.SetupMaxPhonePitchDeg)
+            { reason = PlankRejectReason.PhoneTilted; return false; }
+
+            if (HipAvailabilityFrac() < CVConstants.FrontalArmingHipAvailabilityMin)
+            { reason = PlankRejectReason.HipNotVisible; return false; } // fail-closed: κ/table checks need hips
+
+            bool lw = f.Visibility(PoseLandmark.LeftWrist)  >= CVConstants.MinJointVisibility;
+            bool rw = f.Visibility(PoseLandmark.RightWrist) >= CVConstants.MinJointVisibility;
+            bool le = f.Visibility(PoseLandmark.LeftElbow)  >= CVConstants.MinJointVisibility;
+            bool re = f.Visibility(PoseLandmark.RightElbow) >= CVConstants.MinJointVisibility;
+            bool wristsOk = lw && rw;
+            if (!wristsOk && !(le && re)) { reason = PlankRejectReason.BadFraming; return false; }
+
+            // ── F1: hands (or elbows as fallback) planted BELOW the shoulders ──
+            if (wristsOk)
+            {
+                Vector2 lwp = PoseMath.ToSquare(f.Get(PoseLandmark.LeftWrist).Pos2D, aspect);
+                Vector2 rwp = PoseMath.ToSquare(f.Get(PoseLandmark.RightWrist).Pos2D, aspect);
+                float wristMidY = 0.5f * (lwp.y + rwp.y);
+                if (wristMidY - shoulderMid.y < CVConstants.FrontalWristBelowShoulderFrac * sw)
+                { reason = PlankRejectReason.WristsAirborne; return false; }
+
+                // ── F2: hand spread — diamond grip is allowed via the strict-anchor branch ──
+                float spread = Mathf.Abs(lwp.x - rwp.x);
+                bool wideEnough = spread >= CVConstants.FrontalWristSpreadMinFrac * sw;
+                bool narrowButAnchored =
+                    _anchor.LastVerdict == AnchorVerdict.Anchored &&
+                    wristMidY - shoulderMid.y >= CVConstants.FrontalNarrowGripWristDropFrac * sw;
+                if (!wideEnough && !narrowButAnchored)
+                { reason = PlankRejectReason.WristsAirborne; return false; }
+
+                // ── F6: head between the palms ──
+                if (noseVisible)
+                {
+                    float noseX = PoseMath.ToSquare(f.Get(PoseLandmark.Nose).Pos2D, aspect).x;
+                    float palmsMidX = 0.5f * (lwp.x + rwp.x);
+                    if (Mathf.Abs(noseX - palmsMidX) > CVConstants.FrontalNoseBetweenPalmsFrac * sw)
+                    { reason = PlankRejectReason.BadFraming; return false; }
+                }
+            }
+            else
+            {
+                // F1 fallback: wrists occluded, elbows visible — softer geometric requirement.
+                Vector2 lep = PoseMath.ToSquare(f.Get(PoseLandmark.LeftElbow).Pos2D, aspect);
+                Vector2 rep2 = PoseMath.ToSquare(f.Get(PoseLandmark.RightElbow).Pos2D, aspect);
+                float elbowMidY = 0.5f * (lep.y + rep2.y);
+                if (elbowMidY - shoulderMid.y < CVConstants.FrontalElbowBelowShoulderFrac * sw)
+                { reason = PlankRejectReason.WristsAirborne; return false; }
+            }
+
+            // ── F3: body incline κ — rejects kneeling-tall / sitting / standing / piked starts ──
+            bool lh = f.Visibility(PoseLandmark.LeftHip)  >= CVConstants.MinJointVisibility;
+            bool rh = f.Visibility(PoseLandmark.RightHip) >= CVConstants.MinJointVisibility;
+            if (lh || rh)
+            {
+                Vector2 hipMid = (lh && rh)
+                    ? (PoseMath.ToSquare(f.Get(PoseLandmark.LeftHip).Pos2D, aspect)
+                     + PoseMath.ToSquare(f.Get(PoseLandmark.RightHip).Pos2D, aspect)) * 0.5f
+                    : PoseMath.ToSquare(f.Get(lh ? PoseLandmark.LeftHip : PoseLandmark.RightHip).Pos2D, aspect);
+                float kappa = (hipMid.y - shoulderMid.y) / sw;
+                if (kappa > CVConstants.FrontalMaxBodyInclineKappa
+                    || kappa < CVConstants.FrontalMinBodyInclineKappa)
+                { reason = PlankRejectReason.BodyIncline; return false; }
+            }
+            // Chronic hip absence is already blocked by F0's fail-closed gate; a single missing
+            // frame just skips κ.
+
+            // Frontal knee condition: replaces the side branch's KneeBend consumption. Fires when
+            // the knees dropped ≥ 0.12·sw relative to the arming baseline for a full ribbon.
+            if (_kneeDrop != null && _kneeDrop.DisarmTriggered)
+            { reason = PlankRejectReason.KneesBent; return false; }
+
+            // ── F4: elbows extended (arming from the top) ──
+            float elbow = PoseMath.ElbowAngle(f);
+            if (elbow < CVConstants.ArmingElbowTopAngle) { reason = PlankRejectReason.NotAtTop; return false; }
+
+            // ── F5: wrists not provably airborne (on the FIXED body scale — see WristAnchorMonitor) ──
+            if (_anchor.LastVerdict == AnchorVerdict.Airborne)
+            { reason = PlankRejectReason.WristsAirborne; return false; }
+
+            reason = PlankRejectReason.Ok;
+            return true;
+        }
+
+        private float HipAvailabilityFrac()
+        {
+            int n = _hipAvail.Count;
+            if (n == 0) return 1f; // no history yet — don't block the very first frames
+            int ok = 0;
+            for (int i = 0; i < n; i++)
+                if (_hipAvail[i]) ok++;
+            return (float)ok / n;
+        }
+
+        /// <summary>Side-view refinement: the knee angle is trustworthy only when the leg segment
+        /// is long in the image (|hipMid→ankleMid| ≥ 0.8·sw in square space).</summary>
+        private static bool LegInImagePlane(in PoseFrame f)
+        {
+            float aspect = f.Aspect;
+            bool lh = f.Visibility(PoseLandmark.LeftHip)  >= CVConstants.MinJointVisibility;
+            bool rh = f.Visibility(PoseLandmark.RightHip) >= CVConstants.MinJointVisibility;
+            bool la = f.Visibility(PoseLandmark.LeftAnkle)  >= CVConstants.MinJointVisibility;
+            bool ra = f.Visibility(PoseLandmark.RightAnkle) >= CVConstants.MinJointVisibility;
+            bool ls = f.Visibility(PoseLandmark.LeftShoulder)  >= CVConstants.MinJointVisibility;
+            bool rs = f.Visibility(PoseLandmark.RightShoulder) >= CVConstants.MinJointVisibility;
+            if (!(lh || rh) || !(la || ra)) return true; // can't judge — keep the legacy behaviour
+
+            Vector2 hip = (lh && rh)
+                ? (PoseMath.ToSquare(f.Get(PoseLandmark.LeftHip).Pos2D, aspect)
+                 + PoseMath.ToSquare(f.Get(PoseLandmark.RightHip).Pos2D, aspect)) * 0.5f
+                : PoseMath.ToSquare(f.Get(lh ? PoseLandmark.LeftHip : PoseLandmark.RightHip).Pos2D, aspect);
+            Vector2 ankle = (la && ra)
+                ? (PoseMath.ToSquare(f.Get(PoseLandmark.LeftAnkle).Pos2D, aspect)
+                 + PoseMath.ToSquare(f.Get(PoseLandmark.RightAnkle).Pos2D, aspect)) * 0.5f
+                : PoseMath.ToSquare(f.Get(la ? PoseLandmark.LeftAnkle : PoseLandmark.RightAnkle).Pos2D, aspect);
+
+            float legLen = Vector2.Distance(hip, ankle);
+            float sw = 0f;
+            if (ls && rs)
+                sw = Vector2.Distance(
+                    PoseMath.ToSquare(f.Get(PoseLandmark.LeftShoulder).Pos2D, aspect),
+                    PoseMath.ToSquare(f.Get(PoseLandmark.RightShoulder).Pos2D, aspect));
+            if (sw < 1e-3f) return true;
+            return legLen / sw >= CVConstants.KneeBendSideProjMinFrac;
         }
     }
 }

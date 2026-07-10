@@ -42,7 +42,16 @@ namespace PushStars.CV.AntiCheat
 
         public IReadOnlyList<IRepValidator> Validators => _validators;
 
-        public AntiCheatAuditor()
+        /// <summary>Camera view snapshotted into each audited <see cref="RepWindow"/>. Updated by
+        /// PushupSession from the ViewClassifier every frame; the classifier itself never switches
+        /// mid-rep, so the value at audit time represents the whole window.</summary>
+        public ViewKind CurrentView { get; set; } = ViewKind.Unknown;
+
+        public AntiCheatAuditor() : this(null, null) { }
+
+        /// <summary>Frontal-addendum ctor: with the knee-drop detector and foot-event monitor the
+        /// auditor also registers <see cref="KneeCheatGate"/> and <see cref="SupportGeometryGate"/>.</summary>
+        public AntiCheatAuditor(KneeDropDetector kneeDrop, FootEventMonitor footMonitor)
         {
             _buffer = new RepSample[CVConstants.RepWindowMaxFrames];
 
@@ -51,6 +60,9 @@ namespace PushStars.CV.AntiCheat
             // arbitrary — first HardVeto wins.
             _validators.Add(new RepVisibilityGate());
             _validators.Add(new TempoSanityGate());
+            _validators.Add(new SupportGeometryGate());
+            if (kneeDrop != null)
+                _validators.Add(new KneeCheatGate(kneeDrop, footMonitor));
             _validators.Add(new FullRomGate());
             _validators.Add(new BilateralSymmetryGate());
             _validators.Add(new HipDecouplingGate());
@@ -109,7 +121,7 @@ namespace PushStars.CV.AntiCheat
         /// Returns <see cref="RepVote.Pass"/> if there's nothing to audit (no samples).</summary>
         public RepVote AuditPendingRep()
         {
-            var window = new RepWindow(_buffer, _count);
+            var window = new RepWindow(_buffer, _count, CurrentView);
             LastWindowFrameCount = _count;
             LastWindowDurationSec = window.DurationSec;
 

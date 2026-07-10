@@ -64,7 +64,7 @@ namespace PushStars.CV.AntiCheat
                 return;
             }
 
-            if (!TryTorsoScale(frame, out float bodyScale) || bodyScale < 1e-3f)
+            if (!TryBodyScale(frame, out float bodyScale) || bodyScale < 1e-3f)
             {
                 LastVerdict = AnchorVerdict.Unknown;
                 return;
@@ -73,8 +73,9 @@ namespace PushStars.CV.AntiCheat
             bool leftOk  = frame.Visibility(PoseLandmark.LeftWrist)  >= CVConstants.MinJointVisibility;
             bool rightOk = frame.Visibility(PoseLandmark.RightWrist) >= CVConstants.MinJointVisibility;
 
-            if (leftOk)  _leftBuf.Push(frame.Get(PoseLandmark.LeftWrist).Pos2D);
-            if (rightOk) _rightBuf.Push(frame.Get(PoseLandmark.RightWrist).Pos2D);
+            float aspect = frame.Aspect;
+            if (leftOk)  _leftBuf.Push(PoseMath.ToSquare(frame.Get(PoseLandmark.LeftWrist).Pos2D, aspect));
+            if (rightOk) _rightBuf.Push(PoseMath.ToSquare(frame.Get(PoseLandmark.RightWrist).Pos2D, aspect));
 
             float leftDrift  = leftOk  && _leftBuf.IsFull  ? DriftFrac(_leftBuf,  bodyScale) : float.NaN;
             float rightDrift = rightOk && _rightBuf.IsFull ? DriftFrac(_rightBuf, bodyScale) : float.NaN;
@@ -97,28 +98,45 @@ namespace PushStars.CV.AntiCheat
             LastVerdict = ClassifyDrift(worst);
         }
 
-        static bool TryTorsoScale(in PoseFrame f, out float scale)
+        /// <summary>Body scale = max(torsoLen, shoulderWidth) in square space. The frontal addendum's
+        /// third hidden blocker: torso length COLLAPSES ×6 frontally (foreshortening), so normalizing
+        /// drift by torso alone read perfectly planted wrists as Airborne and blocked arming. Shoulder
+        /// width stays honest frontally; torso stays honest side-on — the max is valid in both.</summary>
+        static bool TryBodyScale(in PoseFrame f, out float scale)
         {
             scale = 0f;
             bool ls = f.Visibility(PoseLandmark.LeftShoulder)  >= CVConstants.MinJointVisibility;
             bool rs = f.Visibility(PoseLandmark.RightShoulder) >= CVConstants.MinJointVisibility;
             bool lh = f.Visibility(PoseLandmark.LeftHip)       >= CVConstants.MinJointVisibility;
             bool rh = f.Visibility(PoseLandmark.RightHip)      >= CVConstants.MinJointVisibility;
-            if (!(ls || rs) || !(lh || rh)) return false;
+            if (!ls && !rs) return false;
 
-            Vector2 shoulder = (ls && rs)
-                ? (f.Get(PoseLandmark.LeftShoulder).Pos2D + f.Get(PoseLandmark.RightShoulder).Pos2D) * 0.5f
-                : (ls ? f.Get(PoseLandmark.LeftShoulder).Pos2D : f.Get(PoseLandmark.RightShoulder).Pos2D);
-            Vector2 hip = (lh && rh)
-                ? (f.Get(PoseLandmark.LeftHip).Pos2D + f.Get(PoseLandmark.RightHip).Pos2D) * 0.5f
-                : (lh ? f.Get(PoseLandmark.LeftHip).Pos2D : f.Get(PoseLandmark.RightHip).Pos2D);
-            scale = Vector2.Distance(shoulder, hip);
+            float aspect = f.Aspect;
+            Vector2 lsp = ls ? PoseMath.ToSquare(f.Get(PoseLandmark.LeftShoulder).Pos2D, aspect) : default;
+            Vector2 rsp = rs ? PoseMath.ToSquare(f.Get(PoseLandmark.RightShoulder).Pos2D, aspect) : default;
+
+            float shoulderWidth = (ls && rs) ? Vector2.Distance(lsp, rsp) : 0f;
+
+            float torsoLen = 0f;
+            if ((lh || rh) && (ls || rs))
+            {
+                Vector2 shoulder = (ls && rs) ? (lsp + rsp) * 0.5f : (ls ? lsp : rsp);
+                Vector2 hip = (lh && rh)
+                    ? (PoseMath.ToSquare(f.Get(PoseLandmark.LeftHip).Pos2D, aspect)
+                     + PoseMath.ToSquare(f.Get(PoseLandmark.RightHip).Pos2D, aspect)) * 0.5f
+                    : PoseMath.ToSquare(f.Get(lh ? PoseLandmark.LeftHip : PoseLandmark.RightHip).Pos2D, aspect);
+                torsoLen = Vector2.Distance(shoulder, hip);
+            }
+
+            scale = Mathf.Max(torsoLen, shoulderWidth);
             return scale > 0f;
         }
 
-        // RMS displacement from the per-component mean, normalized by torso scale. Mean (vs median)
+        // RMS displacement from the per-component mean, normalized by body scale. Mean (vs median)
         // is fine here — for a planted wrist the samples cluster tightly; for an airborne arm they
-        // sweep through a range and either statistic blows up.
+        // sweep through a range and either statistic blows up. Absolute deadband: below
+        // WristDriftAbsDeadband norm the wrist is anchored regardless of normalization — protects
+        // far/small silhouettes where pixel jitter doesn't scale with the body.
         static float DriftFrac(RingBuffer<Vector2> buf, float bodyScale)
         {
             int n = buf.Count;
@@ -135,6 +153,7 @@ namespace PushStars.CV.AntiCheat
                 sumSq += d.sqrMagnitude;
             }
             float rms = Mathf.Sqrt(sumSq / n);
+            if (rms < CVConstants.WristDriftAbsDeadband) return 0f;
             return rms / bodyScale;
         }
 

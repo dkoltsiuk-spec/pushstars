@@ -314,10 +314,13 @@ namespace PushStars.CV
             }
 
             // World landmarks are optional — `world` may be null and consumers must guard via
-            // PoseFrame.HasWorldLandmarks. With the Pose Landmarker (Tasks API, LIVE_STREAM) world
-            // landmarks are normally provided alongside image landmarks; the null branch is the
-            // future-proofing path for backends that don't emit them.
-            var frame = new PoseFrame(arr, world, t);
+            // PoseFrame.HasWorldLandmarks. Aspect = the camera image the landmarks were computed
+            // on (sensor-native orientation; display rotation doesn't change it) — the frontal
+            // anti-cheat metrics need it to convert to the square space.
+            float aspect = _webCam != null && _webCam.height > 16
+                ? (float)_webCam.width / _webCam.height
+                : 1f;
+            var frame = new PoseFrame(arr, world, t, aspect);
             OnFrame?.Invoke(frame);
             SetQuality(PoseQuality.Classify(frame));
         }

@@ -34,5 +34,26 @@ namespace PushStars.CV.AntiCheat
         /// <summary>Reserved for Stage 2 S10 (BodyHorizontal, world-landmarks only) —
         /// torso plane not roughly perpendicular to the local gravity direction.</summary>
         BodyNotHorizontal,
+
+        // ── Frontal addendum: SetupGate (F0) + frontal predicate reasons ──
+
+        /// <summary>Framing broken: wrists not visible at the top, or nose too close to the frame
+        /// edge (head would exit the frame at the bottom of the rep).</summary>
+        BadFraming,
+
+        /// <summary>Shoulder width outside the distance corridor — user is closer than ~1.3m or
+        /// farther than ~2.3m from the camera.</summary>
+        TooCloseOrFar,
+
+        /// <summary>IMU says the phone is tilted more than SetupMaxPhonePitchDeg.</summary>
+        PhoneTilted,
+
+        /// <summary>Frontal arming fail-closed: hip landmarks available less than 70% of the
+        /// arming window — can't validate body incline (κ) or table-lean cheats.</summary>
+        HipNotVisible,
+
+        /// <summary>Frontal κ (body incline) outside [−0.35, 0.35] — user is kneeling-tall,
+        /// sitting, standing or piked rather than horizontal.</summary>
+        BodyIncline,
     }
 }
