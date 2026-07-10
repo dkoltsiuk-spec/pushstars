@@ -142,7 +142,12 @@ namespace PushStars.CV
                 return new Vector2(p.x, p.y);
             }
 
-            bool Visible(int idx) => _frame.Visibility((PoseLandmark)idx) >= CVConstants.MinJointVisibility;
+            // Legs/feet (idx ≥ 25: knees and below) draw at a STRICTER threshold — frontal leg
+            // landmarks hover around vis 0.5 and made the skeleton flicker/jump at the bottom of
+            // reps. Purely cosmetic: detection signals have their own per-signal gates.
+            bool Visible(int idx) => _frame.Visibility((PoseLandmark)idx)
+                >= (idx >= (int)PoseLandmark.LeftKnee ? CVConstants.SkeletonLegDrawVisibility
+                                                      : CVConstants.MinJointVisibility);
 
             // Bones (green).
             GUI.color = new Color(0.2f, 1f, 0.4f, 0.9f);

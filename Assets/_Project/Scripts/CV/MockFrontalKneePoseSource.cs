@@ -4,15 +4,15 @@ using UnityEngine;
 namespace PushStars.CV
 {
     /// <summary>
-    /// FRONTAL knee-cheat mock — the S-KNEE-1 acceptance scenario with a CLEAN baseline:
-    /// the user arms honestly (toes down, first <see cref="_honestSeconds"/> in a valid top plank),
-    /// then drops to the knees and keeps "repping". Knees fall ~+0.045 normalized y relative to the
-    /// hips (Δ ≈ +0.24·sw against the 0.12 disarm / 0.15 veto thresholds — 2× margin).
+    /// FRONTAL ALL-FOURS cheat mock (policy 2026-07-10: real knee push-ups COUNT — what must be
+    /// vetoed is the all-fours rock): the user arms honestly (plank, first
+    /// <see cref="_honestSeconds"/>), then sits back onto all fours — torso near-vertical
+    /// (κ ≈ 0.63), knees directly under the hips — and pumps the elbows through the full envelope
+    /// while the shoulders barely descend (Δy ≈ 0.03 → travelFrac ≈ 0.1).
     ///
-    /// Expected: arming succeeds during the honest phase; after the drop, KneeDropDetector triggers
-    /// per-frame disarm (reason KneesBent) and/or KneeCheatGate hard-vetoes the rep. Reps must NOT
-    /// grow after the drop. (The poisoned-baseline variant — arming already on knees with legs
-    /// invisible — is accepted MVP risk #1 and intentionally not modeled here.)
+    /// Expected: within the 2.5s Cooling grace at most ONE rep candidate forms and is HardVetoed
+    /// (KneeCheatGate κ_mean &gt; 0.60 and/or FullRom ChestNotLowered); then the armer disarms via
+    /// F3 BodyIncline. Reps must NOT grow after the transition.
     /// </summary>
     public sealed class MockFrontalKneePoseSource : MonoBehaviour, IPoseSource
     {
@@ -59,42 +59,56 @@ namespace PushStars.CV
         {
             float s = kneesDown ? (Mathf.Cos(_phase) + 1f) * 0.5f : 1f; // hold at top until the drop
             float visBase = simulateLost ? 0f : 1f;
-            // Knees must be VISIBLE for the clean-baseline scenario (that's what we're testing).
-            float hipVis  = visBase * 0.65f;
-            float kneeVis = visBase * 0.60f;
-            float ankleVis = visBase * (kneesDown ? 0.15f : 0.30f); // shins lift → feet fade (FootVanish)
+            float hipVis  = visBase * 0.70f;
+            float kneeVis = visBase * 0.65f;
+            float ankleVis = visBase * 0.30f;
 
             for (int i = 0; i < _buf.Length; i++) _buf[i] = new Landmark(0.5f, 0.5f, 0f, 0.05f);
 
-            // Same honest frontal table for the upper body; reduced ROM after the knee drop
-            // (knee push-ups travel less) — s compresses toward the top half.
-            float sBody = kneesDown ? 0.5f + 0.5f * s : s;
-
-            SetLerp(PoseLandmark.Nose,          0.50f, 0.55f, 0.50f, 0.68f, sBody, visBase * 0.99f);
-            SetLerp(PoseLandmark.LeftShoulder,  0.36f, 0.54f, 0.35f, 0.66f, sBody, visBase * 0.97f);
-            SetLerp(PoseLandmark.RightShoulder, 0.64f, 0.54f, 0.65f, 0.66f, sBody, visBase * 0.97f);
-            SetLerp(PoseLandmark.LeftElbow,     0.31f, 0.66f, 0.24f, 0.64f, s,     visBase * 0.92f);
-            SetLerp(PoseLandmark.RightElbow,    0.69f, 0.66f, 0.76f, 0.64f, s,     visBase * 0.92f);
-            SetLerp(PoseLandmark.LeftWrist,     0.25f, 0.77f, 0.25f, 0.77f, s,     visBase * 0.90f);
-            SetLerp(PoseLandmark.RightWrist,    0.75f, 0.77f, 0.75f, 0.77f, s,     visBase * 0.90f);
-
-            // Hips: kneeling tilts the torso up → hips sit lower in frame (κ grows toward ~0.36).
-            float hipYTop = kneesDown ? 0.635f : 0.59f;
-            float hipYBot = kneesDown ? 0.655f : 0.64f;
-            SetLerp(PoseLandmark.LeftHip,  0.42f, hipYTop, 0.43f, hipYBot, sBody, hipVis);
-            SetLerp(PoseLandmark.RightHip, 0.58f, hipYTop, 0.57f, hipYBot, sBody, hipVis);
-
-            // Knees: honest ≈ hip_y + 0.05; kneeling → PLANTED low (+0.045 extra relative to hips
-            // → Δ ≈ +0.24·sw against the arming baseline).
-            float kneeY = kneesDown ? 0.755f : 0.64f;
-            SetLerp(PoseLandmark.LeftKnee,  0.44f, kneeY, 0.44f, kneeY, 1f, kneeVis);
-            SetLerp(PoseLandmark.RightKnee, 0.56f, kneeY, 0.56f, kneeY, 1f, kneeVis);
-
-            float ankleY = kneesDown ? 0.62f : 0.66f; // shins lifted → ankles rise above the knees
-            SetLerp(PoseLandmark.LeftAnkle,     0.46f, ankleY, 0.46f, ankleY, 1f, ankleVis);
-            SetLerp(PoseLandmark.RightAnkle,    0.54f, ankleY, 0.54f, ankleY, 1f, ankleVis);
-            SetLerp(PoseLandmark.LeftFootIndex, 0.465f, ankleY, 0.465f, ankleY, 1f, ankleVis);
-            SetLerp(PoseLandmark.RightFootIndex,0.535f, ankleY, 0.535f, ankleY, 1f, ankleVis);
+            if (!kneesDown)
+            {
+                // Honest plank at the top — same reference geometry as MockFrontalPushupPoseSource.
+                SetLerp(PoseLandmark.Nose,          0.50f, 0.55f, 0.50f, 0.68f, 1f, visBase * 0.99f);
+                SetLerp(PoseLandmark.LeftShoulder,  0.36f, 0.54f, 0.35f, 0.66f, 1f, visBase * 0.97f);
+                SetLerp(PoseLandmark.RightShoulder, 0.64f, 0.54f, 0.65f, 0.66f, 1f, visBase * 0.97f);
+                SetLerp(PoseLandmark.LeftElbow,     0.31f, 0.66f, 0.24f, 0.64f, 1f, visBase * 0.92f);
+                SetLerp(PoseLandmark.RightElbow,    0.69f, 0.66f, 0.76f, 0.64f, 1f, visBase * 0.92f);
+                SetLerp(PoseLandmark.LeftWrist,     0.25f, 0.77f, 0.25f, 0.77f, 1f, visBase * 0.90f);
+                SetLerp(PoseLandmark.RightWrist,    0.75f, 0.77f, 0.75f, 0.77f, 1f, visBase * 0.90f);
+                SetLerp(PoseLandmark.LeftHip,       0.41f, 0.59f, 0.41f, 0.59f, 1f, hipVis);
+                SetLerp(PoseLandmark.RightHip,      0.59f, 0.59f, 0.59f, 0.59f, 1f, hipVis);
+                SetLerp(PoseLandmark.LeftKnee,      0.44f, 0.64f, 0.44f, 0.64f, 1f, kneeVis);
+                SetLerp(PoseLandmark.RightKnee,     0.56f, 0.64f, 0.56f, 0.64f, 1f, kneeVis);
+                SetLerp(PoseLandmark.LeftAnkle,     0.46f, 0.66f, 0.46f, 0.66f, 1f, ankleVis);
+                SetLerp(PoseLandmark.RightAnkle,    0.54f, 0.66f, 0.54f, 0.66f, 1f, ankleVis);
+                SetLerp(PoseLandmark.LeftFootIndex, 0.465f, 0.665f, 0.465f, 0.665f, 1f, ankleVis);
+                SetLerp(PoseLandmark.RightFootIndex,0.535f, 0.665f, 0.535f, 0.665f, 1f, ankleVis);
+            }
+            else
+            {
+                // ALL-FOURS: torso near-vertical — hips deep below the shoulders in the image
+                // (κ = (0.72 − 0.545)/0.28 ≈ 0.63), knees planted under the hips. The elbows pump
+                // the FULL envelope (~172° → ~75°, the cheater flaps hard) but the shoulders only
+                // dip 0.03 → travelFrac ≈ 0.1, far under the 0.25 ChestNotLowered floor.
+                float shY = 0.54f + 0.03f * (1f - s);
+                SetLerp(PoseLandmark.Nose,          0.50f, shY - 0.06f, 0.50f, shY - 0.06f, 1f, visBase * 0.99f);
+                SetLerp(PoseLandmark.LeftShoulder,  0.36f, shY, 0.36f, shY, 1f, visBase * 0.97f);
+                SetLerp(PoseLandmark.RightShoulder, 0.64f, shY, 0.64f, shY, 1f, visBase * 0.97f);
+                // Same elbow keyframes as the honest mock — full genuine bend.
+                SetLerp(PoseLandmark.LeftElbow,     0.31f, 0.66f, 0.24f, 0.64f, s, visBase * 0.92f);
+                SetLerp(PoseLandmark.RightElbow,    0.69f, 0.66f, 0.76f, 0.64f, s, visBase * 0.92f);
+                SetLerp(PoseLandmark.LeftWrist,     0.25f, 0.77f, 0.25f, 0.77f, s, visBase * 0.90f);
+                SetLerp(PoseLandmark.RightWrist,    0.75f, 0.77f, 0.75f, 0.77f, s, visBase * 0.90f);
+                // Hips static and LOW in the image — the all-fours signature.
+                SetLerp(PoseLandmark.LeftHip,  0.43f, 0.72f, 0.43f, 0.72f, 1f, hipVis);
+                SetLerp(PoseLandmark.RightHip, 0.57f, 0.72f, 0.57f, 0.72f, 1f, hipVis);
+                SetLerp(PoseLandmark.LeftKnee,  0.44f, 0.80f, 0.44f, 0.80f, 1f, kneeVis);
+                SetLerp(PoseLandmark.RightKnee, 0.56f, 0.80f, 0.56f, 0.80f, 1f, kneeVis);
+                SetLerp(PoseLandmark.LeftAnkle,     0.46f, 0.85f, 0.46f, 0.85f, 1f, ankleVis);
+                SetLerp(PoseLandmark.RightAnkle,    0.54f, 0.85f, 0.54f, 0.85f, 1f, ankleVis);
+                SetLerp(PoseLandmark.LeftFootIndex, 0.465f, 0.86f, 0.465f, 0.86f, 1f, ankleVis);
+                SetLerp(PoseLandmark.RightFootIndex,0.535f, 0.86f, 0.535f, 0.86f, 1f, ankleVis);
+            }
 
             ApplyJitter();
             return new PoseFrame((Landmark[])_buf.Clone(), null, timeSec, 1f);

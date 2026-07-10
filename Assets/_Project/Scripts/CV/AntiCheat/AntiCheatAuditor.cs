@@ -49,8 +49,10 @@ namespace PushStars.CV.AntiCheat
 
         public AntiCheatAuditor() : this(null, null) { }
 
-        /// <summary>Frontal-addendum ctor: with the knee-drop detector and foot-event monitor the
-        /// auditor also registers <see cref="KneeCheatGate"/> and <see cref="SupportGeometryGate"/>.</summary>
+        /// <summary>The detector/monitor params are kept for wiring compatibility — after the
+        /// knee-policy change (knee push-ups count) neither feeds a gate anymore; both remain
+        /// telemetry/HUD signals. <see cref="KneeCheatGate"/> is now the parameterless all-fours
+        /// κ audit.</summary>
         public AntiCheatAuditor(KneeDropDetector kneeDrop, FootEventMonitor footMonitor)
         {
             _buffer = new RepSample[CVConstants.RepWindowMaxFrames];
@@ -61,8 +63,7 @@ namespace PushStars.CV.AntiCheat
             _validators.Add(new RepVisibilityGate());
             _validators.Add(new TempoSanityGate());
             _validators.Add(new SupportGeometryGate());
-            if (kneeDrop != null)
-                _validators.Add(new KneeCheatGate(kneeDrop, footMonitor));
+            _validators.Add(new KneeCheatGate());
             _validators.Add(new FullRomGate());
             _validators.Add(new BilateralSymmetryGate());
             _validators.Add(new HipDecouplingGate());

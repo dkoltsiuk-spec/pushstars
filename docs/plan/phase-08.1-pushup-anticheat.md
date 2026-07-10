@@ -786,7 +786,7 @@ PostHog event (опционально, при user opt-in в Settings): event na
 
 ## Решения пользователя (зафиксировано 2026-06-07)
 
-**1. Knee push-up policy → HARD VETO.** На коленях счёт не растёт, эмитится `OnRepRejected(KneeBent)` для HUD. Никаких soft-XP за knee push-ups.
+**1. Knee push-up policy → ~~HARD VETO~~ ИЗМЕНЕНО 2026-07-10: коленные отжимания ЗАСЧИТЫВАЮТСЯ как полноценные.** Владелец: «отжимания с колен засчитывать тоже как полноценное отжимание — нам важно именно сгибание рук». Ветируется только ЧЕТВЕРЕНЬКИ (колени прямо под телом, корпус почти вертикальный, усилий нет): дискриминатор — абсолютный κ по Top-кадрам репа (`AllFoursKappaHardVeto = 0.60`, soft 0.50) + FullRom (на четвереньках плечи не опускаются). `FrontalMaxBodyInclineKappa` поднят 0.35 → 0.60, чтобы честное коленное армилось. KneeDropDetector/FootEventMonitor больше не ветируют — телеметрия. Скелет ног в превью рисуется строже (vis ≥ 0.65) чтобы не мигал; фронтальный RepVisibilityGate считает доверие только по верхним 6 суставам.
 
 **2. Plank-arming hold → 1.0s.** `PlankArmHoldSec = 1.0f`. SerializeField на `PlankArmer` для in-Editor tuning.
 

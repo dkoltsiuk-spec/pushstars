@@ -49,8 +49,13 @@ namespace PushStars.CV.AntiCheat
         public readonly float AnkleMidY;
         public readonly bool HasAnkleMid;
 
-        /// <summary>Average visibility of the 8 key joints on this frame (RepVisibilityGate).</summary>
+        /// <summary>Average visibility of the 8 key joints on this frame (RepVisibilityGate, side view).</summary>
         public readonly float KeyJointVisAvg;
+
+        /// <summary>Average visibility of the 6 UPPER-body joints (shoulders, elbows, wrists) —
+        /// the frontal RepVisibilityGate metric. Frontally the hips/legs legitimately flap at the
+        /// bottom of a rep and must not drag the trust score down; the rep signal lives in the arms.</summary>
+        public readonly float UpperBodyVisAvg;
 
         public readonly bool LeftArmVisible;
         public readonly bool RightArmVisible;
@@ -64,7 +69,7 @@ namespace PushStars.CV.AntiCheat
             float kneeMidY, bool hasKneeMid,
             float wristMidY, bool hasWristMid,
             float ankleMidY, bool hasAnkleMid,
-            float keyJointVisAvg,
+            float keyJointVisAvg, float upperBodyVisAvg,
             bool leftArmVisible, bool rightArmVisible)
         {
             TimestampSec = t;
@@ -86,6 +91,7 @@ namespace PushStars.CV.AntiCheat
             AnkleMidY = ankleMidY;
             HasAnkleMid = hasAnkleMid;
             KeyJointVisAvg = keyJointVisAvg;
+            UpperBodyVisAvg = upperBodyVisAvg;
             LeftArmVisible = leftArmVisible;
             RightArmVisible = rightArmVisible;
         }
@@ -130,12 +136,13 @@ namespace PushStars.CV.AntiCheat
             MidY(f, PoseLandmark.LeftWrist, PoseLandmark.RightWrist, aspect, out float wristY, out bool hasWrist);
             MidY(f, PoseLandmark.LeftAnkle, PoseLandmark.RightAnkle, aspect, out float ankleY, out bool hasAnkle);
 
-            float visSum =
+            float upperSum =
                 f.Visibility(PoseLandmark.LeftShoulder)  + f.Visibility(PoseLandmark.RightShoulder) +
                 f.Visibility(PoseLandmark.LeftElbow)     + f.Visibility(PoseLandmark.RightElbow) +
-                f.Visibility(PoseLandmark.LeftWrist)     + f.Visibility(PoseLandmark.RightWrist) +
-                f.Visibility(PoseLandmark.LeftHip)       + f.Visibility(PoseLandmark.RightHip);
-            float visAvg = visSum / 8f;
+                f.Visibility(PoseLandmark.LeftWrist)     + f.Visibility(PoseLandmark.RightWrist);
+            float upperAvg = upperSum / 6f;
+            float visAvg = (upperSum
+                + f.Visibility(PoseLandmark.LeftHip) + f.Visibility(PoseLandmark.RightHip)) / 8f;
 
             bool leftArm =
                 f.Visibility(PoseLandmark.LeftShoulder) >= CVConstants.MinJointVisibility &&
@@ -155,7 +162,7 @@ namespace PushStars.CV.AntiCheat
                 kneeY, hasKnee,
                 wristY, hasWrist,
                 ankleY, hasAnkle,
-                visAvg,
+                visAvg, upperAvg,
                 leftArm, rightArm);
         }
 

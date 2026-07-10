@@ -64,8 +64,9 @@
 | `BottomTickFreqHz` / `RejectBuzzFreqHz` | `1320f` / `220f` | нижний тик / buzz на veto |
 | `ViewFrontalMaxRatio` / `ViewSideMinRatio` | `0.7f` / `1.6f` | гистерезис R_med классификатора вида |
 | `ViewSwitchVotes` / `ViewSwitchWindow` | `20` / `30` | «20 из 30 голосующих» для смены вида |
-| `FrontalMaxBodyInclineKappa` | `0.35f` | F3: κ армирования (поднят с 0.28) |
-| `KappaDriftSoftDock` / `HardVeto` | `0.08f` / `0.15f` | пер-реп κ-drift от baseline |
+| `FrontalMaxBodyInclineKappa` | `0.60f` | F3: κ армирования (0.35 → 0.60: коленные отжимания теперь засчитываются) |
+| `AllFoursKappaHardVeto` / `SoftDock` | `0.60f` / `0.50f` | Пер-реп абсолютный κ: четвереньки → veto (заменил κ-drift) |
+| `SkeletonLegDrawVisibility` | `0.65f` | Скелет ног в превью рисуется строже (анти-мигание, чисто визуал) |
 | `SetupMinShoulderWidthImg` / `MaxImg` | `0.17f` / `0.38f` | F0: коридор дистанции ~1.3–2.3 м |
 | `SetupMaxPhonePitchDeg` | `30f` | F0: IMU-гейт наклона телефона |
 | `FrontalArmingHipAvailabilityMin` | `0.7f` | F0: hip fail-closed на армировании |

@@ -87,6 +87,19 @@ namespace PushStars.CV.AntiCheat
             }
         }
 
+        /// <summary>Mean of <see cref="RepSample.UpperBodyVisAvg"/> — the frontal trust metric
+        /// (legs/hips excluded; they legitimately vanish at the bottom of a frontal rep).</summary>
+        public float MeanUpperBodyVisibility
+        {
+            get
+            {
+                if (_count == 0) return 0f;
+                float sum = 0f;
+                for (int i = 0; i < _count; i++) sum += _items[i].UpperBodyVisAvg;
+                return sum / _count;
+            }
+        }
+
         public float LeftArmVisibilityFraction => CountFraction(true);
         public float RightArmVisibilityFraction => CountFraction(false);
 

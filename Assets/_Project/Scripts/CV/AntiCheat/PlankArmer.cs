@@ -345,10 +345,9 @@ namespace PushStars.CV.AntiCheat
             // Chronic hip absence is already blocked by F0's fail-closed gate; a single missing
             // frame just skips κ.
 
-            // Frontal knee condition: replaces the side branch's KneeBend consumption. Fires when
-            // the knees dropped ≥ 0.12·sw relative to the arming baseline for a full ribbon.
-            if (_kneeDrop != null && _kneeDrop.DisarmTriggered)
-            { reason = PlankRejectReason.KneesBent; return false; }
+            // (Knee-drop disarm REMOVED, policy change 2026-07-10: knee push-ups count as full
+            // reps. Dropping to the knees mid-set is now a legal transition; only the all-fours
+            // posture is rejected — by the κ ceiling above (F3) and per-rep by KneeCheatGate.)
 
             // ── F4: elbows extended (arming from the top) ──
             float elbow = PoseMath.ElbowAngle(f);

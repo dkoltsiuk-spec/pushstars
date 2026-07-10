@@ -204,10 +204,24 @@ namespace PushStars.CV
         public const float ViewHipVoteVisibility = 0.35f;
 
         // ── PlankArmer frontal branch F0–F6 ──
-        /// <summary>F3: |κ| = |(hipMid_y − shoulderMid_y)/sw| ceiling for arming. Raised 0.28 →
-        /// 0.35 (narrow shoulders ×1.2–1.3 and moderate tilt broke honest users).</summary>
-        public const float FrontalMaxBodyInclineKappa = 0.35f;
+        /// <summary>F3: κ = (hipMid_y − shoulderMid_y)/sw ceiling for arming. History: 0.28 → 0.35
+        /// (narrow shoulders/tilt) → 0.60 (2026-07-10 policy change: KNEE push-ups now COUNT as
+        /// full reps — a real knee push-up with the body extended from the knees reads κ ≈ 0.3–0.5
+        /// and must arm. The ceiling now only rejects ALL-FOURS (κ ≈ 0.7–1.2) and sitting/standing.</summary>
+        public const float FrontalMaxBodyInclineKappa = 0.60f;
         public const float FrontalMinBodyInclineKappa = -0.35f;
+
+        // ── All-fours cheat (per-rep, replaces the knee-drop veto after the policy change) ──
+        /// <summary>Mean κ over the rep's TOP frames above this → HardVeto: torso near-vertical,
+        /// knees directly under the body, no push-up effort ("качание на четвереньках").</summary>
+        public const float AllFoursKappaHardVeto = 0.60f;
+        /// <summary>Mean κ in [Soft, Hard) → SoftDock — steep but plausibly working.</summary>
+        public const float AllFoursKappaSoftDock = 0.50f;
+
+        /// <summary>Debug skeleton overlay: legs/feet (landmark index ≥ 25) draw only above this
+        /// visibility — frontal leg landmarks flicker around 0.5 and made the skeleton "jump".
+        /// Detection is unaffected (signals have their own gates); this is purely visual.</summary>
+        public const float SkeletonLegDrawVisibility = 0.65f;
         public const float FrontalWristBelowShoulderFrac = 0.4f;   // F1
         public const float FrontalElbowBelowShoulderFrac = 0.25f;  // F1 fallback via elbows
         public const float FrontalWristSpreadMinFrac = 0.4f;       // F2 (diamond grip un-banned)

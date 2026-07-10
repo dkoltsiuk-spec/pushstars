@@ -12,7 +12,12 @@ namespace PushStars.CV.AntiCheat
 
         public RepVote Validate(in RepWindow window)
         {
-            float meanVis = window.MeanKeyJointVisibility;
+            // Side view: full 8-joint set (hips carry signal there). Frontal/Ambiguous/Unknown:
+            // upper 6 joints only — frontal hips/legs legitimately flap at the bottom of a rep
+            // and must not fail an honest rep; the rep signal lives in the arms.
+            float meanVis = window.View == ViewKind.Side
+                ? window.MeanKeyJointVisibility
+                : window.MeanUpperBodyVisibility;
             if (meanVis < CVConstants.RepWindowMinVisibilityAvg)
                 return RepVote.HardVeto(RepRejectReason.LowVisibility);
             if (meanVis < CVConstants.RepWindowSoftDockVisibilityAvg)
