@@ -120,6 +120,7 @@ namespace PushStars.CV
                 $"θs/θm: {t.SmoothedElbowDeg:0.0} / {t.MedianElbowDeg:0.0}°   FORM: {f.Form:0}\n" +
                 $"TEMPO: {_session.TempoRpm:0} rpm   TRACK: {_session.Quality}   FPS: {(1f / Mathf.Max(Time.smoothDeltaTime, 0.0001f)):0}\n" +
                 $"VIEW:  {_session.View.View} (R={_session.View.RMedian:0.00})   κ={KappaText()}   Δknee={KneeDropText()}\n" +
+                $"SET:   {BuildSetLine()}\n" +
                 $"ARMER: {BuildArmerLine()}\n" +
                 $"AC:    {BuildAntiCheatLine()}\n" +
                 $"VOTE:  {BuildLastVoteLine()}\n" +
@@ -244,6 +245,19 @@ namespace PushStars.CV
         {
             var d = _session.KneeDrop;
             return float.IsNaN(d.Delta) ? "--" : $"{d.Delta:+0.00;-0.00}";
+        }
+
+        private string BuildSetLine()
+        {
+            var st = _session.SetTracker;
+            return st.State switch
+            {
+                WorkoutSetState.Idle        => "Idle (встань в планку)",
+                WorkoutSetState.Active      => $"Active  #{st.SetIndex}  reps={st.RepsInSet}",
+                WorkoutSetState.Resting     => $"ОТДЫХ  #{st.SetIndex}  reps={st.RepsInSet}  {st.RestingForSec:0.0}s/{CVConstants.RestToSetCompleteSec:0}s",
+                WorkoutSetState.SetComplete => $"ПОДХОД ЗАВЕРШЁН  #{st.SetIndex}  reps={st.RepsInSet}",
+                _ => st.State.ToString(),
+            };
         }
 
         private string BuildArmerLine()

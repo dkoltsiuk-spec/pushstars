@@ -39,6 +39,7 @@ namespace PushStars.CV
         public KneeDropDetector  KneeDrop    { get; } = new KneeDropDetector();
         public FootEventMonitor  FootMonitor { get; } = new FootEventMonitor();
         public AmplitudeTracker  Tracker     { get; } = new AmplitudeTracker();
+        public WorkoutSetTracker SetTracker  { get; } = new WorkoutSetTracker();
         public PlankArmer        Armer       { get; private set; }
         public AntiCheatAuditor  Auditor     { get; private set; }
 
@@ -124,6 +125,7 @@ namespace PushStars.CV
             KneeDrop.Reset();
             FootMonitor.Reset();
             Tracker.Reset();
+            SetTracker.Reset();
             Armer?.Reset();
             Auditor?.Clear();
         }
@@ -164,11 +166,18 @@ namespace PushStars.CV
             bool isArmed = Armer != null && Armer.IsArmed;
             bool anchorOk = WristAnchor.LastVerdict == AnchorVerdict.Anchored;
 
+            // Immediate counting suspension on a confident wrist-off-floor verdict (owner's
+            // request: "both wrists lifted → counting stops"). The armer's 2.5s Cooling grace
+            // exists for skeleton GLITCHES; a hard Airborne verdict is not a glitch — without this,
+            // an air-rep during Cooling can still reach the auditor (defense-in-depth caught it via
+            // SupportGeometry on device, but suspended is cleaner). ~0.4s latency (12-frame window).
+            bool countingLive = isArmed && WristAnchor.LastVerdict != AnchorVerdict.Airborne;
+
             // ── 4. Depth tracker (owns the top/bottom latches) ──
-            Tracker.Tick(frame, trackingOk, isArmed, now, hasElbow, rawElbow, anchorOk);
+            Tracker.Tick(frame, trackingOk, countingLive, now, hasElbow, rawElbow, anchorOk);
 
             // ── 5. Audit window ──
-            if (isArmed && trackingOk)
+            if (countingLive && trackingOk)
             {
                 float elbowL = PoseMath.SideElbowAngle(frame, left: true);
                 float elbowR = PoseMath.SideElbowAngle(frame, left: false);
@@ -177,7 +186,10 @@ namespace PushStars.CV
             }
 
             // ── 6. Counter (consumes the tracker's latch pulses; fires the audit on rep arcs) ──
-            Counter?.Process(frame, trackingOk, isArmed);
+            Counter?.Process(frame, trackingOk, countingLive);
+
+            // ── 7. Set / rest semantics for the UI ──
+            SetTracker.Tick(isArmed, Counter != null ? Counter.Reps : 0, now);
 
             // Form/HUD can still update on any non-lost frame so the user sees live feedback.
             if (Quality != TrackingQuality.Lost)

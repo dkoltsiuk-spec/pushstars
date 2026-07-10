@@ -269,6 +269,11 @@ namespace PushStars.CV
         public const float HipDropRatioMin = 0.15f;  // below → soft "worm"/knee hint
         public const float HipDropRatioMax = 1.1f;
 
+        // ── Workout set / rest semantics (WorkoutSetTracker) ──
+        /// <summary>Continuous rest (disarmed after being active) longer than this closes the set —
+        /// the UI switches from "ОТДЫХ" to "подход завершён"; re-arming starts the next set.</summary>
+        public const float RestToSetCompleteSec = 15f;
+
         // ── KneeBendDetector view gating ──
         /// <summary>KneeBend is a HARD signal only when View==Side AND the leg is in the image
         /// plane: |hip→ankle| / sw ≥ this. Frontally the knee angle is uninformative (sagittal
