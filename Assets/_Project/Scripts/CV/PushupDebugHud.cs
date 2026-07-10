@@ -176,16 +176,18 @@ namespace PushStars.CV
                 return "СЧИТАЮ";
             }
 
-            if (_session.SetTracker.State == WorkoutSetState.Resting)
-            { color = new Color(0.5f, 0.8f, 1f); return $"ОТДЫХ  ({_session.SetTracker.RestingForSec:0}s)"; }
-            if (_session.SetTracker.State == WorkoutSetState.SetComplete)
-            { color = new Color(0.5f, 0.8f, 1f); return "ПОДХОД ЗАВЕРШЁН — встань в планку для следующего"; }
-
+            // Arming beats the rest-state display: the user is actively getting back into the
+            // plank — show the hold progress, not "ОТДЫХ".
             if (armer.State == PlankArmerState.Arming)
             {
                 color = new Color(0.8f, 1f, 0.6f);
                 return $"ДЕРЖИ ПЛАНКУ…  {armer.ArmingProgress01 * 100f:0}%";
             }
+
+            if (_session.SetTracker.State == WorkoutSetState.Resting)
+            { color = new Color(0.5f, 0.8f, 1f); return $"ОТДЫХ  ({_session.SetTracker.RestingForSec:0}s)"; }
+            if (_session.SetTracker.State == WorkoutSetState.SetComplete)
+            { color = new Color(0.5f, 0.8f, 1f); return "ПОДХОД ЗАВЕРШЁН — встань в планку для следующего"; }
 
             // Disarmed — say WHY in plain words.
             return armer.LastRejectReason switch

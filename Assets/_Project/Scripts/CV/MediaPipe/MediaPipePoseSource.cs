@@ -46,6 +46,13 @@ namespace PushStars.CV
         [SerializeField] private bool _flipHorizontally = false;
         [SerializeField] private bool _flipVertically = true;
 
+        [Tooltip("Rotate landmarks into UPRIGHT screen space (0/90/180/270, CW). The webcam frame " +
+                 "is sensor-native landscape and the display rotates it 90° — landmarks must get " +
+                 "the same rotation or every 'below/above' anti-cheat check compares the wrong " +
+                 "axis (found on device: plank read as WristsAirborne, κ≈0 instead of ~0.15). " +
+                 "Verified iPhone front camera: 90.")]
+        [SerializeField] private int _landmarkRotationDeg = 90;
+
         [Header("Detection confidence")]
         [SerializeField, Range(0f, 1f)] private float _minPoseDetectionConfidence = 0.5f;
         [SerializeField, Range(0f, 1f)] private float _minPosePresenceConfidence = 0.5f;
@@ -73,6 +80,11 @@ namespace PushStars.CV
         /// A skeleton overlay must apply the same flips to align landmarks with the raw camera texture.</summary>
         public bool SourceFlipHorizontally => _flipHorizontally;
         public bool SourceFlipVertically   => _flipVertically;
+
+        /// <summary>The upright rotation applied to landmarks before they leave this source. The
+        /// skeleton overlay must INVERT this to get back to raw texture coordinates (it draws
+        /// through the raw-texture display matrix).</summary>
+        public int LandmarkRotationDeg => _landmarkRotationDeg;
 
         private WebCamTexture     _webCam;
         private PoseLandmarker    _poseLandmarker;
@@ -248,6 +260,8 @@ namespace PushStars.CV
             Landmark[] arr = null;
             Landmark[] world = null;
 
+            int rot = ((_landmarkRotationDeg % 360) + 360) % 360;
+
             var poses = result.poseLandmarks;
             if (poses != null && poses.Count > 0)
             {
@@ -259,7 +273,17 @@ namespace PushStars.CV
                     {
                         var lm = lms[i];
                         float vis = lm.visibility ?? lm.presence ?? 1f;
-                        arr[i] = new Landmark(lm.x, lm.y, lm.z, vis);
+                        // Rotate into upright screen space: after this, +y = down toward the floor
+                        // (for the propped-up phone) and every downstream signed check is honest.
+                        float x, y;
+                        switch (rot)
+                        {
+                            case 90:  x = 1f - lm.y; y = lm.x;      break; // CW
+                            case 180: x = 1f - lm.x; y = 1f - lm.y; break;
+                            case 270: x = lm.y;      y = 1f - lm.x; break;
+                            default:  x = lm.x;      y = lm.y;      break;
+                        }
+                        arr[i] = new Landmark(x, y, lm.z, vis);
                     }
                 }
             }
@@ -281,7 +305,16 @@ namespace PushStars.CV
                         // Reuse visibility from the image landmark (set above on arr[i]) — world
                         // landmarks share the same per-keypoint presence/visibility scores.
                         float vis = arr[i].Visibility;
-                        world[i] = new Landmark(wlm.x, wlm.y, wlm.z, vis);
+                        // Same upright rotation for the world x/y (hip-centered — no +1 offset).
+                        float wx, wy;
+                        switch (rot)
+                        {
+                            case 90:  wx = -wlm.y; wy = wlm.x;  break;
+                            case 180: wx = -wlm.x; wy = -wlm.y; break;
+                            case 270: wx = wlm.y;  wy = -wlm.x; break;
+                            default:  wx = wlm.x;  wy = wlm.y;  break;
+                        }
+                        world[i] = new Landmark(wx, wy, wlm.z, vis);
                     }
                 }
             }
@@ -318,12 +351,17 @@ namespace PushStars.CV
             }
 
             // World landmarks are optional — `world` may be null and consumers must guard via
-            // PoseFrame.HasWorldLandmarks. Aspect = the camera image the landmarks were computed
-            // on (sensor-native orientation; display rotation doesn't change it) — the frontal
-            // anti-cheat metrics need it to convert to the square space.
-            float aspect = _webCam != null && _webCam.height > 16
-                ? (float)_webCam.width / _webCam.height
-                : 1f;
+            // PoseFrame.HasWorldLandmarks. Aspect follows the UPRIGHT (rotated) landmark space:
+            // for 90/270 the effective image is height×width.
+            float aspect = 1f;
+            if (_webCam != null && _webCam.height > 16)
+            {
+                int r = ((_landmarkRotationDeg % 360) + 360) % 360;
+                bool quarter = r == 90 || r == 270;
+                aspect = quarter
+                    ? (float)_webCam.height / _webCam.width
+                    : (float)_webCam.width / _webCam.height;
+            }
             var frame = new PoseFrame(arr, world, t, aspect);
             OnFrame?.Invoke(frame);
             SetQuality(PoseQuality.Classify(frame));

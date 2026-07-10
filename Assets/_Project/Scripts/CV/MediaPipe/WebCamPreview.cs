@@ -132,10 +132,23 @@ namespace PushStars.CV
             float lineW = Mathf.Max(3f, sw * 0.006f);
             float dotR  = Mathf.Max(4f, sw * 0.009f);
 
+            // Landmarks arrive UPRIGHT from MediaPipePoseSource (rotated into screen space so the
+            // anti-cheat's below/above checks are honest). This overlay renders through the RAW
+            // texture matrix M, so invert the source rotation first to get texture coordinates.
+            int srcRot = _source != null ? ((_source.LandmarkRotationDeg % 360) + 360) % 360 : 0;
+
             Vector2 ToScreen(int idx)
             {
                 var lm = _frame.Get((PoseLandmark)idx);
-                float nx = lm.X, ny = lm.Y;
+                float ux = lm.X, uy = lm.Y;
+                float nx, ny;
+                switch (srcRot) // inverse of the source's upright mapping
+                {
+                    case 90:  nx = uy;      ny = 1f - ux; break; // upright was (1−y, x)
+                    case 180: nx = 1f - ux; ny = 1f - uy; break;
+                    case 270: nx = 1f - uy; ny = ux;      break; // upright was (y, 1−x)
+                    default:  nx = ux;      ny = uy;      break;
+                }
                 if (_skelH) nx = 1f - nx;
                 if (_skelV) ny = 1f - ny;
                 var p = M.MultiplyPoint3x4(new Vector3(nx * texW, ny * texH, 0f));
