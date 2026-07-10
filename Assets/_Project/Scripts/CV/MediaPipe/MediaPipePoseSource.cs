@@ -97,6 +97,10 @@ namespace PushStars.CV
         {
             if (IsRunning) return;
             IsRunning = true;
+            // The user is mid-push-up and cannot touch the screen — never sleep while tracking.
+            // Also covers the testCV build, which boots straight into this scene without
+            // AppBootstrap (where the app-wide NeverSleep is set).
+            Screen.sleepTimeout = SleepTimeout.NeverSleep;
             _loop = StartCoroutine(RunAsync());
         }
 

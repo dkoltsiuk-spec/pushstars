@@ -14,6 +14,13 @@ namespace PushStars.App
     {
         [SerializeField] private string _mainSceneName = "Main";
 
+        private void Awake()
+        {
+            // Workout app: the user's hands are on the floor — they can't touch the screen to keep
+            // it awake. Never let the display sleep while the app runs.
+            Screen.sleepTimeout = SleepTimeout.NeverSleep;
+        }
+
         private async void Start()
         {
             await InitServicesAsync();
