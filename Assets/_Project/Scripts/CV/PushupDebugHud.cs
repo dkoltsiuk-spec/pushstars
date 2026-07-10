@@ -130,7 +130,79 @@ namespace PushStars.CV
             float infoTop = top + repsFont * 1.5f;
             DrawWithShadow(new Rect(22, infoTop, Screen.width - 40, sh), info, _infoStyle, Color.white);
 
+            DrawStatusBanner();
             DrawAmplitudeGauge();
+        }
+
+        // ── Big human-readable status: WHY counting is (not) running ────────────────────────────
+        // The on-device lesson: the user did reps, the gauge moved, nothing counted — and the only
+        // clue was a tiny "reason=TrackingLost" line. Until the phase-14 UI exists, the debug HUD
+        // carries a loud banner.
+
+        private GUIStyle _bannerStyle;
+
+        private void DrawStatusBanner()
+        {
+            string text = BuildBannerText(out Color color);
+            if (string.IsNullOrEmpty(text)) return;
+
+            _bannerStyle ??= new GUIStyle(GUI.skin.label)
+            { fontStyle = FontStyle.Bold, alignment = TextAnchor.MiddleCenter, wordWrap = true };
+            _bannerStyle.fontSize = Mathf.RoundToInt(Mathf.Clamp(Screen.height * 0.035f, 24f, 64f));
+
+            float h = Screen.height * 0.14f;
+            var rect = new Rect(Screen.width * 0.05f, Screen.height * 0.72f, Screen.width * 0.9f, h);
+
+            GUI.color = new Color(0f, 0f, 0f, 0.55f);
+            GUI.DrawTexture(rect, Texture2D.whiteTexture);
+            GUI.color = Color.white;
+            DrawWithShadow(rect, text, _bannerStyle, color);
+        }
+
+        private string BuildBannerText(out Color color)
+        {
+            color = new Color(1f, 0.75f, 0.2f); // default: orange "do something" tone
+            var armer = _session.Armer;
+            if (armer == null) { color = Color.red; return "ИНИЦИАЛИЗАЦИЯ…"; }
+
+            // Armed and counting — the quietest state.
+            if (armer.IsArmed)
+            {
+                if (_session.WristAnchor.LastVerdict == AnchorVerdict.Airborne)
+                { color = new Color(1f, 0.4f, 0.3f); return "СЧЁТ НА ПАУЗЕ — ладони на пол"; }
+                if (_session.Tracker.BottomAltHintActive)
+                { return "РАЗВЕДИ ЛОКТИ ШИРЕ"; }
+                color = new Color(0.4f, 1f, 0.5f);
+                return "СЧИТАЮ";
+            }
+
+            if (_session.SetTracker.State == WorkoutSetState.Resting)
+            { color = new Color(0.5f, 0.8f, 1f); return $"ОТДЫХ  ({_session.SetTracker.RestingForSec:0}s)"; }
+            if (_session.SetTracker.State == WorkoutSetState.SetComplete)
+            { color = new Color(0.5f, 0.8f, 1f); return "ПОДХОД ЗАВЕРШЁН — встань в планку для следующего"; }
+
+            if (armer.State == PlankArmerState.Arming)
+            {
+                color = new Color(0.8f, 1f, 0.6f);
+                return $"ДЕРЖИ ПЛАНКУ…  {armer.ArmingProgress01 * 100f:0}%";
+            }
+
+            // Disarmed — say WHY in plain words.
+            return armer.LastRejectReason switch
+            {
+                PlankRejectReason.TrackingLost        => "НЕ ВИЖУ ТЕБЯ — отойди на 1.5–2 метра",
+                PlankRejectReason.TooCloseOrFar       => "ВСТАНЬ В 1.5–2 МЕТРАХ ОТ ТЕЛЕФОНА",
+                PlankRejectReason.BadFraming          => "ПОМЕСТИСЬ В КАДР — голова и обе ладони видны",
+                PlankRejectReason.PhoneTilted         => "ПОСТАВЬ ТЕЛЕФОН РОВНЕЕ",
+                PlankRejectReason.HipNotVisible       => "НЕ ВИДНО КОРПУС — поправь кадр",
+                PlankRejectReason.BodyIncline         => "ПРИМИ УПОР ЛЁЖА",
+                PlankRejectReason.LowerBodyNotVisible => "ОТОЙДИ — НЕ ВИДНО НОГ",
+                PlankRejectReason.BodySagging         => "ВЫПРЯМИ ТЕЛО",
+                PlankRejectReason.KneesBent           => "ВСТАНЬ В ПЛАНКУ",
+                PlankRejectReason.NotAtTop            => "ВЫПРЯМИ РУКИ",
+                PlankRejectReason.WristsAirborne      => "ПОСТАВЬ ЛАДОНИ НА ПОЛ",
+                _                                     => "ВСТАНЬ В ПЛАНКУ",
+            };
         }
 
         // ── Amplitude gauge (right edge, per the frontal-addendum spec) ─────────────────────────
