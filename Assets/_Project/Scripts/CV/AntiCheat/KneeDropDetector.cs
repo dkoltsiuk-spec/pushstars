@@ -39,6 +39,10 @@ namespace PushStars.CV.AntiCheat
         /// <summary>Current Δ = kneeRel_now − kneeRel_baseline. NaN while unavailable.</summary>
         public float Delta { get; private set; } = float.NaN;
 
+        /// <summary>Latest raw kneeRel fed into Tick (NaN when knees weren't computable this frame).
+        /// HUD/tuning readout for the vertical-thigh all-fours thresholds (KneeRelAllFours*).</summary>
+        public float LastKneeRel { get; private set; } = float.NaN;
+
         /// <summary>Per-frame disarm signal: Δ ≥ KneeDropDeltaDisarm held for the full ribbon.
         /// PlankArmer's frontal branch consumes this as its "knees dropped" condition.</summary>
         public bool DisarmTriggered { get; private set; }
@@ -77,6 +81,7 @@ namespace PushStars.CV.AntiCheat
         /// baseline-accumulation and delta-tracking modes.</summary>
         public void Tick(float kneeRel, bool elbowExtended, bool isArmed)
         {
+            LastKneeRel = kneeRel;
             if (!float.IsNaN(kneeRel)) KneeEverVisible = true;
 
             if (!isArmed)

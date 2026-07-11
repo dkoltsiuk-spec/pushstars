@@ -376,9 +376,13 @@ namespace PushStars.CV.AntiCheat
             // Chronic hip absence is already blocked by F0's fail-closed gate; a single missing
             // frame just skips κ.
 
-            // (Knee-drop disarm REMOVED, policy change 2026-07-10: knee push-ups count as full
-            // reps. Dropping to the knees mid-set is now a legal transition; only the all-fours
-            // posture is rejected — by the κ ceiling above (F3) and per-rep by KneeCheatGate.)
+            // ── F3b: vertical-thigh all-fours check (on-device round 2: κ alone can't separate
+            // all-fours from an honest close-camera plank; the thigh's image length can — knee
+            // directly under the hip projects LONG, kneeRel ≥ ~0.5; a legal extended knee push-up
+            // forshortens to ≈ 0.15–0.3). Knees invisible → skipped; the per-rep gate's κ fallback
+            // and the accepted-risk telemetry cover that hole.
+            if (TryKneeRel(f, out float kneeRel) && kneeRel >= CVConstants.KneeRelAllFoursHard)
+            { reason = PlankRejectReason.KneesBent; return false; }
 
             // ── F4: elbows extended (arming from the top) ──
             float elbow = PoseMath.ElbowAngle(f);
@@ -414,6 +418,35 @@ namespace PushStars.CV.AntiCheat
                 ? 0.5f * (f.Get(PoseLandmark.LeftHip).Y + f.Get(PoseLandmark.RightHip).Y)
                 : f.Get(lh ? PoseLandmark.LeftHip : PoseLandmark.RightHip).Y;
             kappa = (hipMidY - shoulderMidY) / sw;
+            return true;
+        }
+
+        /// <summary>kneeRel = (kneeMid_y − hipMid_y)/sw — the vertical-thigh all-fours signature.
+        /// False when knees/hips/shoulders aren't visible enough this frame.</summary>
+        private static bool TryKneeRel(in PoseFrame f, out float kneeRel)
+        {
+            kneeRel = 0f;
+            float aspect = f.Aspect;
+            bool ls = f.Visibility(PoseLandmark.LeftShoulder)  >= CVConstants.MinJointVisibility;
+            bool rs = f.Visibility(PoseLandmark.RightShoulder) >= CVConstants.MinJointVisibility;
+            bool lh = f.Visibility(PoseLandmark.LeftHip)  >= CVConstants.MinJointVisibility;
+            bool rh = f.Visibility(PoseLandmark.RightHip) >= CVConstants.MinJointVisibility;
+            bool lk = f.Visibility(PoseLandmark.LeftKnee)  >= CVConstants.MinJointVisibility;
+            bool rk = f.Visibility(PoseLandmark.RightKnee) >= CVConstants.MinJointVisibility;
+            if (!ls || !rs || (!lh && !rh) || (!lk && !rk)) return false;
+
+            Vector2 lsp = PoseMath.ToSquare(f.Get(PoseLandmark.LeftShoulder).Pos2D, aspect);
+            Vector2 rsp = PoseMath.ToSquare(f.Get(PoseLandmark.RightShoulder).Pos2D, aspect);
+            float sw = Vector2.Distance(lsp, rsp);
+            if (sw < CVConstants.KappaReliableMinSw) return false;
+
+            float hipMidY = (lh && rh)
+                ? 0.5f * (f.Get(PoseLandmark.LeftHip).Y + f.Get(PoseLandmark.RightHip).Y)
+                : f.Get(lh ? PoseLandmark.LeftHip : PoseLandmark.RightHip).Y;
+            float kneeMidY = (lk && rk)
+                ? 0.5f * (f.Get(PoseLandmark.LeftKnee).Y + f.Get(PoseLandmark.RightKnee).Y)
+                : f.Get(lk ? PoseLandmark.LeftKnee : PoseLandmark.RightKnee).Y;
+            kneeRel = (kneeMidY - hipMidY) / sw;
             return true;
         }
 

@@ -99,15 +99,16 @@ namespace PushStars.CV
                 SetLerp(PoseLandmark.RightElbow,    0.69f, 0.66f, 0.76f, 0.64f, s, visBase * 0.92f);
                 SetLerp(PoseLandmark.LeftWrist,     0.25f, 0.77f, 0.25f, 0.77f, s, visBase * 0.90f);
                 SetLerp(PoseLandmark.RightWrist,    0.75f, 0.77f, 0.75f, 0.77f, s, visBase * 0.90f);
-                // Hips static and LOW in the image — the all-fours signature.
+                // Hips static and LOW in the image, knees DIRECTLY UNDER them — the vertical-thigh
+                // signature: kneeRel = (0.88 − 0.72)/0.28 ≈ 0.57 ≥ KneeRelAllFoursHard (0.50).
                 SetLerp(PoseLandmark.LeftHip,  0.43f, 0.72f, 0.43f, 0.72f, 1f, hipVis);
                 SetLerp(PoseLandmark.RightHip, 0.57f, 0.72f, 0.57f, 0.72f, 1f, hipVis);
-                SetLerp(PoseLandmark.LeftKnee,  0.44f, 0.80f, 0.44f, 0.80f, 1f, kneeVis);
-                SetLerp(PoseLandmark.RightKnee, 0.56f, 0.80f, 0.56f, 0.80f, 1f, kneeVis);
-                SetLerp(PoseLandmark.LeftAnkle,     0.46f, 0.85f, 0.46f, 0.85f, 1f, ankleVis);
-                SetLerp(PoseLandmark.RightAnkle,    0.54f, 0.85f, 0.54f, 0.85f, 1f, ankleVis);
-                SetLerp(PoseLandmark.LeftFootIndex, 0.465f, 0.86f, 0.465f, 0.86f, 1f, ankleVis);
-                SetLerp(PoseLandmark.RightFootIndex,0.535f, 0.86f, 0.535f, 0.86f, 1f, ankleVis);
+                SetLerp(PoseLandmark.LeftKnee,  0.44f, 0.88f, 0.44f, 0.88f, 1f, kneeVis);
+                SetLerp(PoseLandmark.RightKnee, 0.56f, 0.88f, 0.56f, 0.88f, 1f, kneeVis);
+                SetLerp(PoseLandmark.LeftAnkle,     0.46f, 0.90f, 0.46f, 0.90f, 1f, ankleVis);
+                SetLerp(PoseLandmark.RightAnkle,    0.54f, 0.90f, 0.54f, 0.90f, 1f, ankleVis);
+                SetLerp(PoseLandmark.LeftFootIndex, 0.465f, 0.91f, 0.465f, 0.91f, 1f, ankleVis);
+                SetLerp(PoseLandmark.RightFootIndex,0.535f, 0.91f, 0.535f, 0.91f, 1f, ankleVis);
             }
 
             ApplyJitter();

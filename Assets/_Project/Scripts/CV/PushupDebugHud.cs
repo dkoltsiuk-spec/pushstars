@@ -200,7 +200,7 @@ namespace PushStars.CV
                 PlankRejectReason.BodyIncline         => "ПРИМИ УПОР ЛЁЖА",
                 PlankRejectReason.LowerBodyNotVisible => "ОТОЙДИ — НЕ ВИДНО НОГ",
                 PlankRejectReason.BodySagging         => "ВЫПРЯМИ ТЕЛО",
-                PlankRejectReason.KneesBent           => "ВСТАНЬ В ПЛАНКУ",
+                PlankRejectReason.KneesBent           => "ВЫТЯНИ ТЕЛО — колени не под собой",
                 PlankRejectReason.NotAtTop            => "ВЫПРЯМИ РУКИ",
                 PlankRejectReason.WristsAirborne      => "ПОСТАВЬ ЛАДОНИ НА ПОЛ",
                 _                                     => "ВСТАНЬ В ПЛАНКУ",
@@ -318,7 +318,9 @@ namespace PushStars.CV
         private string KneeDropText()
         {
             var d = _session.KneeDrop;
-            return float.IsNaN(d.Delta) ? "--" : $"{d.Delta:+0.00;-0.00}";
+            string delta = float.IsNaN(d.Delta) ? "--" : $"{d.Delta:+0.00;-0.00}";
+            string rel = float.IsNaN(d.LastKneeRel) ? "--" : $"{d.LastKneeRel:0.00}";
+            return $"{delta} rel={rel}"; // rel ≥ 0.50 = четвереньки (KneeRelAllFoursHard)
         }
 
         private string BuildSetLine()

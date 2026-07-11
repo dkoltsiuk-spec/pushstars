@@ -30,24 +30,49 @@ namespace PushStars.CV.AntiCheat
             // all-fours reads as a broken body line in the armer instead.
             if (window.View == ViewKind.Side) return RepVote.Pass;
 
-            float sum = 0f;
-            int n = 0;
+            // ── channel 1 (primary): vertical-thigh signature kneeRel over TOP frames ──
+            // On-device round 2 proved κ alone can't separate all-fours (κ≈0.6) from an honest
+            // close-camera plank (κ≈0.52); the thigh's image length can — see CVConstants.
+            float kneeRelSum = 0f;
+            int kneeRelN = 0;
+            float kappaSum = 0f;
+            int kappaN = 0;
             for (int i = 0; i < window.Count; i++)
             {
                 var s = window[i];
-                if (s.Phase != PushupPhase.Top || float.IsNaN(s.Kappa)) continue;
-                sum += s.Kappa;
-                n++;
+                if (s.Phase != PushupPhase.Top) continue;
+                if (s.HasKneeMid && s.HasHipMid && s.ShoulderWidthSq > 1e-3f)
+                {
+                    kneeRelSum += (s.KneeMidY - s.HipMidSq.y) / s.ShoulderWidthSq;
+                    kneeRelN++;
+                }
+                if (!float.IsNaN(s.Kappa))
+                {
+                    kappaSum += s.Kappa;
+                    kappaN++;
+                }
             }
-            if (n < 2) return RepVote.Pass; // hips invisible — fail open, FullRom carries the audit
 
-            float kappaMean = sum / n;
-            if (kappaMean > CVConstants.AllFoursKappaHardVeto)
-                return RepVote.HardVeto(RepRejectReason.KneeCheat);
-            if (kappaMean > CVConstants.AllFoursKappaSoftDock)
-                return RepVote.Dock(0.25f, RepRejectReason.KneeCheat);
+            if (kneeRelN >= 2)
+            {
+                float kneeRelMean = kneeRelSum / kneeRelN;
+                if (kneeRelMean >= CVConstants.KneeRelAllFoursHard)
+                    return RepVote.HardVeto(RepRejectReason.KneeCheat);
+                if (kneeRelMean >= CVConstants.KneeRelAllFoursSoft)
+                    return RepVote.Dock(0.25f, RepRejectReason.KneeCheat);
+            }
 
-            return RepVote.Pass;
+            // ── channel 2 (fallback, knees invisible): absolute κ ──
+            if (kappaN >= 2)
+            {
+                float kappaMean = kappaSum / kappaN;
+                if (kappaMean > CVConstants.AllFoursKappaHardVeto)
+                    return RepVote.HardVeto(RepRejectReason.KneeCheat);
+                if (kappaMean > CVConstants.AllFoursKappaSoftDock)
+                    return RepVote.Dock(0.25f, RepRejectReason.KneeCheat);
+            }
+
+            return RepVote.Pass; // nothing computable — fail open, FullRom carries the audit
         }
     }
 }

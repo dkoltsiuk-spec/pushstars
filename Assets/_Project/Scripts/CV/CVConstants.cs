@@ -227,6 +227,19 @@ namespace PushStars.CV
         /// <summary>Mean κ in [Soft, Hard) → SoftDock — steep but plausibly working.</summary>
         public const float AllFoursKappaSoftDock = 0.60f;
 
+        /// <summary>THE all-fours discriminator (on-device round 2: κ alone doesn't separate —
+        /// his all-fours measured κ ≈ 0.6 under the 0.80 veto and 9 cheat reps counted).
+        /// kneeRel = (kneeMid_y − hipMid_y)/sw measures the THIGH's image length: on all fours the
+        /// thigh is VERTICAL (knee directly under the hip, perpendicular to the camera → no
+        /// foreshortening → projects LONG, kneeRel ≈ 0.5–0.9). In a legal extended knee push-up
+        /// the thigh recedes along the floor → foreshortened → kneeRel ≈ 0.15–0.3 (plank ≈ 0.2).
+        /// Mean over rep TOP frames ≥ Hard → HardVeto; [Soft, Hard) → SoftDock. Same thresholds
+        /// gate arming (frontal F3b) and the mid-set disarm ribbon.</summary>
+        public const float KneeRelAllFoursHard = 0.50f;
+        public const float KneeRelAllFoursSoft = 0.38f;
+        /// <summary>Release threshold for the per-frame disarm ribbon (hysteresis below Hard).</summary>
+        public const float KneeRelAllFoursRelease = 0.42f;
+
         /// <summary>Debug skeleton overlay: legs/feet (landmark index ≥ 25) draw only above this
         /// visibility — frontal leg landmarks flicker around 0.5 and made the skeleton "jump".
         /// Detection is unaffected (signals have their own gates); this is purely visual.</summary>
