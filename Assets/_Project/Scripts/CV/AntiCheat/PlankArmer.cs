@@ -225,6 +225,17 @@ namespace PushStars.CV.AntiCheat
         // ── Side branch: phase-08.1 Stage 1 predicate, unchanged except the knee in-plane gate ──
         private bool SidePlank(in PoseFrame f, out PlankRejectReason reason)
         {
+            // 0) Verticality sanity (on-device find): a person STANDING upright with arms down
+            // passes every original side check (body line ≈ 180°, knees straight, elbows extended,
+            // wrists still) — the armer briefly armed while the user was walking into position,
+            // polluting the κ baseline and starting a phantom set. When the shoulders are wide
+            // enough for κ to be reliable (frontal-ish facing), a standing body reads κ ≈ 1.2+ →
+            // reject. True side-view planks have tiny sw → the check is skipped there.
+            if (TryReliableKappa(f, out float kappaSanity)
+                && (kappaSanity > CVConstants.FrontalMaxBodyInclineKappa
+                    || kappaSanity < CVConstants.FrontalMinBodyInclineKappa))
+            { reason = PlankRejectReason.BodyIncline; return false; }
+
             // 1) Lower body at least partially visible.
             bool lowerOk =
                 f.Visibility(PoseLandmark.LeftAnkle)       >= CVConstants.PlankLowerBodyVisibility ||
@@ -358,6 +369,31 @@ namespace PushStars.CV.AntiCheat
             { reason = PlankRejectReason.WristsAirborne; return false; }
 
             reason = PlankRejectReason.Ok;
+            return true;
+        }
+
+        /// <summary>κ = (hipMid_y − shoulderMid_y)/sw when the shoulders are wide enough in the
+        /// image for the ratio to be meaningful (sw ≥ KappaReliableMinSw). False otherwise.</summary>
+        private static bool TryReliableKappa(in PoseFrame f, out float kappa)
+        {
+            kappa = 0f;
+            float aspect = f.Aspect;
+            bool ls = f.Visibility(PoseLandmark.LeftShoulder)  >= CVConstants.MinJointVisibility;
+            bool rs = f.Visibility(PoseLandmark.RightShoulder) >= CVConstants.MinJointVisibility;
+            bool lh = f.Visibility(PoseLandmark.LeftHip)  >= CVConstants.MinJointVisibility;
+            bool rh = f.Visibility(PoseLandmark.RightHip) >= CVConstants.MinJointVisibility;
+            if (!ls || !rs || (!lh && !rh)) return false;
+
+            Vector2 lsp = PoseMath.ToSquare(f.Get(PoseLandmark.LeftShoulder).Pos2D, aspect);
+            Vector2 rsp = PoseMath.ToSquare(f.Get(PoseLandmark.RightShoulder).Pos2D, aspect);
+            float sw = Vector2.Distance(lsp, rsp);
+            if (sw < CVConstants.KappaReliableMinSw) return false;
+
+            float shoulderMidY = 0.5f * (lsp.y + rsp.y);
+            float hipMidY = (lh && rh)
+                ? 0.5f * (f.Get(PoseLandmark.LeftHip).Y + f.Get(PoseLandmark.RightHip).Y)
+                : f.Get(lh ? PoseLandmark.LeftHip : PoseLandmark.RightHip).Y;
+            kappa = (hipMidY - shoulderMidY) / sw;
             return true;
         }
 

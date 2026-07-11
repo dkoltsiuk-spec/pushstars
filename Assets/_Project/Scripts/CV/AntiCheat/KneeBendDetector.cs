@@ -21,6 +21,12 @@ namespace PushStars.CV.AntiCheat
     {
         private int _bentStreak;
         private int _straightStreak;
+        private int _noDataStreak;
+
+        /// <summary>Consecutive frames without a computable knee angle after which the smoothed
+        /// classification decays to Unknown — a stale "Bent" from before the user got into
+        /// position must not linger for minutes (~1s @ 30fps).</summary>
+        private const int StaleAfterFrames = 30;
 
         /// <summary>Smoothed classification after the ribbon — Unknown until the first stable run.</summary>
         public KneeClassification Classification { get; private set; } = KneeClassification.Unknown;
@@ -33,6 +39,7 @@ namespace PushStars.CV.AntiCheat
         {
             _bentStreak = 0;
             _straightStreak = 0;
+            _noDataStreak = 0;
             Classification = KneeClassification.Unknown;
             LastMinKneeAngleDeg = float.NaN;
         }
@@ -47,11 +54,17 @@ namespace PushStars.CV.AntiCheat
             if (float.IsNaN(angle))
             {
                 // No knee visible this frame — break any in-progress streak (a stable
-                // classification needs continuous evidence) but DON'T flip Classification.
+                // classification needs continuous evidence). A long run without data decays the
+                // classification to Unknown: a stale "Bent" captured while the user walked into
+                // position must not survive into the plank.
                 _bentStreak = 0;
                 _straightStreak = 0;
+                _noDataStreak++;
+                if (_noDataStreak >= StaleAfterFrames)
+                    Classification = KneeClassification.Unknown;
                 return;
             }
+            _noDataStreak = 0;
 
             if (angle <= CVConstants.KneeBentMaxAngle)
             {

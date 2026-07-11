@@ -69,6 +69,15 @@ namespace PushStars.CV
                     RepsInSet = totalReps - _repsAtSetStart;
                     if (!isArmed)
                     {
+                        // A "set" with zero reps isn't a set — it was a spurious arm (walking into
+                        // position, brief pose match). Back to Idle silently instead of showing
+                        // a confusing "ОТДЫХ" over an empty set.
+                        if (RepsInSet == 0)
+                        {
+                            State = WorkoutSetState.Idle;
+                            SetIndex--; // the slot wasn't used
+                            break;
+                        }
                         State = WorkoutSetState.Resting;
                         _restStartedAt = nowSec;
                         RestingForSec = 0f;

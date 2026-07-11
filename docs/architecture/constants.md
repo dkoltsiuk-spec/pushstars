@@ -67,7 +67,8 @@
 | `FrontalMaxBodyInclineKappa` | `0.60f` | F3: κ армирования (0.35 → 0.60: коленные отжимания теперь засчитываются) |
 | `AllFoursKappaHardVeto` / `SoftDock` | `0.60f` / `0.50f` | Пер-реп абсолютный κ: четвереньки → veto (заменил κ-drift) |
 | `SkeletonLegDrawVisibility` | `0.65f` | Скелет ног в превью рисуется строже (анти-мигание, чисто визуал) |
-| `SetupMinShoulderWidthImg` / `MaxImg` | `0.17f` / `0.38f` | F0: коридор дистанции ~1.3–2.3 м |
+| `SetupMinShoulderWidthImg` / `MaxImg` | `0.10f` / `0.50f` | F0: коридор дистанции (расширен по замеру на устройстве: честная позиция давала sw≈0.165) |
+| `KappaReliableMinSw` | `0.10f` | κ-проверки применяются только при sw ≥ этого (иначе κ — шум) |
 | `SetupMaxPhonePitchDeg` | `30f` | F0: IMU-гейт наклона телефона |
 | `FrontalArmingHipAvailabilityMin` | `0.7f` | F0: hip fail-closed на армировании |
 | `MinChestTravelFracHard` / `Soft` | `0.25f` / `0.40f` | FullRom v2: HardVeto ниже 0.25, SoftDock в [0.25, 0.40) |

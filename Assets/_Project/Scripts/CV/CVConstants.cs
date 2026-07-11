@@ -232,8 +232,16 @@ namespace PushStars.CV
         public const float FrontalArmingHipAvailabilityMin = 0.7f;
 
         // ── PlankArmer F0 SetupGate (framing / distance / phone tilt) ──
-        public const float SetupMinShoulderWidthImg = 0.17f;  // ~2.3m
-        public const float SetupMaxShoulderWidthImg = 0.38f;  // ~1.3m
+        /// <summary>Distance corridor via shoulder width. Widened 0.17→0.10 / 0.38→0.50 after
+        /// on-device calibration: a correctly-positioned user measured sq-sw ≈ 0.165 and was
+        /// refused. The corridor is a soft UX guard (extreme distances degrade tracking anyway,
+        /// which TrackingLost catches) — not an anti-cheat pillar.</summary>
+        public const float SetupMinShoulderWidthImg = 0.10f;
+        public const float SetupMaxShoulderWidthImg = 0.50f;
+
+        /// <summary>κ (body incline) is only meaningful when the shoulders are meaningfully apart
+        /// in the image. Below this sq shoulder width κ is jitter-amplified — skip the check.</summary>
+        public const float KappaReliableMinSw = 0.10f;
         public const float SetupMaxNoseY = 0.85f;             // head would exit frame at the bottom
         public const float SetupMaxPhonePitchDeg = 30f;       // IMU gate
 
