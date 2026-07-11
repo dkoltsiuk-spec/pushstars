@@ -8,10 +8,15 @@ namespace PushStars.CV
     public static class CVConstants
     {
         // ── Rep FSM (average elbow angle, degrees) ──────────────────────────────────
+        // 160/95 → 148/110 (2026-07-10): the frontal projection COMPRESSES the elbow angle, and
+        // demanding ≤95 at the bottom missed honest reps ("работает через раз"). The owner's
+        // previous app ran 146/112 in the same frontal setup and detected reliably. Still an
+        // anti-cheat envelope: a 38° swing + FullRom chest travel + MinRepSeconds is not fakeable
+        // with micro-bobs.
         /// <summary>Elbow angle at/above which the arms count as "locked out" (top of the pushup).</summary>
-        public const float TopElbowAngle = 160f;
+        public const float TopElbowAngle = 148f;
         /// <summary>Elbow angle at/below which the rep counts as having reached the bottom.</summary>
-        public const float BottomElbowAngle = 95f;
+        public const float BottomElbowAngle = 110f;
 
         // ── Anti-cheat / match ───────────────────────────────────────────────────────
         public const int MaxRepsPerMatch = 65; // == MAX_REPS_PER_MATCH
@@ -56,8 +61,9 @@ namespace PushStars.CV
         /// <summary>Body-line angle required to count as a plank for arming. Stricter than the
         /// legacy <see cref="MinPlankBodyLine"/> which gates mid-rep sanity.</summary>
         public const float ArmingBodyLineAngle = 160f;
-        /// <summary>Elbow angle required at arming — user must start from the top of a push-up.</summary>
-        public const float ArmingElbowTopAngle = 150f;
+        /// <summary>Elbow angle required at arming — user must start from the top of a push-up.
+        /// Lowered with the envelope change (top latch is 148 now).</summary>
+        public const float ArmingElbowTopAngle = 143f;
         /// <summary>Lower-body landmark visibility threshold for the plank-armer "lower body visible"
         /// check. Higher than <see cref="MinJointVisibility"/> because false-arming from a partially-
         /// occluded leg is worse than rejecting a side-camera framing.</summary>
@@ -205,18 +211,21 @@ namespace PushStars.CV
 
         // ── PlankArmer frontal branch F0–F6 ──
         /// <summary>F3: κ = (hipMid_y − shoulderMid_y)/sw ceiling for arming. History: 0.28 → 0.35
-        /// (narrow shoulders/tilt) → 0.60 (2026-07-10 policy change: KNEE push-ups now COUNT as
-        /// full reps — a real knee push-up with the body extended from the knees reads κ ≈ 0.3–0.5
-        /// and must arm. The ceiling now only rejects ALL-FOURS (κ ≈ 0.7–1.2) and sitting/standing.</summary>
-        public const float FrontalMaxBodyInclineKappa = 0.60f;
+        /// (narrow shoulders/tilt) → 0.60 (knee push-ups count) → 0.80 (on-device: honest plank at
+        /// close camera read κ ≈ 0.52; the previous app's field-proven tolerance ≈ 0.9). The
+        /// ceiling still rejects upright ALL-FOURS and sitting/standing (κ ≥ 1.0).</summary>
+        public const float FrontalMaxBodyInclineKappa = 0.80f;
         public const float FrontalMinBodyInclineKappa = -0.35f;
 
         // ── All-fours cheat (per-rep, replaces the knee-drop veto after the policy change) ──
         /// <summary>Mean κ over the rep's TOP frames above this → HardVeto: torso near-vertical,
-        /// knees directly under the body, no push-up effort ("качание на четвереньках").</summary>
-        public const float AllFoursKappaHardVeto = 0.60f;
+        /// knees directly under the body, no push-up effort ("качание на четвереньках").
+        /// Relaxed 0.60 → 0.80 after on-device data: an honest close-camera plank measured
+        /// κ ≈ 0.52 and was getting soft-docked; the owner's previous app allowed torso-drop
+        /// equivalents up to ~0.9. Upright all-fours/standing still reads κ ≥ 1.0.</summary>
+        public const float AllFoursKappaHardVeto = 0.80f;
         /// <summary>Mean κ in [Soft, Hard) → SoftDock — steep but plausibly working.</summary>
-        public const float AllFoursKappaSoftDock = 0.50f;
+        public const float AllFoursKappaSoftDock = 0.60f;
 
         /// <summary>Debug skeleton overlay: legs/feet (landmark index ≥ 25) draw only above this
         /// visibility — frontal leg landmarks flicker around 0.5 and made the skeleton "jump".

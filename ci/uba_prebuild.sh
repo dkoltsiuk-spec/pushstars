@@ -7,7 +7,9 @@ set -euo pipefail
 
 TGZ_URL="https://github.com/homuler/MediaPipeUnityPlugin/releases/download/v0.16.3/com.github.homuler.mediapipe-0.16.3.tgz"
 DEST="Packages/com.github.homuler.mediapipe"
-MODEL="pose_landmarker_lite.bytes"
+# FULL model (was lite): the lite skeleton falls apart at the bottom of a frontal rep — the
+# owner's previous app ran full/heavy in the same setup and tracked cleanly.
+MODEL="pose_landmarker_full.bytes"
 
 echo "[prebuild] cwd=$(pwd)"
 

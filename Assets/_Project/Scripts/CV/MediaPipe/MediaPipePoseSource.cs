@@ -31,8 +31,15 @@ namespace PushStars.CV
     public sealed class MediaPipePoseSource : MonoBehaviour, IPoseSource
     {
         [Header("Model")]
-        [Tooltip("pose_landmarker_lite.bytes / _full.bytes / _heavy.bytes. Lite = fastest on CPU.")]
-        [SerializeField] private string _modelFileName = "pose_landmarker_lite.bytes";
+        [Tooltip("pose_landmarker_lite.bytes / _full.bytes / _heavy.bytes. FULL is the default: " +
+                 "the lite model's skeleton falls apart at the bottom of a frontal rep (head close " +
+                 "to the camera) — proven by the owner's previous app, which ran heavy/full and " +
+                 "tracked cleanly in the same setup.")]
+        [SerializeField] private string _modelFileName = "pose_landmarker_full.bytes";
+
+        [Tooltip("Try the GPU delegate first (Metal on iOS — full/heavy run comfortably), fall " +
+                 "back to CPU if creation fails.")]
+        [SerializeField] private bool _preferGpuDelegate = true;
 
         [Header("Camera (landscape — webcams don't do portrait)")]
         [SerializeField] private int _requestedWidth = 640;
@@ -188,28 +195,25 @@ namespace PushStars.CV
 #endif
                 if (!prepareFailed)
                 {
-                    SetStatus("creating pose landmarker");
-                    try
+                    // GPU delegate first (old app's proven chain: heavy/full on GPU, CPU fallback).
+                    if (_preferGpuDelegate)
                     {
-                        var baseOptions = new Mediapipe.Tasks.Core.BaseOptions(
-                            Mediapipe.Tasks.Core.BaseOptions.Delegate.CPU, modelAssetPath: assetPath);
-                        var options = new PoseLandmarkerOptions(
-                            baseOptions,
-                            runningMode: Mediapipe.Tasks.Vision.Core.RunningMode.LIVE_STREAM,
-                            numPoses: 1,
-                            minPoseDetectionConfidence: _minPoseDetectionConfidence,
-                            minPosePresenceConfidence: _minPosePresenceConfidence,
-                            minTrackingConfidence: _minTrackingConfidence,
-                            outputSegmentationMasks: false,
-                            resultCallback: OnPoseResult);
-                        _poseLandmarker = PoseLandmarker.CreateFromOptions(options, GpuManager.GpuResources);
+                        SetStatus("creating pose landmarker (GPU)");
+                        _poseLandmarker = TryCreateLandmarker(assetPath, Mediapipe.Tasks.Core.BaseOptions.Delegate.GPU, out string gpuErr);
+                        if (_poseLandmarker == null)
+                            SetStatus("GPU delegate failed (" + gpuErr + ") — falling back to CPU");
+                    }
+                    if (_poseLandmarker == null)
+                    {
+                        SetStatus("creating pose landmarker (CPU)");
+                        _poseLandmarker = TryCreateLandmarker(assetPath, Mediapipe.Tasks.Core.BaseOptions.Delegate.CPU, out string cpuErr);
+                        if (_poseLandmarker == null)
+                            SetStatus("LANDMARKER ERROR: " + cpuErr);
+                    }
+                    if (_poseLandmarker != null)
+                    {
                         _imageProcessingOptions = new Mediapipe.Tasks.Vision.Core.ImageProcessingOptions(rotationDegrees: 0);
                         SetStatus("running");
-                    }
-                    catch (Exception e)
-                    {
-                        SetStatus("LANDMARKER ERROR: " + e.Message);
-                        _poseLandmarker = null;
                     }
                 }
             }
@@ -372,6 +376,31 @@ namespace PushStars.CV
             if (q == Quality) return;
             Quality = q;
             OnQualityChanged?.Invoke(q);
+        }
+
+        private PoseLandmarker TryCreateLandmarker(string assetPath,
+            Mediapipe.Tasks.Core.BaseOptions.Delegate delegateKind, out string error)
+        {
+            try
+            {
+                var baseOptions = new Mediapipe.Tasks.Core.BaseOptions(delegateKind, modelAssetPath: assetPath);
+                var options = new PoseLandmarkerOptions(
+                    baseOptions,
+                    runningMode: Mediapipe.Tasks.Vision.Core.RunningMode.LIVE_STREAM,
+                    numPoses: 1,
+                    minPoseDetectionConfidence: _minPoseDetectionConfidence,
+                    minPosePresenceConfidence: _minPosePresenceConfidence,
+                    minTrackingConfidence: _minTrackingConfidence,
+                    outputSegmentationMasks: false,
+                    resultCallback: OnPoseResult);
+                error = null;
+                return PoseLandmarker.CreateFromOptions(options, GpuManager.GpuResources);
+            }
+            catch (Exception e)
+            {
+                error = e.Message;
+                return null;
+            }
         }
 
         /// <summary>Picks the camera device: an explicit <see cref="_deviceName"/> wins; otherwise the

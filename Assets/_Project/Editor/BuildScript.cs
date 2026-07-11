@@ -21,7 +21,8 @@ namespace PushStars.Editor
     public static class BuildScript
     {
         private const string Define       = "PUSHSTARS_MEDIAPIPE";
-        private const string ModelName    = "pose_landmarker_lite.bytes";
+        // FULL model (was lite): lite's skeleton breaks at the bottom of frontal reps.
+        private const string ModelName    = "pose_landmarker_full.bytes";
         private const string ModelSrc     = "Packages/com.github.homuler.mediapipe/PackageResources/MediaPipe/" + ModelName;
         private const string StreamingDir = "Assets/StreamingAssets";
         private const string BundleId     = "com.pushstars.app";

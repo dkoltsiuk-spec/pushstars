@@ -76,6 +76,7 @@ namespace PushStars.CV.AntiCheat
         public event Action<PlankRejectReason> OnDisarmed;
 
         private float _stateEnteredAt;
+        private float _coolingFirstEnteredAt;
 
         public PlankArmer(WristAnchorMonitor anchor, KneeBendDetector knee)
             : this(anchor, knee, null) { }
@@ -99,13 +100,21 @@ namespace PushStars.CV.AntiCheat
         /// <summary>Advance the FSM with the current frame. Caller MUST have ticked
         /// <see cref="WristAnchorMonitor"/>, <see cref="KneeBendDetector"/> and (if present)
         /// <see cref="KneeDropDetector"/> first. <paramref name="view"/> comes from the
-        /// ViewClassifier and picks the predicate branch.</summary>
-        public void Tick(in PoseFrame frame, bool trackingOk, float nowSec, ViewKind view = ViewKind.Side)
+        /// ViewClassifier and picks the predicate branch.
+        ///
+        /// <para><paramref name="repInFlight"/>: the plank predicate is only satisfiable at the TOP
+        /// (mid-rep the elbows are bent → NotAtTop, and the shoulders sit near the wrists → the F1
+        /// margin collapses), so during every rep the armer sits in Cooling. A rep slower than the
+        /// grace window would disarm the user AT THE BOTTOM of an honest rep. While a rep arc is in
+        /// flight the Cooling timer is frozen — capped at MaxRepSeconds so a genuine abandonment
+        /// (dropped to all fours and stayed) still disarms.</para></summary>
+        public void Tick(in PoseFrame frame, bool trackingOk, float nowSec, ViewKind view = ViewKind.Side,
+                         bool repInFlight = false)
         {
             if (!trackingOk || !frame.IsValid)
             {
                 _hipAvail.Push(false);
-                ApplyInvalid(PlankRejectReason.TrackingLost, nowSec);
+                ApplyInvalid(PlankRejectReason.TrackingLost, nowSec, repInFlight);
                 return;
             }
 
@@ -116,7 +125,7 @@ namespace PushStars.CV.AntiCheat
             if (IsValidPlank(frame, view, out PlankRejectReason reason))
                 ApplyValid(nowSec);
             else
-                ApplyInvalid(reason, nowSec);
+                ApplyInvalid(reason, nowSec, repInFlight);
         }
 
         private void ApplyValid(float nowSec)
@@ -156,7 +165,7 @@ namespace PushStars.CV.AntiCheat
             }
         }
 
-        private void ApplyInvalid(PlankRejectReason reason, float nowSec)
+        private void ApplyInvalid(PlankRejectReason reason, float nowSec, bool repInFlight = false)
         {
             LastRejectReason = reason;
 
@@ -174,11 +183,22 @@ namespace PushStars.CV.AntiCheat
 
                 case PlankArmerState.Armed:
                     EnterState(PlankArmerState.Cooling, nowSec);
+                    _coolingFirstEnteredAt = nowSec;
                     CoolingTimeLeftSec = CVConstants.PlankDisarmGraceSec;
                     break;
 
                 case PlankArmerState.Cooling:
                 {
+                    // Rep in flight → the predicate is EXPECTED to fail (elbows bent mid-rep).
+                    // Freeze the grace timer, capped at MaxRepSeconds since the Cooling episode
+                    // began so a true abandonment still disarms.
+                    if (repInFlight && nowSec - _coolingFirstEnteredAt < CVConstants.MaxRepSeconds)
+                    {
+                        _stateEnteredAt = nowSec;
+                        CoolingTimeLeftSec = CVConstants.PlankDisarmGraceSec;
+                        break;
+                    }
+
                     float since = nowSec - _stateEnteredAt;
                     CoolingTimeLeftSec = Mathf.Max(0f, CVConstants.PlankDisarmGraceSec - since);
                     if (since >= CVConstants.PlankDisarmGraceSec)

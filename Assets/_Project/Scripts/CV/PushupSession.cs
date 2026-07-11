@@ -156,22 +156,29 @@ namespace PushStars.CV
             KneeDrop.Tick(kneeRelForDetector, elbowExtended, Armer != null && Armer.IsArmed);
             FootMonitor.Tick(frame, trackingOk, Armer != null && Armer.IsArmed, now);
 
+            // Rep in flight (tracker state from the previous tick): mid-rep the plank predicate
+            // legitimately fails (elbows bent) and wrist landmarks jitter at the bottom — several
+            // guards below relax while an arc is being completed.
+            bool repInFlight =
+                Tracker.ArcState == DepthArcState.AwaitTop ||
+                (Tracker.ArcState == DepthArcState.AwaitBottom && !Tracker.InTopZone);
+
             // ── 3. Armer (reads the monitors above) ──
             if (Armer != null)
             {
                 Armer.PhonePitchDeg = ReadPhonePitchDeg();
-                Armer.Tick(frame, trackingOk, now, View.View);
+                Armer.Tick(frame, trackingOk, now, View.View, repInFlight);
             }
 
             bool isArmed = Armer != null && Armer.IsArmed;
             bool anchorOk = WristAnchor.LastVerdict == AnchorVerdict.Anchored;
 
             // Immediate counting suspension on a confident wrist-off-floor verdict (owner's
-            // request: "both wrists lifted → counting stops"). The armer's 2.5s Cooling grace
-            // exists for skeleton GLITCHES; a hard Airborne verdict is not a glitch — without this,
-            // an air-rep during Cooling can still reach the auditor (defense-in-depth caught it via
-            // SupportGeometry on device, but suspended is cleaner). ~0.4s latency (12-frame window).
-            bool countingLive = isArmed && WristAnchor.LastVerdict != AnchorVerdict.Airborne;
+            // request: "both wrists lifted → counting stops"), but NOT mid-rep — at the bottom the
+            // wrist landmarks jitter and a spurious Airborne window must not kill an honest arc.
+            // An air "rep" that somehow started armed still faces the per-rep auditor.
+            bool countingLive = isArmed
+                && !(WristAnchor.LastVerdict == AnchorVerdict.Airborne && !repInFlight);
 
             // ── 4. Depth tracker (owns the top/bottom latches) ──
             Tracker.Tick(frame, trackingOk, countingLive, now, hasElbow, rawElbow, anchorOk);
