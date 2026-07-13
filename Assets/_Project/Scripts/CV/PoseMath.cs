@@ -44,14 +44,18 @@ namespace PushStars.CV
             => new Vector2(p.x * Mathf.Max(aspect, 1e-3f), p.y);
 
         /// <summary>Like <see cref="ElbowAngle"/> but returns false instead of the 180° sentinel
-        /// when NEITHER full arm (shoulder+elbow+wrist) clears MinJointVisibility. The sentinel must
-        /// never enter the AmplitudeTracker filter chain: a one-frame visibility dropout at the
-        /// bottom of a rep would read as 92→180→92 and punch a false top-latch through the
-        /// One-Euro filter (which is deliberately fast on large jumps).</summary>
+        /// when NEITHER arm is usable. The sentinel must never enter the AmplitudeTracker filter
+        /// chain: a one-frame visibility dropout at the bottom of a rep would read as 92→180→92
+        /// and punch a false top-latch through the One-Euro filter.
+        ///
+        /// <para>Visibility gates are ASYMMETRIC (fast-rep fix, old-app proven): the shoulder must
+        /// clear 0.5, but the elbow/wrist only 0.35 — they motion-blur at speed while their
+        /// positions stay usable, and the strict all-three-at-0.5 rule froze the signal exactly
+        /// when fast reps hit the bottom. Median-3 + Hampel downstream absorb the extra noise.</para></summary>
         public static bool TryElbowAngle(in PoseFrame f, out float angleDeg)
         {
-            bool left  = SideVisible(f, PoseLandmark.LeftShoulder, PoseLandmark.LeftElbow, PoseLandmark.LeftWrist);
-            bool right = SideVisible(f, PoseLandmark.RightShoulder, PoseLandmark.RightElbow, PoseLandmark.RightWrist);
+            bool left  = ArmUsable(f, PoseLandmark.LeftShoulder, PoseLandmark.LeftElbow, PoseLandmark.LeftWrist);
+            bool right = ArmUsable(f, PoseLandmark.RightShoulder, PoseLandmark.RightElbow, PoseLandmark.RightWrist);
             if (!left && !right)
             {
                 angleDeg = 180f;
@@ -63,6 +67,11 @@ namespace PushStars.CV
             angleDeg = (left && right) ? 0.5f * (l + r) : (left ? l : r);
             return true;
         }
+
+        static bool ArmUsable(in PoseFrame f, PoseLandmark shoulder, PoseLandmark elbow, PoseLandmark wrist)
+            => f.Visibility(shoulder) >= CVConstants.ElbowAngleShoulderMinVis
+            && f.Visibility(elbow)    >= CVConstants.ElbowAngleLimbMinVis
+            && f.Visibility(wrist)    >= CVConstants.ElbowAngleLimbMinVis;
 
         /// <summary>Per-side elbow angle, NaN when that arm isn't fully visible. Used by anti-cheat
         /// (phase 08.1) bilateral symmetry — averaging the two sides hides the cheat where one arm

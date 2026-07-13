@@ -25,10 +25,17 @@ namespace PushStars.CV
         /// <summary>Body-line angle (shoulder–hip–knee/ankle) must be at least this for the pose to
         /// count as a plank — rejects sitting/lying/curled poses where the body isn't extended.</summary>
         public const float MinPlankBodyLine = 140f;
-        /// <summary>A rep must take at least this long (bottom→top) — rejects fast arm-flapping.
-        /// Lowered 0.45 → 0.30 (frontal addendum): 0.45 silently cut honest 1.5 rep/s athletes,
-        /// and flapping is now killed by the 95↔160 envelope + PlankArmer + SupportGeometryGate.</summary>
+        /// <summary>LEGACY-path rep floor (bottom→top), used only when the counter runs without an
+        /// AmplitudeTracker (old unit tests). The tracker path uses the cycle-based pair below.</summary>
         public const float MinRepSeconds = 0.30f;
+
+        /// <summary>Fast-rep fix (round 4, adopted from the old app's field-proven MIN_REP_MS=500
+        /// measured REP-TO-REP): the old bottom→top gate rejected honest fast reps — a quick
+        /// ascent takes 0.2–0.25s. Cycle time between CREDITED reps must be at least this
+        /// (0.5s = 120 rpm ceiling, humanly plausible max).</summary>
+        public const float MinRepCycleSeconds = 0.5f;
+        /// <summary>Minimal bottom→top sanity so a single-frame bounce can't credit (anti-spike).</summary>
+        public const float MinAscentSeconds = 0.12f;
 
         // ── Tracking quality gates (visibility ∈ [0,1]) ────────────────────────────────
         /// <summary>Below this, a single key joint is treated as not visible.</summary>
@@ -148,9 +155,9 @@ namespace PushStars.CV
         // ═════════════════════════════════════════════════════════════════════════════════════
 
         // ── AmplitudeTracker: One-Euro filter + spike gating ──
-        /// <summary>One-Euro cutoff at rest. Raised 1.5 → 2.5 after the fast-tempo review (at
-        /// 1.5 rep/s a 1.5Hz cutoff lifted the smoothed minimum above the bottom zone).</summary>
-        public const float ElbowFilterMinCutoffHz = 2.5f;
+        /// <summary>One-Euro cutoff at rest. 1.5 → 2.5 (fast-tempo review) → 3.5 (round 4: the
+        /// gauge felt sluggish vs the old app's EMA α=0.4 ≈ 2.4Hz + zero pipeline lag).</summary>
+        public const float ElbowFilterMinCutoffHz = 3.5f;
         public const float ElbowFilterBeta = 0.05f;
         public const float ElbowFilterDerivCutoffHz = 1.0f;
         public const float FilterDtClampMinSec = 0.0167f;
@@ -164,8 +171,18 @@ namespace PushStars.CV
         // ── AmplitudeTracker: zones & latching (median-of-3 raw signal, NOT the smoothed one) ──
         /// <summary>Zone latch debounce measured by timestamps (≈2 frames @30fps, robust at 25fps).</summary>
         public const float ZoneLatchSec = 0.07f;
-        /// <summary>Single-frame instant latch when this deep past the zone edge.</summary>
-        public const float ZoneDeepLatchMarginDeg = 4f;
+        /// <summary>Single-frame instant latch margin past the zone edge. 4 → 0 (round 4, old-app
+        /// behavior: single crossing of the smoothed signal flips phase): at fast tempo the bottom
+        /// lives 1–2 frames and the two-frame dwell missed it. Spike immunity is carried by the
+        /// median-of-3 + Hampel clamp upstream, not by this margin.</summary>
+        public const float ZoneDeepLatchMarginDeg = 0f;
+
+        /// <summary>Visibility gates for the elbow-angle signal (fast-rep fix): the shoulder must
+        /// be solid, but the elbow/wrist blur at speed and their positions stay usable well below
+        /// 0.5 — the old app gated the angle on the SHOULDER only. Median-3 + Hampel absorb the
+        /// extra noise.</summary>
+        public const float ElbowAngleShoulderMinVis = 0.5f;
+        public const float ElbowAngleLimbMinVis = 0.35f;
         /// <summary>Enter→Exit hysteresis (BottomExit = BottomEnter + 6, TopExit = TopEnter − 6).</summary>
         public const float ZoneExitHysteresisDeg = 6f;
         /// <summary>Retro bottom-latch after a tracking dropout near the bottom: max gap length.</summary>

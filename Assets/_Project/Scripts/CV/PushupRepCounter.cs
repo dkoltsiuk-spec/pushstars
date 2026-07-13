@@ -150,8 +150,15 @@ namespace PushStars.CV
 
             if (_tracker.TopLatchedThisTick)
             {
-                bool longEnough = _bottomTime >= 0f && (timeSec - _bottomTime) >= CVConstants.MinRepSeconds;
-                if (_reachedBottom && longEnough)
+                // Fast-rep fix (old-app semantics): the rate limit is CYCLE time between credited
+                // reps (0.5s → 120rpm human ceiling), not the ascent duration — a quick honest
+                // ascent takes 0.2–0.25s and the old bottom→top floor was discarding it. A tiny
+                // ascent sanity floor stays so a single-frame bounce can't credit.
+                bool cycleOk  = _lastRepTime < 0f
+                    || (timeSec - _lastRepTime) >= CVConstants.MinRepCycleSeconds;
+                bool ascentOk = _bottomTime >= 0f
+                    && (timeSec - _bottomTime) >= CVConstants.MinAscentSeconds;
+                if (_reachedBottom && cycleOk && ascentOk)
                 {
                     _reachedBottom = false;
                     _bottomTime = -1f;
@@ -159,7 +166,7 @@ namespace PushStars.CV
                 }
                 else if (_reachedBottom)
                 {
-                    _reachedBottom = false; // too fast — discard without crediting
+                    _reachedBottom = false; // rate-limited or single-frame bounce — discard
                     _bottomTime = -1f;
                 }
             }
