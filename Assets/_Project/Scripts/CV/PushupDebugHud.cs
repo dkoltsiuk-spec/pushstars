@@ -32,6 +32,8 @@ namespace PushStars.CV
 
         private float _lastTickPlayTime = -10f;
         private float _lastBuzzPlayTime = -10f;
+        private float _displayedDepth01;      // render-rate interpolated marker position
+        private float _lastGaugeDrawTime = -1f;
         private float _lastBottomFlashTime = -10f;
         private float _lastTopFlashTime = -10f;
         private float _lastRepFlashTime = -10f;
@@ -258,11 +260,20 @@ namespace PushStars.CV
             DrawTickRight(barX + barW, barY, barH, t.LastRepMinDepth01, s);
             DrawTickRight(barX + barW, barY, barH, t.LastRepMaxDepth01, s);
 
-            // Floating depth marker — red when the signal is frozen.
+            // Floating depth marker — red when the signal is frozen. The position is interpolated
+            // at RENDER rate toward the tracker's value: pose inference runs at 15-30/s while
+            // OnGUI runs at 60+, and without this the marker steps discretely (the old web app got
+            // this for free from CSS transitions). Time constant ~50ms — fluid but not rubbery.
+            float nowT = Time.realtimeSinceStartup;
+            float dtDraw = _lastGaugeDrawTime > 0f ? Mathf.Clamp(nowT - _lastGaugeDrawTime, 0f, 0.1f) : 0.016f;
+            _lastGaugeDrawTime = nowT;
+            float approach = 1f - Mathf.Exp(-dtDraw * 20f);
+            _displayedDepth01 = Mathf.Lerp(_displayedDepth01, t.CurrentDepth01, approach);
+
             GUI.color = t.SignalValid
                 ? new Color(1f, 1f, 1f, 1f * dim)
                 : new Color(1f, 0.25f, 0.2f, 0.95f);
-            float markerY = barY + t.CurrentDepth01 * barH;
+            float markerY = barY + _displayedDepth01 * barH;
             GUI.DrawTexture(new Rect(barX - 1.2f * s, markerY - 0.25f * s, barW + 2.4f * s, 0.5f * s),
                 Texture2D.whiteTexture);
 

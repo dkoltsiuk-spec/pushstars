@@ -213,8 +213,12 @@ namespace PushStars.CV
         public const int   AdaptiveDecayAfterMissedAttempts = 2;
 
         // ── AmplitudeTracker: fixed HUD depth scale (the gauge must not "breathe") ──
-        public const float AmplitudeGaugeTopDeg = 175f;    // d01 = 0
-        public const float AmplitudeGaugeBottomDeg = 75f;  // d01 = 1
+        // 175/75 → 155/105 (round 6, indicator feel): the old app's progress bar spanned ONLY the
+        // active range (146→112, 34°), so one degree of elbow motion moved it 3× further than our
+        // anatomical 100° scale — that under-gained gauge is what read as "laggy". Now the span is
+        // 50° with the latch zones sitting at ~14% and ~90% of the track.
+        public const float AmplitudeGaugeTopDeg = 155f;    // d01 = 0
+        public const float AmplitudeGaugeBottomDeg = 105f; // d01 = 1
 
         // ── Bottom latch channel B (tucked elbows / wide grip) — OFF until acceptance recordings ──
         public const bool  BottomAltChannelEnabled = false;
