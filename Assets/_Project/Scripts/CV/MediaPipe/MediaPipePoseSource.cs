@@ -93,6 +93,13 @@ namespace PushStars.CV
         /// through the raw-texture display matrix).</summary>
         public int LandmarkRotationDeg => _landmarkRotationDeg;
 
+        /// <summary>Pose-DETECTION rate (inference results/sec), NOT the Unity render rate. If
+        /// this sits well below 30 the model/delegate is the fast-rep bottleneck — the HUD FPS
+        /// line was hiding exactly this.</summary>
+        public float PoseFps { get; private set; }
+        private int _poseFrameCount;
+        private float _poseFpsWindowStart;
+
         private WebCamTexture     _webCam;
         private PoseLandmarker    _poseLandmarker;
         private TextureFramePool  _framePool;
@@ -195,25 +202,48 @@ namespace PushStars.CV
 #endif
                 if (!prepareFailed)
                 {
-                    // GPU delegate first (old app's proven chain: heavy/full on GPU, CPU fallback).
+                    // Delegate/model chain (fast-rep round 5): full/GPU → lite/GPU → lite/CPU.
+                    // full-on-CPU is deliberately NOT in the chain — it "works" at ~10-15 inference
+                    // fps and silently starves fast-rep detection; lite at 30fps beats full at 12.
+                    string modelTag = null;
                     if (_preferGpuDelegate)
                     {
-                        SetStatus("creating pose landmarker (GPU)");
+                        SetStatus("creating pose landmarker (GPU, " + _modelFileName + ")");
                         _poseLandmarker = TryCreateLandmarker(assetPath, Mediapipe.Tasks.Core.BaseOptions.Delegate.GPU, out string gpuErr);
-                        if (_poseLandmarker == null)
-                            SetStatus("GPU delegate failed (" + gpuErr + ") — falling back to CPU");
+                        if (_poseLandmarker != null) modelTag = ModelShortName(_modelFileName) + "/GPU";
+                        else SetStatus("GPU failed (" + gpuErr + ")");
                     }
-                    if (_poseLandmarker == null)
+                    if (_poseLandmarker == null && !IsLite(_modelFileName))
                     {
-                        SetStatus("creating pose landmarker (CPU)");
+                        string litePath = StageModelByName("pose_landmarker_lite.bytes");
+                        if (litePath != null)
+                        {
+                            if (_preferGpuDelegate)
+                            {
+                                SetStatus("creating pose landmarker (GPU, lite)");
+                                _poseLandmarker = TryCreateLandmarker(litePath, Mediapipe.Tasks.Core.BaseOptions.Delegate.GPU, out _);
+                                if (_poseLandmarker != null) modelTag = "lite/GPU";
+                            }
+                            if (_poseLandmarker == null)
+                            {
+                                SetStatus("creating pose landmarker (CPU, lite)");
+                                _poseLandmarker = TryCreateLandmarker(litePath, Mediapipe.Tasks.Core.BaseOptions.Delegate.CPU, out string liteCpuErr);
+                                if (_poseLandmarker != null) modelTag = "lite/CPU";
+                                else SetStatus("LANDMARKER ERROR: " + liteCpuErr);
+                            }
+                        }
+                    }
+                    else if (_poseLandmarker == null)
+                    {
+                        SetStatus("creating pose landmarker (CPU, " + _modelFileName + ")");
                         _poseLandmarker = TryCreateLandmarker(assetPath, Mediapipe.Tasks.Core.BaseOptions.Delegate.CPU, out string cpuErr);
-                        if (_poseLandmarker == null)
-                            SetStatus("LANDMARKER ERROR: " + cpuErr);
+                        if (_poseLandmarker != null) modelTag = ModelShortName(_modelFileName) + "/CPU";
+                        else SetStatus("LANDMARKER ERROR: " + cpuErr);
                     }
                     if (_poseLandmarker != null)
                     {
                         _imageProcessingOptions = new Mediapipe.Tasks.Vision.Core.ImageProcessingOptions(rotationDegrees: 0);
-                        SetStatus("running");
+                        SetStatus("running " + modelTag);
                     }
                 }
             }
@@ -348,6 +378,16 @@ namespace PushStars.CV
             }
             if (!has) return;
 
+            // Pose-detection FPS (rolling 1s window) — the honest inference rate for the HUD.
+            _poseFrameCount++;
+            float nowRt = Time.realtimeSinceStartup;
+            if (nowRt - _poseFpsWindowStart >= 1f)
+            {
+                PoseFps = _poseFrameCount / (nowRt - _poseFpsWindowStart);
+                _poseFrameCount = 0;
+                _poseFpsWindowStart = nowRt;
+            }
+
             if (arr == null)
             {
                 SetQuality(TrackingQuality.Lost); // no person detected this frame
@@ -417,15 +457,17 @@ namespace PushStars.CV
         /// <summary>Editor: returns the model name (loaded from the package via LocalResourceManager).
         /// Device: copies the model from the read-only StreamingAssets into persistentData (where the
         /// native loader can open it) and returns that absolute path, or null if the model is missing.</summary>
-        private string StageModel()
+        private string StageModel() => StageModelByName(_modelFileName);
+
+        private string StageModelByName(string modelFileName)
         {
 #if UNITY_EDITOR
-            return _modelFileName;
+            return modelFileName;
 #else
             try
             {
-                string src = System.IO.Path.Combine(Application.streamingAssetsPath, _modelFileName);
-                string dst = System.IO.Path.Combine(Application.persistentDataPath, _modelFileName);
+                string src = System.IO.Path.Combine(Application.streamingAssetsPath, modelFileName);
+                string dst = System.IO.Path.Combine(Application.persistentDataPath, modelFileName);
                 if (!System.IO.File.Exists(dst))
                 {
                     if (!System.IO.File.Exists(src)) return null; // (Android packs StreamingAssets in the APK — needs UnityWebRequest; iOS is a real path)
@@ -439,6 +481,18 @@ namespace PushStars.CV
                 return null;
             }
 #endif
+        }
+
+        private static bool IsLite(string modelFileName)
+            => modelFileName != null && modelFileName.Contains("lite");
+
+        private static string ModelShortName(string modelFileName)
+        {
+            if (modelFileName == null) return "?";
+            if (modelFileName.Contains("heavy")) return "heavy";
+            if (modelFileName.Contains("full"))  return "full";
+            if (modelFileName.Contains("lite"))  return "lite";
+            return modelFileName;
         }
 
         /// <summary>Runs an inner coroutine, routing any thrown exception to <paramref name="onError"/>

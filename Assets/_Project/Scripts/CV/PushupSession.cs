@@ -63,6 +63,12 @@ namespace PushStars.CV
         private IPoseSource _source;
         private float _lastKappa = float.NaN; // per-frame κ, captured as baseline at OnArmed
 
+        /// <summary>Pose-frame arrival rate (inference results/sec) — NOT the render FPS. If this
+        /// sits well below 30, the model/delegate is starving fast-rep detection.</summary>
+        public float PoseFps { get; private set; }
+        private int _poseFrameCount;
+        private float _poseFpsWindowStart;
+
         private void Awake()
         {
             _source = _poseSourceBehaviour as IPoseSource;
@@ -135,6 +141,15 @@ namespace PushStars.CV
             LastFrame = frame;
             bool trackingOk = Quality == TrackingQuality.Good;
             float now = Time.time;
+
+            _poseFrameCount++;
+            float nowRt = Time.realtimeSinceStartup;
+            if (nowRt - _poseFpsWindowStart >= 1f)
+            {
+                PoseFps = _poseFrameCount / (nowRt - _poseFpsWindowStart);
+                _poseFrameCount = 0;
+                _poseFpsWindowStart = nowRt;
+            }
 
             // ── Single-computation pass: values several components consume this frame ──
             bool hasElbow = PoseMath.TryElbowAngle(frame, out float rawElbow);

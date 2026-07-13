@@ -185,6 +185,18 @@ namespace PushStars.CV
         public const float ElbowAngleLimbMinVis = 0.35f;
         /// <summary>Enter→Exit hysteresis (BottomExit = BottomEnter + 6, TopExit = TopEnter − 6).</summary>
         public const float ZoneExitHysteresisDeg = 6f;
+        // ── Turnaround channels (fast undersampled reps, round 5) ──
+        /// <summary>A V-turn is recognized when θm rebounds this far off the phase extreme.</summary>
+        public const float TurnaroundRiseDeg = 6f;
+        /// <summary>Fast-trough: an unsampled bottom is accepted when the observed minimum came
+        /// within this slack of BottomEnter at high speed.</summary>
+        public const float FastTroughSlackDeg = 8f;
+        /// <summary>Fast-crest: symmetric slack under TopEnter (prevents two fast reps merging).</summary>
+        public const float FastCrestSlackDeg = 6f;
+        /// <summary>|v̂| floor for both turnaround channels — a slow hoverer near a zone edge never
+        /// triggers them; genuinely fast reps run 150–400°/s.</summary>
+        public const float FastTurnaroundMinSpeedDegPerSec = 120f;
+
         /// <summary>Retro bottom-latch after a tracking dropout near the bottom: max gap length.</summary>
         public const float GraceLatchMaxGapSec = 0.5f;
         /// <summary>...and how close to the bottom zone the last valid frame must have been.</summary>

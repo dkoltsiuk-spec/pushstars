@@ -8,8 +8,10 @@ set -euo pipefail
 TGZ_URL="https://github.com/homuler/MediaPipeUnityPlugin/releases/download/v0.16.3/com.github.homuler.mediapipe-0.16.3.tgz"
 DEST="Packages/com.github.homuler.mediapipe"
 # FULL model (was lite): the lite skeleton falls apart at the bottom of a frontal rep — the
-# owner's previous app ran full/heavy in the same setup and tracked cleanly.
+# owner's previous app ran full/heavy in the same setup and tracked cleanly. LITE ships too:
+# it's the runtime fallback when the GPU delegate fails (full-on-CPU is a ~12fps trap).
 MODEL="pose_landmarker_full.bytes"
+MODEL_FALLBACK="pose_landmarker_lite.bytes"
 
 echo "[prebuild] cwd=$(pwd)"
 
@@ -27,9 +29,10 @@ else
   cp -R "$PKGDIR"/. "$DEST"/
 fi
 
-echo "[prebuild] copying model into StreamingAssets..."
+echo "[prebuild] copying models into StreamingAssets..."
 mkdir -p Assets/StreamingAssets
 cp -f "$DEST/PackageResources/MediaPipe/$MODEL" "Assets/StreamingAssets/$MODEL"
+cp -f "$DEST/PackageResources/MediaPipe/$MODEL_FALLBACK" "Assets/StreamingAssets/$MODEL_FALLBACK"
 
 # Placeholder GoogleService-Info.plist so Firebase's iOS build scripts (Crashlytics) don't fail.
 # The CV test never initializes Firebase at runtime, so dummy values are fine. NOT committed.

@@ -20,10 +20,17 @@ namespace PushStars.CV
     /// amplitude gauge.
     ///
     /// <para><b>Signal chain:</b> raw θ (gated by PoseMath.TryElbowAngle — the 180° sentinel never
-    /// enters) → median-of-3 → θm → zone latches; θm → One-Euro → θs → HUD / Phase / stats.
-    /// Latches run on θm, NOT θs — an asymmetric decision from the fast-tempo review: filter lag
-    /// must not eat the trough at 1.5 rep/s, while single-frame spikes are already dead after the
-    /// median + the two-frame debounce.</para>
+    /// enters) → Hampel clamp → θm → zone latches; θm → One-Euro → θs → HUD / Phase / stats.
+    /// The former median-of-3 stage was REMOVED in the fast-rep round: it killed single-sample
+    /// SPIKES but equally killed single-sample TROUGHS — and at fast tempo the true bottom IS a
+    /// one-sample event ([125, 98, 128] → median 125: the rep's bottom never existed in θm).
+    /// Spike immunity is carried by the Hampel clamp alone; a surviving false trough still has to
+    /// pass the cycle rate-limit, the ascent floor and the per-rep auditor to become a rep.</para>
+    ///
+    /// <para><b>Turnaround (undersampled-extreme) channels:</b> when the detector undersamples a
+    /// fast rep, no sample may land inside a zone at all. If the signal V-turns close to a zone
+    /// edge at high speed (|v̂| ≥ FastTurnaroundMinSpeed), the extreme is latched retroactively —
+    /// a slow hoverer near the edge has low speed and never triggers these.</para>
     ///
     /// <para><b>Zones are absolute this release</b> (TopEnter=160 / BottomEnter=95 — the anti-cheat
     /// envelope). The adaptive tightening (median window of accepted reps) is computed but affects
@@ -79,10 +86,6 @@ namespace PushStars.CV
         private OneEuroFilter _filter = new OneEuroFilter(
             CVConstants.ElbowFilterMinCutoffHz, CVConstants.ElbowFilterBeta, CVConstants.ElbowFilterDerivCutoffHz);
 
-        private readonly float[] _median3 = new float[3];
-        private int _median3Count;
-        private int _median3Head;
-
         private float _lastValidTimeSec = -1f;
         private float _prevTickTimeSec = -1f;
         private bool _pendingReseed = true;
@@ -106,6 +109,11 @@ namespace PushStars.CV
         private float _lastArcThetaMax;
         private float _arcTopShoulderY = -1f;
 
+        // turnaround channels (fast undersampled reps)
+        private float _arcThetaMinTime = -1f;   // when the descent trough was observed
+        private float _crestMax;                // max θm since the bottom latch (AwaitTop)
+        private float _maxSpeedThisPhase;       // rolling max |v̂| within the current arc phase
+
         // adaptive HUD windows (accepted reps only)
         private readonly float[] _botWindow = new float[CVConstants.AdaptiveWindowReps];
         private readonly float[] _topWindow = new float[CVConstants.AdaptiveWindowReps];
@@ -117,8 +125,6 @@ namespace PushStars.CV
         public void Reset()
         {
             _filter.Reset();
-            _median3Count = 0;
-            _median3Head = 0;
             SmoothedElbowDeg = 180f;
             MedianElbowDeg = 180f;
             _prevMedian = 180f;
@@ -180,7 +186,6 @@ namespace PushStars.CV
             if (_pendingReseed)
             {
                 _filter.Reset();
-                _median3Count = 0;
                 _pendingReseed = false;
             }
             else if (Mathf.Abs(rawElbowDeg - SmoothedElbowDeg) > CVConstants.ElbowSpikeClampDegPerFrame
@@ -193,11 +198,9 @@ namespace PushStars.CV
                 return;
             }
 
-            // median-of-3
-            _median3[_median3Head] = rawElbowDeg;
-            _median3Head = (_median3Head + 1) % 3;
-            if (_median3Count < 3) _median3Count++;
-            float thetaM = MedianOf3();
+            // θm = the Hampel-gated raw signal. No median: single-sample troughs ARE the bottom
+            // of a fast rep and must survive (see class doc).
+            float thetaM = rawElbowDeg;
 
             float thetaS = _filter.Filter(thetaM, dt);
 
@@ -241,19 +244,20 @@ namespace PushStars.CV
 
             if (!isArmed) return;
 
-            // watermarks + θm extremes for the adaptive window
+            // watermarks + θm extremes for the adaptive window / turnaround channels
             if (ArcState != DepthArcState.Idle)
             {
                 if (CurrentDepth01 < RepMinDepth01) RepMinDepth01 = CurrentDepth01;
                 if (CurrentDepth01 > RepMaxDepth01) RepMaxDepth01 = CurrentDepth01;
-                if (thetaM < _arcThetaMin) _arcThetaMin = thetaM;
+                if (thetaM < _arcThetaMin) { _arcThetaMin = thetaM; _arcThetaMinTime = timeSec; }
                 if (thetaM > _arcThetaMax) _arcThetaMax = thetaM;
+                if (_filter.LastSpeed > _maxSpeedThisPhase) _maxSpeedThisPhase = _filter.LastSpeed;
             }
 
             switch (ArcState)
             {
                 case DepthArcState.Idle:
-                    // Enter the game strictly from the top (aligned with ArmingElbowTopAngle=150).
+                    // Enter the game strictly from the top (aligned with ArmingElbowTopAngle).
                     _idleTopFrames = InTopZone ? _idleTopFrames + 1 : 0;
                     if (_idleTopFrames >= 2) StartArc(timeSec);
                     break;
@@ -262,12 +266,36 @@ namespace PushStars.CV
                     if (graceLatched) break;
                     UpdateChannelBHint(frame, thetaM);
                     if (TryZoneLatch(thetaM, timeSec, bottom: true))
+                    {
                         LatchBottom(timeSec);
+                    }
+                    // Fast-trough turnaround: the detector undersampled the trough (no sample
+                    // landed ≤ BottomEnter), but the signal V-turned just above the zone at high
+                    // speed — latch the observed minimum retroactively. A slow hoverer near the
+                    // edge has low |v̂| and never triggers this.
+                    else if (thetaM >= _arcThetaMin + CVConstants.TurnaroundRiseDeg
+                             && _arcThetaMin <= BottomEnterDeg + CVConstants.FastTroughSlackDeg
+                             && _maxSpeedThisPhase >= CVConstants.FastTurnaroundMinSpeedDegPerSec)
+                    {
+                        LatchBottom(_arcThetaMinTime >= 0f ? _arcThetaMinTime : timeSec);
+                    }
                     break;
 
                 case DepthArcState.AwaitTop:
+                    if (thetaM > _crestMax) _crestMax = thetaM;
                     if (TryZoneLatch(thetaM, timeSec, bottom: false))
+                    {
                         LatchTop();
+                    }
+                    // Fast-crest turnaround: symmetric — the ascent peaked just under TopEnter at
+                    // high speed and turned back down (the next rep already started). Without this
+                    // the two fast reps merge into one.
+                    else if (thetaM <= _crestMax - CVConstants.TurnaroundRiseDeg
+                             && _crestMax >= TopEnterDeg - CVConstants.FastCrestSlackDeg
+                             && _maxSpeedThisPhase >= CVConstants.FastTurnaroundMinSpeedDegPerSec)
+                    {
+                        LatchTop();
+                    }
                     break;
             }
         }
@@ -308,6 +336,8 @@ namespace PushStars.CV
             BottomLatchTimeSec = timeSec;
             ArcState = DepthArcState.AwaitTop;
             _topZoneEnterTime = -1f;
+            _crestMax = MedianElbowDeg;
+            _maxSpeedThisPhase = 0f;
             BottomAltHintActive = false;
             OnBottomLatched?.Invoke();
         }
@@ -334,6 +364,9 @@ namespace PushStars.CV
             _idleTopFrames = 0;
             RepMinDepth01 = RepMaxDepth01 = CurrentDepth01;
             _arcThetaMin = _arcThetaMax = MedianElbowDeg;
+            _arcThetaMinTime = timeSec;
+            _crestMax = MedianElbowDeg;
+            _maxSpeedThisPhase = 0f;
             ArcShoulderWidthMinImg = float.PositiveInfinity;
             ArcShoulderWidthMaxImg = 0f;
             ArcShoulderMidYMin = float.PositiveInfinity;
@@ -451,21 +484,6 @@ namespace PushStars.CV
                 CVConstants.AdaptiveDecayStepDeg);
             HudTopEnterDeg = Mathf.MoveTowards(HudTopEnterDeg, CVConstants.TopElbowAngle,
                 CVConstants.AdaptiveDecayStepDeg);
-        }
-
-        private float MedianOf3()
-        {
-            if (_median3Count == 1) return _median3[(_median3Head + 2) % 3];
-            if (_median3Count == 2)
-            {
-                float x = _median3[(_median3Head + 1) % 3], y = _median3[(_median3Head + 2) % 3];
-                return 0.5f * (x + y);
-            }
-            float a = _median3[0], b = _median3[1], c = _median3[2];
-            if (a > b) { var t = a; a = b; b = t; }
-            if (b > c) { var t = b; b = c; c = t; }
-            if (a > b) { var t = a; a = b; b = t; }
-            return b;
         }
 
         private float MedianOf(float[] src, int n)

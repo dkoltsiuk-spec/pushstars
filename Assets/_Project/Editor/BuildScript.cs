@@ -21,9 +21,12 @@ namespace PushStars.Editor
     public static class BuildScript
     {
         private const string Define       = "PUSHSTARS_MEDIAPIPE";
-        // FULL model (was lite): lite's skeleton breaks at the bottom of frontal reps.
-        private const string ModelName    = "pose_landmarker_full.bytes";
-        private const string ModelSrc     = "Packages/com.github.homuler.mediapipe/PackageResources/MediaPipe/" + ModelName;
+        // FULL model (was lite): lite's skeleton breaks at the bottom of frontal reps. Lite ships
+        // too — the runtime falls back to it when the GPU delegate fails (full-on-CPU ≈ 12fps trap).
+        private static readonly string[] ModelNames =
+            { "pose_landmarker_full.bytes", "pose_landmarker_lite.bytes" };
+        private const string ModelName    = "pose_landmarker_full.bytes"; // primary (kept for logs)
+        private const string ModelSrcDir  = "Packages/com.github.homuler.mediapipe/PackageResources/MediaPipe";
         private const string StreamingDir = "Assets/StreamingAssets";
         private const string BundleId     = "com.pushstars.app";
 
@@ -108,17 +111,21 @@ namespace PushStars.Editor
         private static void CopyModelToStreamingAssets()
         {
             if (!Directory.Exists(StreamingDir)) Directory.CreateDirectory(StreamingDir);
-            var dst = Path.Combine(StreamingDir, ModelName);
-            if (File.Exists(ModelSrc))
+            foreach (var model in ModelNames)
             {
-                File.Copy(ModelSrc, dst, true);
-                AssetDatabase.Refresh();
-                Debug.Log($"[Build] Copied {ModelName} into StreamingAssets.");
+                var src = Path.Combine(ModelSrcDir, model);
+                var dst = Path.Combine(StreamingDir, model);
+                if (File.Exists(src))
+                {
+                    File.Copy(src, dst, true);
+                    Debug.Log($"[Build] Copied {model} into StreamingAssets.");
+                }
+                else
+                {
+                    Debug.LogError($"[Build] Model not found at {src} — was the MediaPipe plugin imported first?");
+                }
             }
-            else
-            {
-                Debug.LogError($"[Build] Model not found at {ModelSrc} — was the MediaPipe plugin imported first?");
-            }
+            AssetDatabase.Refresh();
         }
 
         private const string TeamId = "Y4N58LLV3T"; // Apple Developer Team (Daniel Coltiuc)

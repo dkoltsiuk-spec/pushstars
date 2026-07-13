@@ -118,7 +118,7 @@ namespace PushStars.CV
             string info =
                 $"PHASE: {_session.Phase}   ARC: {t.ArcState}\n" +
                 $"θs/θm: {t.SmoothedElbowDeg:0.0} / {t.MedianElbowDeg:0.0}°   FORM: {f.Form:0}\n" +
-                $"TEMPO: {_session.TempoRpm:0} rpm   TRACK: {_session.Quality}   FPS: {(1f / Mathf.Max(Time.smoothDeltaTime, 0.0001f)):0}\n" +
+                $"TEMPO: {_session.TempoRpm:0} rpm   TRACK: {_session.Quality}   FPS: {(1f / Mathf.Max(Time.smoothDeltaTime, 0.0001f)):0}   POSE: {_session.PoseFps:0}/s\n" +
                 $"VIEW:  {_session.View.View} (R={_session.View.RMedian:0.00})   κ={KappaText()}   Δknee={KneeDropText()}\n" +
                 $"SET:   {BuildSetLine()}\n" +
                 $"ARMER: {BuildArmerLine()}\n" +
