@@ -283,6 +283,15 @@ namespace PushStars.CV
                     yield return waitForEndOfFrame; // camera-preview-only / not ready
                     continue;
                 }
+                // Only feed MediaPipe when the webcam actually delivered a NEW frame. Without this
+                // the unthrottled editor (800+ render fps) hammered DetectAsync with hundreds of
+                // duplicate frames per second — texture readbacks alone froze the editor. On device
+                // it saves battery (render 60 vs camera 30).
+                if (!_webCam.didUpdateThisFrame)
+                {
+                    yield return waitForEndOfFrame;
+                    continue;
+                }
                 if (!_framePool.TryGetTextureFrame(out var textureFrame))
                 {
                     yield return waitForEndOfFrame;

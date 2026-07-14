@@ -30,20 +30,19 @@ namespace PushStars.Editor
             Debug.Log("[CVTest] Built 'CVTest' with MediaPipePoseSource + PushupSession + PushupDebugHud. Press Play.");
         }
 
-        /// <summary>One-click scene cleanup for CV testing. Running "Build CV Test object" several
-        /// times used to STACK CVTest copies (three of them were found live in testCV.unity — every
-        /// HUD drew on top of the others), and the avatar-overlay stand shares the same scene. This
-        /// removes the duplicates and deactivates (not deletes) the avatar-stand objects, then
-        /// builds one fresh, fully-wired CVTest.</summary>
-        [MenuItem("Tools/Push Stars/CV/Reset CV Test scene (fix duplicates + hide avatar stand)", priority = 311)]
+        /// <summary>One-click CAMERA-ONLY cleanup (no 3D character): removes CVTest duplicates,
+        /// deactivates the avatar-stand visuals, builds one fresh wired CVTest. For the avatar
+        /// mirror test use "Build Avatar Overlay Test" instead — that stand is the product
+        /// direction (the character follows the user, then mirrors the push-ups).</summary>
+        [MenuItem("Tools/Push Stars/CV/Reset CV Test scene (camera only, no avatar)", priority = 312)]
         public static void ResetScene()
         {
             RemoveExistingCvTestObjects();
 
-            // The avatar stand belongs to its own experiment — hide it from the CV test instead of
-            // destroying the user's work. Reactivate manually (or via its own build tool) any time.
-            string[] avatarStandNames =
-                { "AvatarStage", "AvatarStageCamera", "DisplayClearCamera", "Ground", "Ch36_Body (URP)" };
+            // Hide the avatar-stand VISUALS only. DisplayClearCamera must stay: without any
+            // display camera Unity stamps "No cameras rendering" over the IMGUI stand (learned
+            // the hard way on the laptop test).
+            string[] avatarStandNames = { "AvatarStage", "Ground", "Ch36_Body (URP)" };
             foreach (var name in avatarStandNames)
             {
                 var obj = GameObject.Find(name); // finds active only
@@ -54,7 +53,25 @@ namespace PushStars.Editor
                 }
             }
 
+            EnsureDisplayCamera();
             Build();
+        }
+
+        /// <summary>Any enabled camera rendering to the screen? If not, add a black clear-only one
+        /// so Unity doesn't stamp the "No cameras rendering" watermark over the IMGUI HUD.</summary>
+        private static void EnsureDisplayCamera()
+        {
+            foreach (var cam in UnityEngine.Object.FindObjectsOfType<Camera>())
+                if (cam.enabled && cam.targetTexture == null && cam.gameObject.activeInHierarchy)
+                    return;
+
+            var go = new GameObject("DisplayClearCamera");
+            var clear = go.AddComponent<Camera>();
+            clear.clearFlags = CameraClearFlags.SolidColor;
+            clear.backgroundColor = Color.black;
+            clear.cullingMask = 0;
+            clear.depth = -100f;
+            Debug.Log("[CVTest] Added DisplayClearCamera (no display camera existed).");
         }
 
         private static void RemoveExistingCvTestObjects()
