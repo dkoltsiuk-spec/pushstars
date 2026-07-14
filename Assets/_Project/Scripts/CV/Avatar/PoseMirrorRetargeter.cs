@@ -69,6 +69,14 @@ namespace PushStars.CV
         {
             if (_animator == null || !_animator.isHuman) return;
             _root = _animator.transform;
+
+            // The stand's model is the "@Push Up" FBX — its import default pose is a PLANK frame,
+            // not a stand. Binding rest directions off a plank made FromToRotation swing every
+            // limb through huge twisted arcs ("персонажа крутит") and the idle look was a push-up.
+            // Neutralize to the humanoid default pose (all muscles = 0 ≈ upright T/A-pose) BEFORE
+            // capturing the rest snapshot.
+            NeutralizePose();
+
             Quaternion invRoot = Quaternion.Inverse(_root.rotation);
 
             _hips = _animator.GetBoneTransform(HumanBodyBones.Hips);
@@ -168,6 +176,17 @@ namespace PushStars.CV
             }
 
             Mirroring = true;
+        }
+
+        private void NeutralizePose()
+        {
+            var handler = new HumanPoseHandler(_animator.avatar, _root);
+            var pose = new HumanPose();
+            handler.GetHumanPose(ref pose);
+            for (int i = 0; i < pose.muscles.Length; i++) pose.muscles[i] = 0f;
+            pose.bodyRotation = Quaternion.identity;
+            handler.SetHumanPose(ref pose);
+            handler.Dispose();
         }
 
         private static Vector3 World(in PoseFrame f, PoseLandmark id)

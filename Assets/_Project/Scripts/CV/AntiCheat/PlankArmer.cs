@@ -266,6 +266,15 @@ namespace PushStars.CV.AntiCheat
                 f.Visibility(PoseLandmark.RightKnee)       >= CVConstants.PlankLowerBodyVisibility;
             if (!lowerOk) { reason = PlankRejectReason.LowerBodyNotVisible; return false; }
 
+            // 1b) Body must be HORIZONTAL in the image (on-device find, round 2: a STANDING person
+            // passes every other side check — straight body line, straight knees, extended elbows,
+            // still wrists — and armed the counter upright; the κ sanity below is skipped when the
+            // shoulders are too narrow to trust. A side plank runs shoulder→feet across the frame,
+            // a standing body runs down it: require |Δx| ≥ |Δy| (≤45° from horizontal).
+            if (TryBodyAxisSq(f, out Vector2 bodyDir)
+                && Mathf.Abs(bodyDir.x) < Mathf.Abs(bodyDir.y))
+            { reason = PlankRejectReason.BodyIncline; return false; }
+
             // 2) Body line straight enough.
             float bodyLine = PoseMath.BodyLineAngle(f);
             if (bodyLine < CVConstants.ArmingBodyLineAngle) { reason = PlankRejectReason.BodySagging; return false; }
@@ -394,6 +403,41 @@ namespace PushStars.CV.AntiCheat
 
             reason = PlankRejectReason.Ok;
             return true;
+        }
+
+        /// <summary>Image-space body axis shoulderMid → lowest visible lower landmark (ankle
+        /// preferred, knee fallback), square space. False when not computable.</summary>
+        private static bool TryBodyAxisSq(in PoseFrame f, out Vector2 dir)
+        {
+            dir = Vector2.zero;
+            float aspect = f.Aspect;
+            bool ls = f.Visibility(PoseLandmark.LeftShoulder)  >= CVConstants.MinJointVisibility;
+            bool rs = f.Visibility(PoseLandmark.RightShoulder) >= CVConstants.MinJointVisibility;
+            if (!ls && !rs) return false;
+            Vector2 shoulder = (ls && rs)
+                ? (PoseMath.ToSquare(f.Get(PoseLandmark.LeftShoulder).Pos2D, aspect)
+                 + PoseMath.ToSquare(f.Get(PoseLandmark.RightShoulder).Pos2D, aspect)) * 0.5f
+                : PoseMath.ToSquare(f.Get(ls ? PoseLandmark.LeftShoulder : PoseLandmark.RightShoulder).Pos2D, aspect);
+
+            bool la = f.Visibility(PoseLandmark.LeftAnkle)  >= CVConstants.MinJointVisibility;
+            bool ra = f.Visibility(PoseLandmark.RightAnkle) >= CVConstants.MinJointVisibility;
+            bool lk = f.Visibility(PoseLandmark.LeftKnee)   >= CVConstants.MinJointVisibility;
+            bool rk = f.Visibility(PoseLandmark.RightKnee)  >= CVConstants.MinJointVisibility;
+            Vector2 lower;
+            if (la || ra)
+                lower = (la && ra)
+                    ? (PoseMath.ToSquare(f.Get(PoseLandmark.LeftAnkle).Pos2D, aspect)
+                     + PoseMath.ToSquare(f.Get(PoseLandmark.RightAnkle).Pos2D, aspect)) * 0.5f
+                    : PoseMath.ToSquare(f.Get(la ? PoseLandmark.LeftAnkle : PoseLandmark.RightAnkle).Pos2D, aspect);
+            else if (lk || rk)
+                lower = (lk && rk)
+                    ? (PoseMath.ToSquare(f.Get(PoseLandmark.LeftKnee).Pos2D, aspect)
+                     + PoseMath.ToSquare(f.Get(PoseLandmark.RightKnee).Pos2D, aspect)) * 0.5f
+                    : PoseMath.ToSquare(f.Get(lk ? PoseLandmark.LeftKnee : PoseLandmark.RightKnee).Pos2D, aspect);
+            else return false;
+
+            dir = lower - shoulder;
+            return dir.sqrMagnitude > 1e-6f;
         }
 
         /// <summary>κ = (hipMid_y − shoulderMid_y)/sw when the shoulders are wide enough in the
