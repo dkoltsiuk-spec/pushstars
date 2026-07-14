@@ -54,6 +54,24 @@ namespace PushStars.CV
         private PoseFrame _frame;
         private bool _hasFrame;
 
+        // ── Visual skeleton smoothing (display only — detection reads the raw frame) ──────────
+        // The raw landmarks jitter and joints flicker across the visibility threshold, so the raw
+        // overlay "jumps" — especially during the big whole-body motion of getting down from
+        // standing into the plank. The drawn skeleton uses:
+        //  • adaptive position smoothing: small deltas heavily damped (de-jitter), large deltas
+        //    followed almost instantly (no perceptible lag on real movement);
+        //  • visibility HYSTERESIS + hold: a joint appears above the high threshold, disappears
+        //    only below the low one, and survives brief dropouts at its last smoothed position —
+        //    bones stop popping in/out while the user moves into the stance.
+        private readonly Vector2[] _smoothPos = new Vector2[PoseLandmarks.Count];
+        private readonly float[] _visEma = new float[PoseLandmarks.Count];
+        private readonly bool[] _jointShown = new bool[PoseLandmarks.Count];
+        private readonly float[] _lastShownTime = new float[PoseLandmarks.Count];
+        private bool _smootherSeeded;
+
+        private const float JointHoldSec = 0.25f;   // keep a recently-seen joint through a dropout
+        private const float VisEmaAlpha = 0.35f;
+
         private void OnEnable()
         {
             if (_source != null) _source.OnFrame += OnFrame;
@@ -68,6 +86,48 @@ namespace PushStars.CV
         {
             _frame = frame;
             _hasFrame = frame.IsValid;
+        }
+
+        private void Update()
+        {
+            if (!_hasFrame) return;
+
+            if (_source != null && _source.Quality == TrackingQuality.Lost)
+            {
+                // Full tracking loss: forget the smoothing state so re-acquisition SNAPS into
+                // place instead of gliding a ghost skeleton across the screen.
+                _smootherSeeded = false;
+                return;
+            }
+
+            float dt = Mathf.Clamp(Time.deltaTime, 0.001f, 0.1f);
+            float now = Time.time;
+
+            for (int i = 0; i < PoseLandmarks.Count; i++)
+            {
+                var lm = _frame.Get((PoseLandmark)i);
+
+                // Visibility with EMA + hysteresis (legs stricter — they flap frontally).
+                _visEma[i] += VisEmaAlpha * (lm.Visibility - _visEma[i]);
+                bool leg = i >= (int)PoseLandmark.LeftKnee;
+                float appear = leg ? CVConstants.SkeletonLegDrawVisibility : 0.55f;
+                float hide   = leg ? 0.40f : 0.30f;
+                if (_visEma[i] >= appear) { _jointShown[i] = true; _lastShownTime[i] = now; }
+                else if (_visEma[i] < hide) _jointShown[i] = false;
+
+                // Adaptive position smoothing at RENDER rate: rate 8/s when the delta is tiny
+                // (jitter melts away) ramping to 45/s for real movement (follows within ~20ms).
+                Vector2 target = new Vector2(lm.X, lm.Y);
+                if (!_smootherSeeded)
+                {
+                    _smoothPos[i] = target;
+                    continue;
+                }
+                float dist = Vector2.Distance(_smoothPos[i], target);
+                float rate = Mathf.Lerp(8f, 45f, Mathf.Clamp01(dist / 0.04f));
+                _smoothPos[i] = Vector2.Lerp(_smoothPos[i], target, 1f - Mathf.Exp(-dt * rate));
+            }
+            _smootherSeeded = true;
         }
 
         private void EnsureInit(WebCamTexture tex)
@@ -139,8 +199,10 @@ namespace PushStars.CV
 
             Vector2 ToScreen(int idx)
             {
-                var lm = _frame.Get((PoseLandmark)idx);
-                float ux = lm.X, uy = lm.Y;
+                // Positions come from the visual smoother (see Update), not the raw frame — the
+                // drawn skeleton follows the person fluidly instead of jittering.
+                Vector2 sp = _smootherSeeded ? _smoothPos[idx] : _frame.Get((PoseLandmark)idx).Pos2D;
+                float ux = sp.x, uy = sp.y;
                 float nx, ny;
                 switch (srcRot) // inverse of the source's upright mapping
                 {
@@ -155,12 +217,10 @@ namespace PushStars.CV
                 return new Vector2(p.x, p.y);
             }
 
-            // Legs/feet (idx ≥ 25: knees and below) draw at a STRICTER threshold — frontal leg
-            // landmarks hover around vis 0.5 and made the skeleton flicker/jump at the bottom of
-            // reps. Purely cosmetic: detection signals have their own per-signal gates.
-            bool Visible(int idx) => _frame.Visibility((PoseLandmark)idx)
-                >= (idx >= (int)PoseLandmark.LeftKnee ? CVConstants.SkeletonLegDrawVisibility
-                                                      : CVConstants.MinJointVisibility);
+            // Hysteresis + hold (see Update): a shown joint survives brief dropouts at its last
+            // smoothed position — bones don't pop in/out while the user moves into the stance.
+            bool Visible(int idx) => _jointShown[idx]
+                || (_lastShownTime[idx] > 0f && Time.time - _lastShownTime[idx] < JointHoldSec);
 
             // Bones (green).
             GUI.color = new Color(0.2f, 1f, 0.4f, 0.9f);
