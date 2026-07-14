@@ -40,8 +40,17 @@ namespace PushStars.CV
         [Tooltip("Segments whose landmarks fall below this visibility hold their last pose.")]
         [SerializeField, Range(0f, 1f)] private float _minJointVis = 0.35f;
 
+        [Header("Hybrid handoff (owner's flow: mirror until the plank arms, then the animation)")]
+        [Tooltip("When the session ARMS, the mirror blends OUT over this time and the Animator " +
+                 "(push-up scrub, PushupAvatarDriver) takes the body; on disarm it blends back in. " +
+                 "0 = hard switch.")]
+        [SerializeField, Range(0f, 1.5f)] private float _armedBlendSec = 0.35f;
+
         /// <summary>True once the rig is bound and at least one live frame has been applied.</summary>
         public bool Mirroring { get; private set; }
+
+        /// <summary>1 = full live mirror, 0 = the Animator owns the body (armed). Blends between.</summary>
+        public float MirrorWeight { get; private set; } = 1f;
 
         private struct Segment
         {
@@ -125,9 +134,21 @@ namespace PushStars.CV
         {
             if (!_bound || _session == null) return;
 
+            // Hybrid handoff: armed → the animation owns the body (weight → 0); the mirror poses
+            // are still computed during the blend so the two cross-fade instead of snapping. Runs
+            // in LateUpdate AFTER the Animator evaluated, so a partial weight Slerps FROM the
+            // animator-written pose TOWARD the live-mirrored one.
+            bool armed = _session.Armer != null && _session.Armer.IsArmed;
+            float targetWeight = armed ? 0f : 1f;
+            MirrorWeight = _armedBlendSec > 1e-3f
+                ? Mathf.MoveTowards(MirrorWeight, targetWeight, Time.deltaTime / _armedBlendSec)
+                : targetWeight;
+            if (MirrorWeight <= 0.001f) return; // animation mode — don't touch the bones
+
             var frame = _session.LastFrame;
             if (!frame.IsValid || !frame.HasWorldLandmarks) return;
 
+            float w = MirrorWeight;
             float k = 1f - Mathf.Exp(-Time.deltaTime * _followRate);
             Quaternion rootRot = _root.rotation;
 
@@ -151,9 +172,12 @@ namespace PushStars.CV
                     _hipsSmoothedRight = Vector3.Slerp(_hipsSmoothedRight, right.normalized, k);
                     Vector3 fwd = Vector3.Cross(_hipsSmoothedRight, _hipsSmoothedUp);
                     if (fwd.sqrMagnitude > 1e-6f)
-                        _hips.rotation = rootRot
+                    {
+                        Quaternion target = rootRot
                             * Quaternion.LookRotation(fwd, _hipsSmoothedUp)
                             * _hipsRestRotInRoot;
+                        _hips.rotation = Quaternion.Slerp(_hips.rotation, target, w);
+                    }
                 }
             }
 
@@ -172,7 +196,8 @@ namespace PushStars.CV
                 seg.HasDir = true;
 
                 Quaternion delta = Quaternion.FromToRotation(seg.RestDirInRoot, seg.SmoothedDir);
-                seg.Bone.rotation = rootRot * delta * seg.RestRotInRoot;
+                Quaternion target = rootRot * delta * seg.RestRotInRoot;
+                seg.Bone.rotation = Quaternion.Slerp(seg.Bone.rotation, target, w);
             }
 
             Mirroring = true;

@@ -30,22 +30,26 @@ namespace PushStars.Editor
         private const string IdleState   = "WarriorIdle";
         private const string RestState   = "SittingIdle";
 
-        /// <summary>Variant B (owner's pick after seeing variant A): NO canned animation — the
-        /// character live-mirrors the user's limbs from the world landmarks. Same stand, but the
-        /// Animator gets no controller (rest pose) and <see cref="PoseMirrorRetargeter"/> +
-        /// an always-following <see cref="AvatarMirrorAnchor"/> drive the character.</summary>
-        [MenuItem("Tools/Push Stars/CV/Build Avatar Mirror Test (retarget, no animation)", priority = 312)]
+        /// <summary>The owner's target flow (HYBRID): the character live-mirrors the user's limbs
+        /// while they get into position, then — the moment the plank ARMS — softly blends into the
+        /// canned push-up animation (depth-scrubbed by <see cref="PushupAvatarDriver"/>) and does
+        /// the reps "в рамках анимации". Disarm blends back to the live mirror.</summary>
+        [MenuItem("Tools/Push Stars/CV/Build Avatar Hybrid Test (mirror → pushup animation)", priority = 312)]
         public static void BuildRetarget()
         {
             AssetDatabase.Refresh();
 
-            // Only the model itself is needed (Humanoid rig for GetBoneTransform) — no clips.
-            if (!ConfigureModelImport(PushupFbx, PushupState, loop: false))
+            if (!ConfigureModelImport(PushupFbx, PushupState, loop: false) ||
+                !ConfigureModelImport(IdleFbx, IdleState, loop: true) ||
+                !ConfigureModelImport(RestFbx, RestState, loop: true))
             {
-                EditorUtility.DisplayDialog("Push Stars — Avatar Mirror Test",
-                    $"Mixamo FBX not found:\n{PushupFbx}", "OK");
+                EditorUtility.DisplayDialog("Push Stars — Avatar Hybrid Test",
+                    $"Mixamo FBX files not found under:\n{MixamoDir}", "OK");
                 return;
             }
+
+            var controller = BuildController();
+            if (controller == null) return;
 
             DestroyIfExists("CVTest");
             DestroyIfExists("AvatarStage");
@@ -57,21 +61,29 @@ namespace PushStars.Editor
             var cvTest = CvTestSceneSetup.CreateCvTestObject();
             if (cvTest == null)
             {
-                EditorUtility.DisplayDialog("Push Stars — Avatar Mirror Test",
+                EditorUtility.DisplayDialog("Push Stars — Avatar Hybrid Test",
                     "MediaPipePoseSource not found — enable the plugin first.", "OK");
                 return;
             }
 
             ApplyEditorWebcamDefaults(cvTest);
 
-            var stageCamera = BuildStage(controller: null, out Animator animator); // rest pose, no clips
+            var stageCamera = BuildStage(controller, out Animator animator);
 
-            // Retarget mode: face the camera dead-on — the 3/4 yaw that looks nice in the
-            // animation stand skews every mirrored limb direction by 20°.
+            // Mirror phase wants the character facing the camera dead-on — the 3/4 yaw that looks
+            // nice in the pure-animation stand skews every mirrored limb direction by 20°.
             animator.transform.localRotation = Quaternion.identity;
 
             var session = cvTest.GetComponent<PushupSession>();
 
+            // Armed phase: the depth-scrubbed push-up clip owns the body.
+            var driver = cvTest.AddComponent<PushupAvatarDriver>();
+            var dSo = new SerializedObject(driver);
+            dSo.FindProperty("_session").objectReferenceValue = session;
+            dSo.FindProperty("_animator").objectReferenceValue = animator;
+            dSo.ApplyModifiedPropertiesWithoutUndo();
+
+            // Setup phase: live mirror; blends out over ~0.35s when the armer fires.
             var retargeter = cvTest.AddComponent<PoseMirrorRetargeter>();
             var rSo = new SerializedObject(retargeter);
             rSo.FindProperty("_session").objectReferenceValue = session;
@@ -83,7 +95,8 @@ namespace PushStars.Editor
             aSo.FindProperty("_session").objectReferenceValue = session;
             aSo.FindProperty("_stageCamera").objectReferenceValue = stageCamera;
             aSo.FindProperty("_characterRoot").objectReferenceValue = animator.transform;
-            aSo.FindProperty("_followWhileArmed").boolValue = true;
+            // Armed = the animation owns the body; the anchor freezes at the locked spot.
+            aSo.FindProperty("_followWhileArmed").boolValue = false;
             aSo.FindProperty("_hipsBone").objectReferenceValue =
                 animator.GetBoneTransform(HumanBodyBones.Hips);
             aSo.ApplyModifiedPropertiesWithoutUndo();
@@ -91,15 +104,16 @@ namespace PushStars.Editor
             var preview = cvTest.AddComponent<AvatarStagePreview>();
             var pSo = new SerializedObject(preview);
             pSo.FindProperty("_stageCamera").objectReferenceValue = stageCamera;
+            pSo.FindProperty("_driver").objectReferenceValue = driver;
             pSo.FindProperty("_anchor").objectReferenceValue = anchor;
             pSo.FindProperty("_fullScreenOverlay").boolValue = true;
             pSo.ApplyModifiedPropertiesWithoutUndo();
 
             Selection.activeGameObject = cvTest;
             EditorGUIUtility.PingObject(cvTest);
-            Debug.Log("[AvatarMirrorTest] Built retarget stand. Press Play: the character LIVE-" +
-                      "MIRRORS your limbs (world landmarks). If a limb moves the wrong way, toggle " +
-                      "Flip X / Flip Z on PoseMirrorRetargeter in the inspector during Play.");
+            Debug.Log("[AvatarHybridTest] Built hybrid stand. Play: live mirror while you get into " +
+                      "position → plank arms → soft blend into the depth-scrubbed push-up clip → " +
+                      "reps run on the animation; disarm blends back to the mirror.");
         }
 
         [MenuItem("Tools/Push Stars/CV/Build Avatar Overlay Test (camera)", priority = 311)]
