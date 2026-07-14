@@ -30,6 +30,72 @@ namespace PushStars.Editor
         private const string IdleState   = "WarriorIdle";
         private const string RestState   = "SittingIdle";
 
+        /// <summary>Variant B (owner's pick after seeing variant A): NO canned animation — the
+        /// character live-mirrors the user's limbs from the world landmarks. Same stand, but the
+        /// Animator gets no controller (rest pose) and <see cref="PoseMirrorRetargeter"/> +
+        /// an always-following <see cref="AvatarMirrorAnchor"/> drive the character.</summary>
+        [MenuItem("Tools/Push Stars/CV/Build Avatar Mirror Test (retarget, no animation)", priority = 312)]
+        public static void BuildRetarget()
+        {
+            AssetDatabase.Refresh();
+
+            // Only the model itself is needed (Humanoid rig for GetBoneTransform) — no clips.
+            if (!ConfigureModelImport(PushupFbx, PushupState, loop: false))
+            {
+                EditorUtility.DisplayDialog("Push Stars — Avatar Mirror Test",
+                    $"Mixamo FBX not found:\n{PushupFbx}", "OK");
+                return;
+            }
+
+            DestroyIfExists("CVTest");
+            DestroyIfExists("AvatarStage");
+            DestroyIfExists("DisplayClearCamera");
+            DestroyIfExists("AvatarStageCamera");
+            DestroyIfExists("Ground");
+            DestroyIfExists("Ch36_Body (URP)");
+
+            var cvTest = CvTestSceneSetup.CreateCvTestObject();
+            if (cvTest == null)
+            {
+                EditorUtility.DisplayDialog("Push Stars — Avatar Mirror Test",
+                    "MediaPipePoseSource not found — enable the plugin first.", "OK");
+                return;
+            }
+
+            ApplyEditorWebcamDefaults(cvTest);
+
+            var stageCamera = BuildStage(controller: null, out Animator animator); // rest pose, no clips
+
+            var session = cvTest.GetComponent<PushupSession>();
+
+            var retargeter = cvTest.AddComponent<PoseMirrorRetargeter>();
+            var rSo = new SerializedObject(retargeter);
+            rSo.FindProperty("_session").objectReferenceValue = session;
+            rSo.FindProperty("_animator").objectReferenceValue = animator;
+            rSo.ApplyModifiedPropertiesWithoutUndo();
+
+            var anchor = cvTest.AddComponent<AvatarMirrorAnchor>();
+            var aSo = new SerializedObject(anchor);
+            aSo.FindProperty("_session").objectReferenceValue = session;
+            aSo.FindProperty("_stageCamera").objectReferenceValue = stageCamera;
+            aSo.FindProperty("_characterRoot").objectReferenceValue = animator.transform;
+            aSo.FindProperty("_followWhileArmed").boolValue = true;
+            aSo.ApplyModifiedPropertiesWithoutUndo();
+
+            var preview = cvTest.AddComponent<AvatarStagePreview>();
+            var pSo = new SerializedObject(preview);
+            pSo.FindProperty("_stageCamera").objectReferenceValue = stageCamera;
+            pSo.FindProperty("_anchor").objectReferenceValue = anchor;
+            pSo.FindProperty("_fullScreenOverlay").boolValue = true;
+            pSo.ApplyModifiedPropertiesWithoutUndo();
+
+            Selection.activeGameObject = cvTest;
+            EditorGUIUtility.PingObject(cvTest);
+            Debug.Log("[AvatarMirrorTest] Built retarget stand. Press Play: the character LIVE-" +
+                      "MIRRORS your limbs (world landmarks). If a limb moves the wrong way, toggle " +
+                      "Flip X / Flip Z on PoseMirrorRetargeter in the inspector during Play.");
+        }
+
         [MenuItem("Tools/Push Stars/CV/Build Avatar Overlay Test (camera)", priority = 311)]
         public static void Build()
         {

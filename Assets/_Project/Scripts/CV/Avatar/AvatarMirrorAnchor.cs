@@ -27,6 +27,11 @@ namespace PushStars.CV
         [SerializeField] private Camera _stageCamera;
         [SerializeField] private Transform _characterRoot;
 
+        [Tooltip("Retarget mode: keep following the user even while the session is armed (there " +
+                 "is no push-up scrub owning the character — the retargeter mirrors the limbs and " +
+                 "this anchor keeps owning position/scale).")]
+        [SerializeField] private bool _followWhileArmed = false;
+
         [Header("Gate")]
         [Tooltip("Both shoulders and both hips must be at least this visible for a frame to count.")]
         [SerializeField, Range(0f, 1f)] private float _minTorsoVisibility = 0.6f;
@@ -86,8 +91,9 @@ namespace PushStars.CV
         {
             if (_session == null || _stageCamera == null || _characterRoot == null) return;
 
-            // The push-up driver owns the character while armed — hold everything.
-            if (_session.Armer != null && _session.Armer.IsArmed)
+            // The push-up driver owns the character while armed — hold everything. (Retarget mode
+            // has no driver, so the anchor keeps following.)
+            if (!_followWhileArmed && _session.Armer != null && _session.Armer.IsArmed)
             {
                 State = AnchorState.Frozen;
                 return;
