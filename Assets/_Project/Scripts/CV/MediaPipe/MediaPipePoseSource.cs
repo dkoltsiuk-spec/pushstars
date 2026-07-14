@@ -53,12 +53,14 @@ namespace PushStars.CV
         [SerializeField] private bool _flipHorizontally = false;
         [SerializeField] private bool _flipVertically = true;
 
-        [Tooltip("Rotate landmarks into UPRIGHT screen space (0/90/180/270, CW). The webcam frame " +
-                 "is sensor-native landscape and the display rotates it 90° — landmarks must get " +
-                 "the same rotation or every 'below/above' anti-cheat check compares the wrong " +
-                 "axis (found on device: plank read as WristsAirborne, κ≈0 instead of ~0.15). " +
-                 "Verified iPhone front camera: 90.")]
-        [SerializeField] private int _landmarkRotationDeg = 90;
+        [Tooltip("Rotate landmarks into UPRIGHT screen space (0/90/180/270, CW). The phone webcam " +
+                 "frame is sensor-native landscape and the display rotates it 90° — landmarks must " +
+                 "get the same rotation or every 'below/above' anti-cheat check compares the wrong " +
+                 "axis. -1 = AUTO: 90 on mobile (verified iPhone front camera), 0 on desktop/editor " +
+                 "(laptop webcams are already upright).")]
+        [SerializeField] private int _landmarkRotationDeg = -1;
+
+        private int _resolvedRotationDeg; // resolved on the main thread in StartTracking
 
         [Header("Detection confidence")]
         [SerializeField, Range(0f, 1f)] private float _minPoseDetectionConfidence = 0.5f;
@@ -91,7 +93,7 @@ namespace PushStars.CV
         /// <summary>The upright rotation applied to landmarks before they leave this source. The
         /// skeleton overlay must INVERT this to get back to raw texture coordinates (it draws
         /// through the raw-texture display matrix).</summary>
-        public int LandmarkRotationDeg => _landmarkRotationDeg;
+        public int LandmarkRotationDeg => _resolvedRotationDeg;
 
         /// <summary>Pose-DETECTION rate (inference results/sec), NOT the Unity render rate. If
         /// this sits well below 30 the model/delegate is the fast-rep bottleneck — the HUD FPS
@@ -123,6 +125,10 @@ namespace PushStars.CV
         {
             if (IsRunning) return;
             IsRunning = true;
+            // Resolve platform-dependent defaults on the main thread (OnPoseResult runs off it).
+            _resolvedRotationDeg = _landmarkRotationDeg >= 0
+                ? ((_landmarkRotationDeg % 360) + 360) % 360
+                : (Application.isMobilePlatform ? 90 : 0);
             // The user is mid-push-up and cannot touch the screen — never sleep while tracking.
             // Also covers the testCV build, which boots straight into this scene without
             // AppBootstrap (where the app-wide NeverSleep is set).
@@ -195,6 +201,12 @@ namespace PushStars.CV
                 IResourceManager resources = new LocalResourceManager();
                 yield return RunSafely(resources.PrepareAssetAsync(_modelFileName, _modelFileName, false),
                                        e => { prepareFailed = true; SetStatus("PREPARE ERROR: " + e.Message); });
+                // Register the lite fallback with the editor resolver too — otherwise the fallback
+                // chain hands native code a name the resolver never learned and creation dies with
+                // "ExternalFile must specify ..." instead of falling back (seen on the PC stand).
+                if (!IsLite(_modelFileName))
+                    yield return RunSafely(resources.PrepareAssetAsync("pose_landmarker_lite.bytes", "pose_landmarker_lite.bytes", false),
+                                           e => SetStatus("lite prepare failed: " + e.Message));
                 string assetPath = _modelFileName;
 #else
                 // Device: we already copied the model to persistentData (StageModel); point MediaPipe at it.
@@ -213,6 +225,18 @@ namespace PushStars.CV
                         if (_poseLandmarker != null) modelTag = ModelShortName(_modelFileName) + "/GPU";
                         else SetStatus("GPU failed (" + gpuErr + ")");
                     }
+#if UNITY_EDITOR
+                    // Editor (Windows): the GPU delegate doesn't exist here, and a desktop CPU runs
+                    // the full model far above the 30fps the device chain assumes — so full/CPU is
+                    // allowed IN THE EDITOR ONLY (on a phone it silently starves fast-rep detection).
+                    if (_poseLandmarker == null)
+                    {
+                        SetStatus("creating pose landmarker (CPU/editor, " + _modelFileName + ")");
+                        _poseLandmarker = TryCreateLandmarker(assetPath, Mediapipe.Tasks.Core.BaseOptions.Delegate.CPU, out string edCpuErr);
+                        if (_poseLandmarker != null) modelTag = ModelShortName(_modelFileName) + "/CPU";
+                        else SetStatus("editor CPU failed (" + edCpuErr + ")");
+                    }
+#endif
                     if (_poseLandmarker == null && !IsLite(_modelFileName))
                     {
                         string litePath = StageModelByName("pose_landmarker_lite.bytes");
@@ -294,7 +318,7 @@ namespace PushStars.CV
             Landmark[] arr = null;
             Landmark[] world = null;
 
-            int rot = ((_landmarkRotationDeg % 360) + 360) % 360;
+            int rot = _resolvedRotationDeg;
 
             var poses = result.poseLandmarks;
             if (poses != null && poses.Count > 0)
@@ -400,8 +424,7 @@ namespace PushStars.CV
             float aspect = 1f;
             if (_webCam != null && _webCam.height > 16)
             {
-                int r = ((_landmarkRotationDeg % 360) + 360) % 360;
-                bool quarter = r == 90 || r == 270;
+                bool quarter = _resolvedRotationDeg == 90 || _resolvedRotationDeg == 270;
                 aspect = quarter
                     ? (float)_webCam.height / _webCam.width
                     : (float)_webCam.width / _webCam.height;

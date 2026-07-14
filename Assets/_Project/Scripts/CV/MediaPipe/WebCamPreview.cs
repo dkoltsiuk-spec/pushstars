@@ -135,6 +135,14 @@ namespace PushStars.CV
             if (_initialized) return;
             _autoRotation = _rotationOverride < 0;
             _rotation     = _autoRotation ? tex.videoRotationAngle : _rotationOverride;
+            // Desktop/editor: laptop webcams are already upright — ignore the phone-baked 90°
+            // override and trust the auto angle (0 on Windows), otherwise the preview shows the
+            // camera sideways when testing in the editor.
+            if (!Application.isMobilePlatform)
+            {
+                _autoRotation = true;
+                _rotation = tex.videoRotationAngle;
+            }
             _flipH        = _flipHorizontal;
             _flipV        = _flipVertical;
             _skelH        = _skeletonFlipH;
