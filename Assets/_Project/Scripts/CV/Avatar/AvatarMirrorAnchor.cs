@@ -32,6 +32,11 @@ namespace PushStars.CV
                  "this anchor keeps owning position/scale).")]
         [SerializeField] private bool _followWhileArmed = false;
 
+        [Tooltip("Retarget mode: anchor the HIPS BONE itself to the user's hip point instead of " +
+                 "the standing-pose root formula (root at the feet, hips 0.93m up). The standing " +
+                 "formula pushed a scaled retargeted character to the bottom of the screen.")]
+        [SerializeField] private Transform _hipsBone;
+
         [Header("Gate")]
         [Tooltip("Both shoulders and both hips must be at least this visible for a frame to count.")]
         [SerializeField, Range(0f, 1f)] private float _minTorsoVisibility = 0.6f;
@@ -161,10 +166,17 @@ namespace PushStars.CV
                                 + frame.Get(PoseLandmark.RightHip).Pos2D);
             Vector2 shoulder = 0.5f * (frame.Get(PoseLandmark.LeftShoulder).Pos2D
                                      + frame.Get(PoseLandmark.RightShoulder).Pos2D);
-            // Torso length in aspect-corrected square space (units = fraction of image height).
+            // Body scale in aspect-corrected square space. max(torso, shoulder width): the torso
+            // foreshortens to almost nothing in a plank (the retarget stand follows through the
+            // whole movement) while the shoulder width stays honest frontally — same trick as the
+            // anti-cheat's WristAnchor scale.
             float torso = Vector2.Distance(
                 PoseMath.ToSquare(hip, frame.Aspect),
                 PoseMath.ToSquare(shoulder, frame.Aspect));
+            float shoulderWidth = Vector2.Distance(
+                PoseMath.ToSquare(frame.Get(PoseLandmark.LeftShoulder).Pos2D, frame.Aspect),
+                PoseMath.ToSquare(frame.Get(PoseLandmark.RightShoulder).Pos2D, frame.Aspect));
+            torso = Mathf.Max(torso, shoulderWidth);
 
             // median-3 kills single-frame outliers before they reach the One-Euro.
             _mx[_medHead] = hip.x;
@@ -194,8 +206,20 @@ namespace PushStars.CV
         {
             Vector3 hipWorld = _stageCamera.ViewportToWorldPoint(
                 new Vector3(_shownVp.x, _shownVp.y, _characterDistance));
-            _characterRoot.position = hipWorld + Vector3.down * (_rigHipHeightMeters * _shownScale);
             _characterRoot.localScale = Vector3.one * _shownScale;
+
+            if (_hipsBone != null)
+            {
+                // Retarget mode: put the HIPS BONE at the user's hip point — valid in any stance
+                // (standing, plank, bottom of a rep). Scale first so the offset is current.
+                Vector3 hipsOffset = _hipsBone.position - _characterRoot.position;
+                _characterRoot.position = hipWorld - hipsOffset;
+            }
+            else
+            {
+                // Standing-mirror mode: root at the feet, hips at standing height above it.
+                _characterRoot.position = hipWorld + Vector3.down * (_rigHipHeightMeters * _shownScale);
+            }
         }
 
         private bool TorsoVisible(in PoseFrame frame)

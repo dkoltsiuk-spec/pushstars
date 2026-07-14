@@ -66,6 +66,10 @@ namespace PushStars.Editor
 
             var stageCamera = BuildStage(controller: null, out Animator animator); // rest pose, no clips
 
+            // Retarget mode: face the camera dead-on — the 3/4 yaw that looks nice in the
+            // animation stand skews every mirrored limb direction by 20°.
+            animator.transform.localRotation = Quaternion.identity;
+
             var session = cvTest.GetComponent<PushupSession>();
 
             var retargeter = cvTest.AddComponent<PoseMirrorRetargeter>();
@@ -80,6 +84,8 @@ namespace PushStars.Editor
             aSo.FindProperty("_stageCamera").objectReferenceValue = stageCamera;
             aSo.FindProperty("_characterRoot").objectReferenceValue = animator.transform;
             aSo.FindProperty("_followWhileArmed").boolValue = true;
+            aSo.FindProperty("_hipsBone").objectReferenceValue =
+                animator.GetBoneTransform(HumanBodyBones.Hips);
             aSo.ApplyModifiedPropertiesWithoutUndo();
 
             var preview = cvTest.AddComponent<AvatarStagePreview>();
