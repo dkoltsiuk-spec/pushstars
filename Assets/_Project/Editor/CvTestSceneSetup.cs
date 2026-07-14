@@ -30,6 +30,48 @@ namespace PushStars.Editor
             Debug.Log("[CVTest] Built 'CVTest' with MediaPipePoseSource + PushupSession + PushupDebugHud. Press Play.");
         }
 
+        /// <summary>One-click scene cleanup for CV testing. Running "Build CV Test object" several
+        /// times used to STACK CVTest copies (three of them were found live in testCV.unity — every
+        /// HUD drew on top of the others), and the avatar-overlay stand shares the same scene. This
+        /// removes the duplicates and deactivates (not deletes) the avatar-stand objects, then
+        /// builds one fresh, fully-wired CVTest.</summary>
+        [MenuItem("Tools/Push Stars/CV/Reset CV Test scene (fix duplicates + hide avatar stand)", priority = 311)]
+        public static void ResetScene()
+        {
+            RemoveExistingCvTestObjects();
+
+            // The avatar stand belongs to its own experiment — hide it from the CV test instead of
+            // destroying the user's work. Reactivate manually (or via its own build tool) any time.
+            string[] avatarStandNames =
+                { "AvatarStage", "AvatarStageCamera", "DisplayClearCamera", "Ground", "Ch36_Body (URP)" };
+            foreach (var name in avatarStandNames)
+            {
+                var obj = GameObject.Find(name); // finds active only
+                if (obj != null)
+                {
+                    obj.SetActive(false);
+                    Debug.Log($"[CVTest] Deactivated avatar-stand object '{name}'.");
+                }
+            }
+
+            Build();
+        }
+
+        private static void RemoveExistingCvTestObjects()
+        {
+            int removed = 0;
+            // Resources.FindObjectsOfTypeAll also finds inactive scene objects.
+            foreach (var go in UnityEngine.Object.FindObjectsOfType<GameObject>(true))
+            {
+                if (go == null || go.name != "CVTest") continue;
+                if (!go.scene.IsValid()) continue; // skip prefab assets
+                UnityEngine.Object.DestroyImmediate(go);
+                removed++;
+            }
+            if (removed > 0)
+                Debug.Log($"[CVTest] Removed {removed} existing CVTest object(s).");
+        }
+
         /// <summary>Creates and fully wires a "CVTest" GameObject in the active scene. Returns null if
         /// the MediaPipe adapter isn't compiled (PUSHSTARS_MEDIAPIPE off). Used by the menu and by the
         /// CI build script (so the built scene never depends on stale serialized references).</summary>
@@ -43,6 +85,10 @@ namespace PushStars.Editor
                 Debug.LogError("[CVTest] Required types not found (MediaPipe define off or PushStars.CV not compiled).");
                 return null;
             }
+
+            // Idempotency: never stack a second CVTest — duplicate HUDs draw over each other and
+            // duplicate sessions fight for the camera.
+            RemoveExistingCvTestObjects();
 
             var previewType = Type.GetType("PushStars.CV.WebCamPreview, PushStars.CV.MediaPipe");
 
