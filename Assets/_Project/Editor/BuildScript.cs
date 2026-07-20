@@ -30,12 +30,13 @@ namespace PushStars.Editor
         private const string StreamingDir = "Assets/StreamingAssets";
         private const string BundleId     = "com.pushstars.app";
 
-        // The real app (Boot → Firebase init → Main) plus the CV test scene. testCV ships as a
-        // hidden debug scene (loadable by name); phase 08.9 replaces it with the boss-fight screen.
+        // The real app: Boot (Firebase init) → Main → Fight (boss duel, phase 08.9). testCV ships
+        // as a hidden debug scene (loadable by name) until the fight screen fully replaces it.
         private static readonly string[] AppScenes =
         {
             "Assets/_Project/Scenes/Boot.unity",
             "Assets/_Project/Scenes/Main.unity",
+            FightSceneSetup.ScenePath,
             "Assets/testCV.unity",
         };
 
@@ -105,6 +106,18 @@ namespace PushStars.Editor
 
             const string scenePath = "Assets/testCV.unity";
             EditorSceneManager.SaveScene(scene, scenePath);
+
+            // Regenerate the boss-duel scene the same way (phase 08.9). BuildFightScene returns
+            // false when it had to fall back to the mock pose source — on CI that means the
+            // MediaPipe assembly didn't compile, and shipping a camera-less fight screen would be
+            // a broken product: abort like the CVTest guard above.
+            if (!FightSceneSetup.BuildFightScene())
+            {
+                Debug.LogError("[Build] Fight scene fell back to MockPoseSource — MediaPipe missing. ABORTING.");
+                EditorApplication.Exit(1);
+                return;
+            }
+            Debug.Log("[Build] Fight scene regenerated and wired.");
 
             // Ship the real app: Boot (index 0) initializes Firebase and loads Main by name;
             // testCV stays in the list as a debug scene reachable via SceneManager.LoadScene.

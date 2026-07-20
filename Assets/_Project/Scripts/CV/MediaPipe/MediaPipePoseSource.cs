@@ -28,7 +28,7 @@ namespace PushStars.CV
     /// a buffer; <see cref="Update"/> raises <see cref="OnFrame"/> / <see cref="OnQualityChanged"/> on
     /// the main thread.
     /// </summary>
-    public sealed class MediaPipePoseSource : MonoBehaviour, IPoseSource
+    public sealed class MediaPipePoseSource : MonoBehaviour, IPoseSource, ICameraFeed
     {
         [Header("Model")]
         [Tooltip("pose_landmarker_lite.bytes / _full.bytes / _heavy.bytes. FULL is the default: " +

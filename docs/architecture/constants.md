@@ -215,6 +215,17 @@
 | `DAILY_GOAL_XP_BONUS` | `75` | Разовый XP за выполнение цели дня |
 | `WEEKLY_BOARD_RESET_DOW` | `Mon` | День недели для обнуления недельного зачёта (TZ проекта — UTC) |
 
+### Босс-дуэль (фаза 08.9)
+
+См. [phase-08.9-boss-fight.md](../plan/phase-08.9-boss-fight.md). Клиентские (код: `PushStars.Core.FightConfig` / `BossCatalog`); XP за бой копится в `OfflineXpBank` до синка фазы 11.5.
+
+| Константа | Значение | Примечание |
+|-----------|----------|------------|
+| `BOSS_SEARCH_DELAY_SEC` | `2.5` | Сколько крутится кольцо поиска до «найден» |
+| `BOSS_DUEL_DURATION_SEC` | `60` | Длительность боя |
+| `BOSS_WIN_XP_BONUS` | `50` | Разовый XP-бонус за победу над боссом |
+| `BOSS_PROFILES` | `novice/athlete/champion` | ~15 / ~25 / ~35 репов за бой; прогрессия в PlayerPrefs `boss_progress` |
+
 ## Клиентское кеширование
 
 | Константа | Значение |

@@ -1,22 +1,18 @@
 {
-    "name": "PushStars.Editor",
-    "rootNamespace": "PushStars.Editor",
+    "name": "PushStars.Fight",
+    "rootNamespace": "PushStars.Fight",
     "references": [
         "PushStars.Core",
-        "PushStars.App",
-        "PushStars.UI",
         "PushStars.CV",
-        "PushStars.Fight",
+        "PushStars.UI",
         "Unity.TextMeshPro"
     ],
-    "includePlatforms": [
-        "Editor"
-    ],
+    "includePlatforms": [],
     "excludePlatforms": [],
     "allowUnsafeCode": false,
     "overrideReferences": false,
     "precompiledReferences": [],
-    "autoReferenced": false,
+    "autoReferenced": true,
     "defineConstraints": [],
     "versionDefines": [],
     "noEngineReferences": false
