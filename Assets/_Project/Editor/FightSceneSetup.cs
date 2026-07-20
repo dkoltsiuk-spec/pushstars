@@ -28,6 +28,10 @@ namespace PushStars.Editor
         const float REF_W = 390f;
         const float REF_H = 844f;
 
+        /// <summary>Ship the IMGUI tuning HUD on top of the fight UI while the screen is being
+        /// stabilized on device. Flip to false (and regenerate) once detection is proven.</summary>
+        const bool IncludeDebugHud = true;
+
         [MenuItem("Tools/Push Stars/Build Fight Screen", priority = 21)]
         public static void Build()
         {
@@ -65,6 +69,22 @@ namespace PushStars.Editor
             sessionSO.FindProperty("_poseSourceBehaviour").objectReferenceValue = pose;
             sessionSO.FindProperty("_logReps").boolValue = true;
             sessionSO.ApplyModifiedPropertiesWithoutUndo();
+
+            // TEMPORARY diagnostics (remove once the fight screen is stable on device): the full
+            // tuning HUD from testCV. IMGUI draws over the UGUI canvas, so STATUS / POSE fps /
+            // armer-reject reasons are readable right on top of the fight UI — without this a dead
+            // model or a failing armer is invisible (the on-device lesson from phase 08.1).
+            if (IncludeDebugHud)
+            {
+                var debugHud = cvGO.AddComponent<PushupDebugHud>();
+                var dbgSO = new SerializedObject(debugHud);
+                dbgSO.FindProperty("_session").objectReferenceValue = session;
+                // The fight HUD already beeps/buzzes — mute the debug copy so sounds don't double.
+                dbgSO.FindProperty("_repSound").boolValue = false;
+                dbgSO.FindProperty("_bottomTickSound").boolValue = false;
+                dbgSO.FindProperty("_rejectBuzzSound").boolValue = false;
+                dbgSO.ApplyModifiedPropertiesWithoutUndo();
+            }
 
             // ── Canvas ───────────────────────────────────────────────────────────────────────────
             var canvasGO = new GameObject("FightCanvas", typeof(RectTransform));
