@@ -34,9 +34,16 @@ mkdir -p Assets/StreamingAssets
 cp -f "$DEST/PackageResources/MediaPipe/$MODEL" "Assets/StreamingAssets/$MODEL"
 cp -f "$DEST/PackageResources/MediaPipe/$MODEL_FALLBACK" "Assets/StreamingAssets/$MODEL_FALLBACK"
 
-# Placeholder GoogleService-Info.plist so Firebase's iOS build scripts (Crashlytics) don't fail.
-# The CV test never initializes Firebase at runtime, so dummy values are fine. NOT committed.
-if [ ! -f "Assets/GoogleService-Info.plist" ]; then
+# GoogleService-Info.plist (gitignored). Preferred source: the UBA env var
+# GOOGLE_SERVICE_INFO_PLIST_B64 — base64 of the real plist, set in the UBA target's
+# "Environment variables" (locally: `base64 -i Assets/GoogleService-Info.plist | pbcopy`).
+# Fallback: a placeholder with dummy values so Firebase's iOS build scripts still link;
+# the app then boots without a backend (AppBootstrap logs "Firebase unavailable" and the
+# UI falls back to mock data).
+if [ -n "${GOOGLE_SERVICE_INFO_PLIST_B64:-}" ]; then
+  echo "[prebuild] writing REAL GoogleService-Info.plist from env var..."
+  echo "$GOOGLE_SERVICE_INFO_PLIST_B64" | base64 --decode > "Assets/GoogleService-Info.plist"
+elif [ ! -f "Assets/GoogleService-Info.plist" ]; then
   echo "[prebuild] writing placeholder GoogleService-Info.plist..."
   cat > "Assets/GoogleService-Info.plist" <<'PLIST'
 <?xml version="1.0" encoding="UTF-8"?>

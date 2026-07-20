@@ -30,6 +30,15 @@ namespace PushStars.Editor
         private const string StreamingDir = "Assets/StreamingAssets";
         private const string BundleId     = "com.pushstars.app";
 
+        // The real app (Boot → Firebase init → Main) plus the CV test scene. testCV ships as a
+        // hidden debug scene (loadable by name); phase 08.9 replaces it with the boss-fight screen.
+        private static readonly string[] AppScenes =
+        {
+            "Assets/_Project/Scenes/Boot.unity",
+            "Assets/_Project/Scenes/Main.unity",
+            "Assets/testCV.unity",
+        };
+
         public static void BuildiOS()
         {
             EnableMediaPipeDefine(NamedBuildTarget.iOS);
@@ -41,7 +50,7 @@ namespace PushStars.Editor
 
             var options = new BuildPlayerOptions
             {
-                scenes           = new[] { "Assets/testCV.unity" }, // CV test scene (rep counter on camera)
+                scenes           = AppScenes,
                 locationPathName = outDir,
                 target           = BuildTarget.iOS,
                 targetGroup      = BuildTargetGroup.iOS,
@@ -63,10 +72,12 @@ namespace PushStars.Editor
         /// <summary>
         /// Pre-export hook for Unity Build Automation (set as the build target's "Pre-export method":
         /// <c>PushStars.Editor.BuildScript.PrepareForUBA</c>). UBA runs its own BuildPlayer, so this
-        /// only prepares the project: makes the CV test scene the one that ships, copies the pose
-        /// model into StreamingAssets, and sets the iOS camera string + bundle id. The
-        /// PUSHSTARS_MEDIAPIPE define is committed in ProjectSettings; the plugin itself is fetched by
-        /// the UBA pre-build script before the editor opens.
+        /// only prepares the project: sets the shipping scene list (Boot → Main + the regenerated CV
+        /// test scene as a debug extra), copies the pose model into StreamingAssets, and sets the iOS
+        /// camera string + bundle id. The PUSHSTARS_MEDIAPIPE define is committed in ProjectSettings;
+        /// the plugin itself is fetched by the UBA pre-build script before the editor opens, which
+        /// also writes the real GoogleService-Info.plist from an env var (placeholder otherwise —
+        /// the app then boots without a backend and the UI falls back to mock data).
         /// </summary>
         public static void PrepareForUBA()
         {
@@ -94,9 +105,13 @@ namespace PushStars.Editor
 
             const string scenePath = "Assets/testCV.unity";
             EditorSceneManager.SaveScene(scene, scenePath);
-            EditorBuildSettings.scenes = new[] { new EditorBuildSettingsScene(scenePath, true) };
 
-            Debug.Log("[Build] PrepareForUBA done: scene regenerated, model copied, iOS configured.");
+            // Ship the real app: Boot (index 0) initializes Firebase and loads Main by name;
+            // testCV stays in the list as a debug scene reachable via SceneManager.LoadScene.
+            EditorBuildSettings.scenes =
+                AppScenes.Select(s => new EditorBuildSettingsScene(s, true)).ToArray();
+
+            Debug.Log("[Build] PrepareForUBA done: scenes = Boot + Main + testCV, model copied, iOS configured.");
         }
 
         private static void EnableMediaPipeDefine(NamedBuildTarget target)
