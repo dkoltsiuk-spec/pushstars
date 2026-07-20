@@ -12,6 +12,7 @@ namespace PushStars.Core
         public string Rank = "bronze";
         public long   Trophies;
         public long   Xp;
+        public long   Aura;
         public long   WinStreak;
         public long   TotalWins;
         public long   TotalLosses;
@@ -19,6 +20,15 @@ namespace PushStars.Core
         public double WinRate;
 
         public long Games => TotalWins + TotalLosses;
+
+        /// <summary>Player level, derived from <see cref="Xp"/> (XP is never lost, so level only rises).</summary>
+        public int Level => LevelCalculator.LevelFromXp(Xp);
+
+        /// <summary>Progress (0..1) through the current level — for the XP bar.</summary>
+        public float LevelProgress => LevelCalculator.LevelProgress(Xp);
+
+        /// <summary>League derived from <see cref="Trophies"/>. <see cref="Rank"/> is the server-stored mirror.</summary>
+        public League League => Leagues.ForTrophies(Trophies);
 
         /// <summary>Server-side winRate if present, else computed from W/L (0 when no games).</summary>
         public int WinRatePercent

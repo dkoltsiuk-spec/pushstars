@@ -45,6 +45,7 @@ namespace PushStars.Services
                 Rank        = Field("rank", "bronze"),
                 Trophies    = Field<long>("trophies", 0),
                 Xp          = Field<long>("xp", 0),
+                Aura        = Field<long>("aura", 0),
                 WinStreak   = Field<long>("winStreak", 0),
                 TotalWins   = Field<long>("totalWins", 0),
                 TotalLosses = Field<long>("totalLosses", 0),

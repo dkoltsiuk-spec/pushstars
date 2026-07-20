@@ -10,6 +10,7 @@ function defaultProfile(displayName) {
     rank: 'bronze',
     trophies: 0,
     xp: 0,
+    aura: 0,
     winStreak: 0,
     totalWins: 0,
     totalLosses: 0,
