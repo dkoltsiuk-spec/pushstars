@@ -26,6 +26,9 @@ namespace PushStars.App
                  "logo. Real work longer than this is never cut short.")]
         [SerializeField, Range(0f, 4f)] private float _minVisibleSec = 1.2f;
 
+        [Tooltip("How long any one backend step may hold the launch before the app opens offline.")]
+        [SerializeField, Range(2f, 30f)] private float _serviceTimeoutSec = 8f;
+
         private float _startTime;
 
         private void Awake()
@@ -61,14 +64,16 @@ namespace PushStars.App
             {
                 Report(0.12f, "Соединение…");
                 var firebase = new FirebaseService();
-                await firebase.InitializeAsync();
+                bool inTime = await WithTimeout(firebase.InitializeAsync());
                 await UniTask.SwitchToMainThread();
 
-                if (!firebase.IsReady)
+                if (!inTime || !firebase.IsReady)
                 {
                     // Not fatal: the level test, the ghost duel and XP all work offline. The app
                     // opens without a backend rather than refusing to open.
-                    Debug.LogError("[AppBootstrap] Firebase unavailable — continuing without backend.");
+                    Debug.LogError(inTime
+                        ? "[AppBootstrap] Firebase unavailable — continuing without backend."
+                        : $"[AppBootstrap] Firebase did not answer in {_serviceTimeoutSec}s — continuing without backend.");
                     Report(0.6f, "Офлайн-режим");
                     return;
                 }
@@ -76,7 +81,12 @@ namespace PushStars.App
 
                 Report(0.32f, "Вход…");
                 var auth = new FirebaseAuthService();
-                await auth.SignInAnonymouslyAsync();
+                if (!await WithTimeout(auth.SignInAnonymouslyAsync()))
+                {
+                    Debug.LogError($"[AppBootstrap] Sign-in did not answer in {_serviceTimeoutSec}s — continuing without backend.");
+                    Report(0.6f, "Офлайн-режим");
+                    return;
+                }
                 await UniTask.SwitchToMainThread();
                 ServiceLocator.Register(auth);
 
@@ -100,6 +110,22 @@ namespace PushStars.App
                 // Guarantee we are back on the main thread before the scene transition.
                 await UniTask.SwitchToMainThread();
             }
+        }
+
+        /// <summary>Awaits <paramref name="work"/>, but stops waiting after
+        /// <see cref="_serviceTimeoutSec"/>. Returns false when it timed out; the work itself keeps
+        /// running in the background and may still register later.
+        ///
+        /// <para>Nothing on the backend is required to reach the first screen — the intro, the
+        /// level test, the ghost duel and XP all work offline by design. A slow network must
+        /// therefore cost a feature, never the launch; before this, a Firebase call that never
+        /// answered held the app on the loading screen for as long as it liked.</para></summary>
+        private async UniTask<bool> WithTimeout(System.Threading.Tasks.Task work)
+        {
+            int finishedFirst = await UniTask.WhenAny(
+                work.AsUniTask(),
+                UniTask.Delay(TimeSpan.FromSeconds(_serviceTimeoutSec), DelayType.Realtime));
+            return finishedFirst == 0;
         }
 
         // ── Routing ──────────────────────────────────────────────────────────────────────────────

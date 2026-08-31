@@ -27,6 +27,8 @@ namespace PushStars.UI
 
         private float _target;
         private float _shown;
+        private string _statusText = "";
+        private float _statusSetAt;
 
         /// <summary>True once the bar has caught up with the last reported progress and reached
         /// the end. The bootstrap waits for this so the app never cuts away mid-sweep.</summary>
@@ -46,13 +48,26 @@ namespace PushStars.UI
             // the launch.
             _shown = Mathf.MoveTowards(_shown, _target, _fillSpeed * Time.unscaledDeltaTime);
             if (_progressFill != null) _progressFill.fillAmount = _shown;
+
+            // A phase that outstays a second starts counting out loud. Startup is a sequence of
+            // named steps, so the one the number is attached to IS the diagnosis — no profiler,
+            // no cable, no guessing which of them is slow.
+            if (_status == null || _statusText.Length == 0) return;
+            float held = Time.realtimeSinceStartup - _statusSetAt;
+            _status.text = held > 1f ? $"{_statusText}  {held:0.0}s" : _statusText;
         }
 
         /// <summary>Reports how far along startup is. Progress only ever moves forward.</summary>
         public void Report(float progress01, string status = null)
         {
             _target = Mathf.Clamp01(Mathf.Max(_target, progress01));
-            if (!string.IsNullOrEmpty(status) && _status != null) _status.text = status;
+
+            // Progress-only reports must not restart the clock — the timer belongs to the phase,
+            // not to the last thing that happened to tick.
+            if (string.IsNullOrEmpty(status) || status == _statusText) return;
+            _statusText = status;
+            _statusSetAt = Time.realtimeSinceStartup;
+            if (_status != null) _status.text = status;
         }
 
         /// <summary>Fades the screen out. Called with the next scene already loading behind it.</summary>
