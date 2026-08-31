@@ -176,7 +176,10 @@ namespace PushStars.Editor
             // Several Figma exports dropped the "icon_" prefix.
             theme.IconAura        = TryLoadSprite("aura")
                                  ?? TryLoadSprite("icon_aura");
-            theme.IconLightning   = TryLoadSprite("icon_lightning");
+            // icon_lightning.png was never exported; EXP.png is the same yellow bolt.
+            theme.IconLightning   = TryLoadSprite("icon_lightning")
+                                 ?? TryLoadSprite("EXP")
+                                 ?? TryLoadSprite("exp_lightning");
             theme.IconLightningBG = TryLoadSprite("icon_lightning_BG")
                                  ?? TryLoadSprite("icon_lightning_for_BG");
             theme.IconPushup      = TryLoadSprite("pushup")
@@ -192,8 +195,24 @@ namespace PushStars.Editor
             theme.IconUp      = TryLoadSprite("up");
             theme.IconDown    = TryLoadSprite("down");
             theme.IconPlus    = TryLoadSprite("plus");
-            theme.IconLevel   = TryLoadSprite("lvl");
+            // lvl.png was dropped from the export; EXP.png carries the same bolt.
+            theme.IconLevel   = TryLoadSprite("lvl")
+                             ?? TryLoadSprite("EXP");
             theme.IconStatics = TryLoadSprite("statics");
+
+            // ── Main-screen plates + icons ────────────────────────────────────────
+            theme.PlatePvp     = TryLoadSprite("type");
+            theme.PlateBattle  = TryLoadSprite("btn_start");
+            theme.PlatePushup  = TryLoadSprite("type_settings");
+            theme.PlateShop    = TryLoadSprite("plashka_for_shop");
+            theme.PlateSlot    = TryLoadSprite("plashka_for_next");
+            theme.NavPlate     = TryLoadSprite("plashka");
+
+            theme.IconGem      = TryLoadSprite("gem");
+            theme.IconShop     = TryLoadSprite("shop");
+            theme.IconHouse    = TryLoadSprite("house");
+            theme.GlowRadial   = TryLoadSprite("glow_radial");
+            theme.GroundShadow = TryLoadSprite("ground_shadow");
 
             // Settings gear (phase 07). Drop gear.png into the Sprites folder; null is fine until then
             // (the builder falls back to a text "⚙" / "НАСТРОЙКИ" label).
@@ -1375,6 +1394,8 @@ namespace PushStars.Editor
             tmp.richText  = true;
             var rubik = FontSetup.Resolve(style, out var remaining);
             if (rubik != null) { tmp.font = rubik; tmp.fontStyle = remaining; }
+            // Small labels move to the light-keyline preset; the full one fuses their letters.
+            FontSetup.ApplyOutlineFor(tmp, size);
             var le = go.AddComponent<LayoutElement>();
             le.preferredHeight = preferredHeight;
             return go;
@@ -1409,7 +1430,8 @@ namespace PushStars.Editor
                 string path = AssetDatabase.GetAssetPath(sprite);
                 string file = System.IO.Path.GetFileName(path);
                 bool procedural = file.StartsWith("pill_") || file.StartsWith("circle_") ||
-                                  file.StartsWith("dashed_ring_");
+                                  file.StartsWith("dashed_ring_") ||
+                                  file == "glow_radial.png" || file == "ground_shadow.png";
                 if (!procedural) assigned++;
             }
             return (assigned, total);
@@ -1535,6 +1557,8 @@ namespace PushStars.Editor
             // Swap in the correct Rubik font asset for Bold/Italic instead of TMP simulation.
             var rubik = FontSetup.Resolve(style, out var remaining);
             if (rubik != null) { tmp.font = rubik; tmp.fontStyle = remaining; }
+            // Small labels move to the light-keyline preset; the full one fuses their letters.
+            FontSetup.ApplyOutlineFor(tmp, size);
 
             return go;
         }

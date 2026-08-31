@@ -655,6 +655,8 @@ namespace PushStars.Editor
             // Swap in the correct Rubik font asset for Bold/Italic instead of TMP simulation.
             var rubik = FontSetup.Resolve(style, out var remaining);
             if (rubik != null) { tmp.font = rubik; tmp.fontStyle = remaining; }
+            // Small labels move to the light-keyline preset; the full one fuses their letters.
+            FontSetup.ApplyOutlineFor(tmp, size);
 
             return tmp;
         }

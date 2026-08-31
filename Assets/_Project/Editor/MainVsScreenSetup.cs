@@ -1,5 +1,6 @@
 using System.IO;
 using UnityEditor;
+using UnityEditor.Events;
 using UnityEditor.SceneManagement;
 using UnityEngine;
 using UnityEngine.EventSystems;
@@ -14,16 +15,17 @@ namespace PushStars.Editor
     /// Builds the production main screen — the central <b>VS / Duel</b> tab — with a real
     /// 3D-character pipeline at its centre:
     ///
-    ///   • A dedicated stage camera renders a placeholder humanoid (on the "Character" layer)
+    ///   • A dedicated stage camera renders the character (on the "Character" layer)
     ///     into a transparent RenderTexture.
     ///   • A RawImage in the middle of the Duel panel displays that texture, so the character
     ///     appears to stand "inside" the flat UI.
-    ///   • The full mock-up composition is laid out around it: level / streak / aura top bar,
-    ///     FIND OPPONENT button, mode chips, and a functional 3-tab bottom nav.
+    ///   • The full mock-up composition is laid out around it: trophy / streak / gem / aura top
+    ///     bar, SHOP tile, the PVP · BATTLE · PUSHUP plates, and a functional 3-tab bottom nav.
     ///
     /// Everything is assembled into <c>Main.unity</c> with a working <see cref="MainShellView"/>
-    /// so tab switching runs on Play. In phase 10 the placeholder model is swapped for a Genies
-    /// avatar via <see cref="CharacterStage.SetAvatar"/> — nothing else on this screen changes.
+    /// so tab switching runs on Play. The model on the stage is the owner's own character
+    /// (<see cref="MainCharacterSetup"/>); swapping it for another one at runtime goes through
+    /// <see cref="CharacterStage.SetAvatar"/> — nothing else on this screen changes.
     ///
     /// Menu: Tools → Push Stars → Build Main VS Screen
     /// </summary>
@@ -42,10 +44,12 @@ namespace PushStars.Editor
         const string CharacterLayer = "Character";
 
         static PushStarsTheme _theme;
+        static Transform _avatarRoot;   // captured by the 3D stage so the turntable can spin it
         static int _charLayer;
         static RenderTexture _previewRt;
-        static GameObject _findButtonGO; // НАЙТИ СОПЕРНИКА — captured so the search overlay can wire to it
+        static GameObject _findButtonGO; // BATTLE plate — captured so the search overlay can wire to it
         static GameObject _gearButtonGO; // profile settings gear — captured so the settings overlay can wire to it
+        static CharacterRoster _roster;  // owns the body on the stage — captured so the М/Ж switch can wire to it
 
         [MenuItem("Tools/Push Stars/Build Main VS Screen", priority = 20)]
         public static void Run()
@@ -69,8 +73,11 @@ namespace PushStars.Editor
                 }
 
                 // The screen is composed from the Phase-03 design-system prefabs.
-                // Rebuild them if they are missing.
-                if (Load("PrimaryButton") == null || Load("SecondaryChip") == null)
+                // Rebuild them if they are missing — and rebuild the theme when it predates the
+                // slots this screen needs (NavPlate/GlowRadial arrived with the plate layout),
+                // so one menu command is still all it takes to get the current composition.
+                bool staleTheme = _theme.NavPlate == null || _theme.GlowRadial == null;
+                if (staleTheme || Load("PrimaryButton") == null || Load("SecondaryChip") == null)
                 {
                     UIGallerySetup.Run();
                     _theme = AssetDatabase.LoadAssetAtPath<PushStarsTheme>(ThemeAsset);
@@ -89,17 +96,98 @@ namespace PushStars.Editor
                     "Push Stars — Main VS Screen",
                     "Built Main.unity with the 3D character pipeline.\n\n" +
                     "• Scene is open and active — press Play.\n" +
-                    "• The placeholder avatar previews live in the centre (the stage\n" +
-                    "  camera renders into CharacterStageRT). If it looks blank, press\n" +
-                    "  Play once or move the Game view to force a repaint.\n\n" +
-                    "Phase 10: call CharacterStage.SetAvatar(genies) to swap the\n" +
-                    "placeholder for a real avatar — the layout stays identical.",
+                    "• The character previews live in the centre (the stage camera\n" +
+                    "  renders into CharacterStageRT). If it looks blank, press Play\n" +
+                    "  once or move the Game view to force a repaint.\n\n" +
+                    "The models come from MainMan.prefab / MainWoman.prefab, and the\n" +
+                    "М/Ж button beside the character swaps between them on Play.\n" +
+                    "Not imported yet? Run Tools ▸ Push Stars ▸ Character ▸ Import\n" +
+                    "Main Characters, then rebuild — until then a blockman stands in.",
                     "OK");
             }
             finally
             {
                 EditorUtility.ClearProgressBar();
             }
+        }
+
+        /// <summary>
+        /// Prints the positioned elements of the open Main scene as name → anchoredPosition / size.
+        ///
+        /// This screen is generated: <see cref="BuildScene"/> starts from an empty scene and
+        /// overwrites Main.unity, so anything nudged by hand is gone the next time it runs — the
+        /// code here is the source of truth, not the scene file. Dragging in the Scene view is
+        /// still the quickest way to FIND a number; this dumps whatever you arrived at so it can
+        /// be written back into the builder and survive.
+        ///
+        /// Menu: Tools → Push Stars → Dump Main Screen Layout
+        /// </summary>
+        public const string LayoutDumpPath = "layout_dump.txt"; // project root, beside Assets/
+
+        [MenuItem("Tools/Push Stars/Dump Main Screen Layout", priority = 21)]
+        public static void DumpLayout()
+        {
+            var canvas = Object.FindObjectOfType<Canvas>();
+            if (canvas == null)
+            {
+                Debug.LogWarning("[MainVsScreen] No Canvas in the open scene — open Main.unity first.");
+                return;
+            }
+
+            var sb = new System.Text.StringBuilder();
+            sb.AppendLine("# Main screen layout dump");
+            sb.AppendLine("# UI — anchoredPosition / sizeDelta, in the canvas's 390 × 844 reference units");
+            foreach (var rt in canvas.GetComponentsInChildren<RectTransform>(true))
+            {
+                // The bolt lattice is a few hundred generated tiles; nobody positions those by hand.
+                if (IsUnder(rt, "LightningPattern")) continue;
+
+                var p = rt.anchoredPosition;
+                var s = rt.sizeDelta;
+                sb.AppendLine($"{PathOf(rt, canvas.transform),-52} pos {p.x,8:0.##} {p.y,8:0.##}   size {s.x,7:0.##} x {s.y,-7:0.##}");
+            }
+
+            // The character is not a UI element — it lives on the world-space stage and reaches the
+            // screen through a RenderTexture, so moving "the character" can mean the RawImage above
+            // or the model and its camera down here. Both have to come back for a rebuild to match.
+            var stage = GameObject.Find("CharacterStage3D");
+            if (stage != null)
+            {
+                sb.AppendLine();
+                sb.AppendLine("# 3D stage — local position / euler / scale");
+                foreach (var t in stage.GetComponentsInChildren<Transform>(true))
+                {
+                    if (IsUnder(t, "AvatarRoot")) continue; // the rig's own bones, not layout
+                    var lp = t.localPosition; var le = t.localEulerAngles; var ls = t.localScale;
+                    sb.AppendLine($"{PathOf(t, stage.transform.parent),-52} " +
+                                  $"pos {lp.x,7:0.###} {lp.y,7:0.###} {lp.z,7:0.###}   " +
+                                  $"rot {le.x,6:0.#} {le.y,6:0.#} {le.z,6:0.#}   " +
+                                  $"scale {ls.x,5:0.###} {ls.y,5:0.###} {ls.z,5:0.###}");
+                    var cam = t.GetComponent<Camera>();
+                    if (cam != null) sb.AppendLine($"{"  ^ camera",-52} fov {cam.fieldOfView:0.##}");
+                }
+            }
+
+            string path = Path.GetFullPath(Path.Combine(Application.dataPath, "..", LayoutDumpPath));
+            File.WriteAllText(path, sb.ToString());
+            // Written to a file rather than the console: the Console list shows only the first two
+            // lines of an entry, and this dump is far longer than that.
+            Debug.Log($"[MainVsScreen] layout written to {path}");
+        }
+
+        static bool IsUnder(Transform t, string ancestorName)
+        {
+            for (var p = t.parent; p != null; p = p.parent)
+                if (p.name == ancestorName) return true;
+            return false;
+        }
+
+        static string PathOf(Transform t, Transform root)
+        {
+            var name = t.name;
+            for (var p = t.parent; p != null && p != root; p = p.parent)
+                name = p.name + "/" + name;
+            return name;
         }
 
         // ════════════════════════════════════════════════════════════════════════
@@ -193,6 +281,12 @@ namespace PushStars.Editor
             stageSO.FindProperty("_targetImage").objectReferenceValue = characterImage;
             stageSO.ApplyModifiedPropertiesWithoutUndo();
 
+            // ── Swipe-to-spin, on the surface the character is shown through ───────────
+            var turntable = characterImage.gameObject.AddComponent<CharacterTurntable>();
+            var turnSO = new SerializedObject(turntable);
+            turnSO.FindProperty("_target").objectReferenceValue = _avatarRoot;
+            turnSO.ApplyModifiedPropertiesWithoutUndo();
+
             // ── Search Opponent overlay (НАЙТИ СОПЕРНИКА → matchmaking screen) ──────────
             // Lives over the whole UI (sibling of SafeArea so it covers the bottom nav too),
             // hidden until the player taps the Find-Opponent CTA. The main screen recedes
@@ -225,8 +319,43 @@ namespace PushStars.Editor
             var avatarRoot = new GameObject("AvatarRoot").transform;
             avatarRoot.SetParent(stageGO.transform, false);
             avatarRoot.gameObject.layer = _charLayer;
-            BuildPlaceholderModel(avatarRoot, bodyMat, skinMat);
+            // The stage camera stands on -Z looking toward +Z; a Unity character faces +Z, so the
+            // root turns around to face the lens. Sitting on the root, this also holds for any
+            // model dropped in later through CharacterStage.SetAvatar.
+            avatarRoot.localRotation = Quaternion.Euler(0f, 180f, 0f);
+
+            var character = BuildCharacterModel(avatarRoot);
+            if (character == null) BuildPlaceholderModel(avatarRoot, bodyMat, skinMat);
             SetLayerRecursive(avatarRoot.gameObject, _charLayer);
+
+            // Break up the loop: every few idle cycles he stretches, then settles back.
+            if (character != null)
+            {
+                var accent = character.AddComponent<CharacterIdleAccent>();
+                var accentSO = new SerializedObject(accent);
+                accentSO.FindProperty("_animator").objectReferenceValue = character.GetComponent<Animator>();
+                accentSO.FindProperty("_idleState").stringValue   = MainCharacterSetup.IdleState;
+                accentSO.FindProperty("_accentState").stringValue = MainCharacterSetup.AccentState;
+                accentSO.ApplyModifiedPropertiesWithoutUndo();
+            }
+
+            _avatarRoot = avatarRoot;
+
+            // ── Gender switch ─────────────────────────────────────────────────────────
+            // The instance placed above is what makes the scene read correctly in edit mode,
+            // before anything runs. On Play the roster re-seats the stage from the saved choice,
+            // so the first load and every later tap on the М/Ж button take the same path.
+            var roster = stageGO.AddComponent<CharacterRoster>();
+            var rosterSO = new SerializedObject(roster);
+            rosterSO.FindProperty("_stage").objectReferenceValue = stage;
+            rosterSO.FindProperty("_malePrefab").objectReferenceValue =
+                MainCharacterSetup.LoadCharacterPrefab(CharacterGender.Male);
+            rosterSO.FindProperty("_femalePrefab").objectReferenceValue =
+                MainCharacterSetup.LoadCharacterPrefab(CharacterGender.Female);
+            rosterSO.FindProperty("_idleState").stringValue   = MainCharacterSetup.IdleState;
+            rosterSO.FindProperty("_accentState").stringValue = MainCharacterSetup.AccentState;
+            rosterSO.ApplyModifiedPropertiesWithoutUndo();
+            _roster = roster;
 
             // Stage camera — frames a ~1.8 m figure standing at the origin.
             var camGO = new GameObject("StageCamera");
@@ -246,14 +375,26 @@ namespace PushStars.Editor
             // (and so this camera never blits to the full screen). Runtime replaces it.
             cam.targetTexture       = _previewRt;
 
-            // Key light (directional). Only the stage camera renders 3D, so this is safe.
+            // Key light (directional). Only the stage camera renders 3D, so this is safe. It
+            // throws light along +Z — from the camera's side of the stage onto the character's
+            // front, slightly off-axis so the figure keeps some shape.
             var lightGO = new GameObject("KeyLight");
             lightGO.transform.SetParent(stageGO.transform, false);
-            lightGO.transform.rotation = Quaternion.Euler(35f, 205f, 0f);
+            lightGO.transform.rotation = Quaternion.Euler(35f, 25f, 0f);
             var light = lightGO.AddComponent<Light>();
             light.type      = LightType.Directional;
             light.intensity = 1.2f;
             light.color     = new Color(1f, 0.97f, 0.9f);
+
+            // Fill from the opposite side — a single key leaves the unlit half of a real
+            // character in near-black, which the blockman never showed.
+            var fillGO = new GameObject("FillLight");
+            fillGO.transform.SetParent(stageGO.transform, false);
+            fillGO.transform.rotation = Quaternion.Euler(15f, -35f, 0f);
+            var fill = fillGO.AddComponent<Light>();
+            fill.type      = LightType.Directional;
+            fill.intensity = 0.45f;
+            fill.color     = new Color(0.85f, 0.9f, 1f);
 
             var so = new SerializedObject(stage);
             so.FindProperty("_stageCamera").objectReferenceValue = cam;
@@ -261,6 +402,21 @@ namespace PushStars.Editor
             so.ApplyModifiedPropertiesWithoutUndo();
 
             return stage;
+        }
+
+        /// <summary>Puts the owner's main character on the stage. Returns null when he hasn't
+        /// been imported yet (Tools ▸ Push Stars ▸ Character ▸ Import Main Character) — the
+        /// blockman below still stands in, so this screen builds on a fresh clone.</summary>
+        static GameObject BuildCharacterModel(Transform root)
+        {
+            var prefab = MainCharacterSetup.LoadCharacterPrefab();
+            if (prefab == null) return null;
+
+            var character = (GameObject)PrefabUtility.InstantiatePrefab(prefab, root);
+            character.name = "MainMan";
+            character.transform.localPosition = Vector3.zero;
+            character.transform.localRotation = Quaternion.identity;
+            return character;
         }
 
         // Stylised blockman built from primitives. Feet on y=0, ~1.85 m tall.
@@ -308,69 +464,168 @@ namespace PushStars.Editor
         // ════════════════════════════════════════════════════════════════════════
         //  DUEL PANEL  (returns the character RawImage)
         // ════════════════════════════════════════════════════════════════════════
+        // ── Composition constants (reference 390 × 844, taken off the design mock-up) ──
+        // Kept together so the layout can be nudged without hunting through the builder.
+        const float CharAreaY       = 40f;    // character render surface, from the screen centre
+        const float FeetY           = -178f;  // where his soles land inside that surface
+        const float ActionRowBottom = 149f;   // baseline of the PVP / BATTLE / PUSHUP plates
+        const float NavBarBottom    = 52f;    // centre of the bottom-nav plate
+
         static RawImage BuildDuelPanel(RectTransform panel)
         {
-            // ── Top bar (edge-anchored so it can never overflow the screen) ─────────────
-            BuildTopBar(panel);
+            // Sibling order is draw order: the glow sits behind everything, then the contact
+            // shadow, the character, his wardrobe decor, the HUD, and the action plates on top.
+            BuildStageGlow(panel);
+            BuildGroundShadow(panel);
 
             // ── Character render surface (centre) ──────────────────────────────────────
             var charArea = MakeRect(panel, "CharacterArea");
             Anchor(charArea, new Vector2(0.5f, 0.5f), new Vector2(0.5f, 0.5f), new Vector2(0.5f, 0.5f));
-            charArea.anchoredPosition = new Vector2(0, 40);
+            charArea.anchoredPosition = new Vector2(0, CharAreaY);
             charArea.sizeDelta        = new Vector2(264, 470);
 
             var rawGO = new GameObject("CharacterImage", typeof(RectTransform), typeof(CanvasRenderer), typeof(RawImage));
             rawGO.transform.SetParent(charArea, false);
             var raw = rawGO.GetComponent<RawImage>();
             Stretch(raw.rectTransform, 0, 0, 0, 0);
+            // Nudged off the stage centre by hand: the render texture frames the model with
+            // room around it, so shifting the quad is how the figure gets placed on the screen.
+            raw.rectTransform.anchoredPosition = new Vector2(9f, 62f);
             raw.color         = new Color(1f, 1f, 1f, 0.04f); // faint in edit mode; CharacterStage sets white on Play
-            raw.raycastTarget = false;
+            // Raycastable so a swipe across the character can spin him. The action plates are
+            // built after this and therefore draw — and are hit — on top of it.
+            raw.raycastTarget = true;
 
             // Decorative "+" wardrobe slots (3, no backing — just the plus icon, like the mock).
-            MakePlusSlot(panel, new Vector2(-135, 215));
-            MakePlusSlot(panel, new Vector2( 145,  70));
-            MakePlusSlot(panel, new Vector2(-135, -55));
+            MakePlusSlot(panel, new Vector2(-118, 218));
+            MakePlusSlot(panel, new Vector2( 132, 122));
+            MakePlusSlot(panel, new Vector2( -93,  -49));
 
-            // ── FIND OPPONENT button (design-system PrimaryButton prefab) ───────────────
-            var findButton = BuildFindButton(panel);
+            // ── М / Ж — swaps the body on the stage ────────────────────────────────────
+            BuildGenderSwitch(panel, new Vector2(132, -72));
 
-            // ── Mode chips (design-system SecondaryChip prefab ×3) ──────────────────────
-            var chipsRow = MakeRect(panel, "ChipsRow");
-            Anchor(chipsRow, new Vector2(0.5f, 0), new Vector2(0.5f, 0), new Vector2(0.5f, 0));
-            chipsRow.anchoredPosition = new Vector2(0, 130);
-            chipsRow.sizeDelta        = new Vector2(0, 40);
+            // ── Top bar (edge-anchored so it can never overflow the screen) + side tiles ─
+            BuildTopBar(panel);
+            BuildSideTiles(panel);
 
-            var chipsHL = chipsRow.gameObject.AddComponent<HorizontalLayoutGroup>();
-            chipsHL.spacing               = 10;
-            chipsHL.childAlignment        = TextAnchor.MiddleCenter;
-            chipsHL.childControlWidth     = false;
-            chipsHL.childControlHeight    = false;
-            chipsHL.childForceExpandWidth = false;
-            chipsRow.gameObject.AddComponent<ContentSizeFitter>().horizontalFit
-                = ContentSizeFitter.FitMode.PreferredSize;
-
-            var chipPrefab   = Load("SecondaryChip");
-            var modeChip     = SpawnChip(chipPrefab, chipsRow, "ДУЭЛЬ",  _theme.IconLightning, selected: true);
-            var exerciseChip = SpawnChip(chipPrefab, chipsRow, "ОТЖИМ.", _theme.IconPushup,    selected: false);
-            var durationChip = SpawnChip(chipPrefab, chipsRow, "60 СЕК", _theme.IconTime,      selected: false);
-
-            // ── "Coming soon" hint banner (hidden until a chip needs it) ────────────────
+            // ── "Coming soon" hint banner (hidden until a stub plate needs it) ──────────
             var toast = BuildToast(panel);
 
-            // ── Controller: wires chip taps → mode/exercise/duration behaviour ──────────
-            BuildModeController(panel, modeChip, exerciseChip, durationChip, findButton, toast);
+            // ── PVP / BATTLE / PUSHUP ──────────────────────────────────────────────────
+            BuildActionRow(panel, toast);
 
             return raw;
         }
 
-        // Transient hint banner above the CTA. DuelModeController.Show(...) fades it in/out.
+        // Warm halo behind the figure — the mock-up's magenta-into-violet bloom. It is one white
+        // radial sprite drawn twice: a wide violet spread with a tighter magenta core inside it.
+        // A squashed rect turns the circle into the tall oval the composition wants; two tinted
+        // copies give the hue shift that a single tint cannot.
+        static void BuildStageGlow(RectTransform panel)
+        {
+            var glow = _theme.GlowRadial != null ? _theme.GlowRadial : ProcSprite("glow_radial");
+            if (glow == null) return;
+
+            AddGlow(panel, "GlowHalo", glow, _theme.GlowHalo, new Vector2(0f, 60f), new Vector2(470f, 600f));
+            AddGlow(panel, "GlowCore", glow, _theme.GlowCore, new Vector2(0f, 70f), new Vector2(290f, 360f));
+        }
+
+        static void AddGlow(RectTransform panel, string name, Sprite sprite, Color tint,
+                            Vector2 pos, Vector2 size)
+        {
+            var img = MakeImage(panel, name, tint, sprite);
+            img.raycastTarget = false;
+            var rt = img.rectTransform;
+            Anchor(rt, new Vector2(0.5f, 0.5f), new Vector2(0.5f, 0.5f), new Vector2(0.5f, 0.5f));
+            rt.anchoredPosition = pos;
+            rt.sizeDelta        = size;
+        }
+
+        // Flat ellipse under the soles. Without it the render-textured character reads as
+        // floating in front of the background instead of standing on it.
+        static void BuildGroundShadow(RectTransform panel)
+        {
+            var sprite = _theme.GroundShadow != null ? _theme.GroundShadow : ProcSprite("ground_shadow");
+            if (sprite == null) return;
+
+            var img = MakeImage(panel, "GroundShadow", new Color(0f, 0f, 0f, 0.5f), sprite);
+            img.raycastTarget = false;
+            var rt = img.rectTransform;
+            Anchor(rt, new Vector2(0.5f, 0.5f), new Vector2(0.5f, 0.5f), new Vector2(0.5f, 0.5f));
+            rt.anchoredPosition = new Vector2(0f, CharAreaY + FeetY);
+            rt.sizeDelta        = new Vector2(168f, 40f);
+        }
+
+        // SHOP tile and the spare slot beneath it, hugging the right edge under the currency tags.
+        static void BuildSideTiles(RectTransform panel)
+        {
+            // SHOP — yellow plate, icon crowning it, label along the bottom, "i" in the corner.
+            var shop = MakeRect(panel, "ShopTile");
+            Anchor(shop, new Vector2(1f, 1f), new Vector2(1f, 1f), new Vector2(1f, 1f));
+            shop.anchoredPosition = new Vector2(-18f, -81f);
+            shop.sizeDelta        = new Vector2(72f, 41f); // plashka_for_shop is 145 × 82
+
+            var plateSprite = _theme.PlateShop != null ? _theme.PlateShop : ProcSprite("plashka_for_shop");
+            var plate = MakeImage(shop, "Plate", plateSprite != null ? Color.white : _theme.AccentYellow,
+                                  plateSprite);
+            Stretch(plate.rectTransform, 0, 0, 0, 0);
+            shop.gameObject.AddComponent<Button>().targetGraphic = plate;
+
+            var lrt = MakeLettering(plate.rectTransform, "label_shop", "SHOP", _theme.TextPrimary, 12f);
+            Anchor(lrt, new Vector2(0f, 0f), new Vector2(1f, 0f), new Vector2(0.5f, 0f));
+            lrt.sizeDelta        = new Vector2(-6f, 16f);
+            lrt.anchoredPosition = new Vector2(0f, 6f);
+
+            var icon = _theme.IconShop != null ? _theme.IconShop : ProcSprite("shop");
+            if (icon != null)
+            {
+                var ic = MakeImage(shop, "Icon", Color.white, icon);
+                ic.preserveAspect = true;
+                ic.raycastTarget  = false;
+                var irt = ic.rectTransform;
+                Anchor(irt, new Vector2(0.5f, 1f), new Vector2(0.5f, 1f), new Vector2(0.5f, 0.5f));
+                irt.sizeDelta        = new Vector2(38f, 38f);
+                irt.anchoredPosition = new Vector2(0f, 6f);
+            }
+            AddInfoBadge(shop, new Vector2(-2f, -2f));
+
+            // Spare slot — empty in the mock-up, so it is drawn but left unwired.
+            var slot = MakeImage(panel, "SpareSlot", new Color32(38, 40, 58, 255), ProcSprite("pill_16"));
+            slot.type          = Image.Type.Sliced;
+            slot.raycastTarget = false;
+            var srt = slot.rectTransform;
+            Anchor(srt, new Vector2(1f, 1f), new Vector2(1f, 1f), new Vector2(1f, 1f));
+            srt.anchoredPosition = new Vector2(-18f, -139f);
+            srt.sizeDelta        = new Vector2(72f, 38f);
+        }
+
+        // Small red "i" disc, as it sits on the trophy pill and the shop tile in the mock-up.
+        // Anchored to the parent's top-right corner and pivoted at its own centre, so it
+        // overhangs that corner instead of tucking inside it.
+        static void AddInfoBadge(RectTransform parent, Vector2 anchoredPos)
+        {
+            var circle = _theme.CircleShape != null ? _theme.CircleShape : ProcSprite("circle_128");
+            var badge  = MakeImage(parent, "InfoBadge", _theme.DangerRed, circle);
+            badge.preserveAspect = true;
+            badge.raycastTarget  = false;
+            var rt = badge.rectTransform;
+            Anchor(rt, new Vector2(1f, 1f), new Vector2(1f, 1f), new Vector2(0.5f, 0.5f));
+            rt.anchoredPosition = anchoredPos;
+            rt.sizeDelta        = new Vector2(16f, 16f);
+
+            var glyph = MakeTMP(rt, "Glyph", _theme.TextPrimary, "i", 11, FontStyles.Bold);
+            glyph.raycastTarget = false;
+            Stretch(glyph.rectTransform, 0, 0, 0, 0);
+        }
+
+        // Transient hint banner above the plates. Toast.Show(...) fades it in/out.
         static Toast BuildToast(RectTransform panel)
         {
             var go = new GameObject("Toast", typeof(RectTransform), typeof(CanvasGroup));
             go.transform.SetParent(panel, false);
             var rt = (RectTransform)go.transform;
             Anchor(rt, new Vector2(0.5f, 0), new Vector2(0.5f, 0), new Vector2(0.5f, 0));
-            rt.anchoredPosition = new Vector2(0, 276);
+            rt.anchoredPosition = new Vector2(0, 212);
             rt.sizeDelta        = new Vector2(330, 46);
 
             var bg = MakeImage(rt, "Bg", new Color(0f, 0f, 0f, 0.82f), ProcSprite("pill_24"));
@@ -397,85 +652,143 @@ namespace PushStars.Editor
             return toast;
         }
 
-        static void BuildModeController(RectTransform panel, SecondaryChip mode, SecondaryChip exercise,
-                                        SecondaryChip duration, PrimaryButton find, Toast toast)
+        // PVP / BATTLE / PUSHUP — the three plates that replaced the wide "НАЙТИ СОПЕРНИКА" pill
+        // and the mode/exercise/duration chips. BATTLE inherits the CTA's role, so it is what
+        // _findButtonGO hands to BuildSearchOverlay; the two side plates are stubs until their
+        // modes ship, and say so through the toast. Duel/60 s stay the defaults DuelModeController
+        // already used, so nothing downstream changes by dropping the chips.
+        static void BuildActionRow(RectTransform panel, Toast toast)
         {
-            var go = new GameObject("DuelModeController");
-            go.transform.SetParent(panel, false);
-            var ctrl = go.AddComponent<DuelModeController>();
-            var so   = new SerializedObject(ctrl);
-            so.FindProperty("_modeChip").objectReferenceValue     = mode;
-            so.FindProperty("_exerciseChip").objectReferenceValue = exercise;
-            so.FindProperty("_durationChip").objectReferenceValue = duration;
-            so.FindProperty("_findButton").objectReferenceValue   = find;
-            so.FindProperty("_toast").objectReferenceValue        = toast;
-            so.ApplyModifiedPropertiesWithoutUndo();
+            var row = MakeRect(panel, "ActionRow");
+            Anchor(row, new Vector2(0.5f, 0f), new Vector2(0.5f, 0f), new Vector2(0.5f, 0f));
+            row.anchoredPosition = new Vector2(0f, ActionRowBottom);
+            row.sizeDelta        = new Vector2(339f, 100f); // 78 + 163 + 78 plus two 10 pt gaps
+
+            // No layout group here on purpose. The row holds exactly three plates of known size,
+            // so a HorizontalLayoutGroup buys nothing — and it would recompute their positions on
+            // every layout pass, which is what makes a plate snap straight back when you drag it
+            // in the Scene view. Authored positions stay where they are put.
+
+            // Sizes follow each plate's own aspect so the pre-coloured art is never distorted:
+            // type / type_settings are 1.15 : 1, btn_start is 1.94 : 1.
+            var pvp = BuildActionPlate(row, "PvpButton",
+                                       _theme.PlatePvp != null ? _theme.PlatePvp : ProcSprite("type"),
+                                       new Vector2(78f, 68f), "PVP", _theme.TrophyGold,
+                                       _theme.VSBadgeSearch, 42f);
+            var battle = BuildActionPlate(row, "BattleButton",
+                                          _theme.PlateBattle != null ? _theme.PlateBattle : ProcSprite("btn_start"),
+                                          new Vector2(163f, 84f), "BATTLE", _theme.TextPrimary, null, 0f);
+            var pushup = BuildActionPlate(row, "PushupButton",
+                                          _theme.PlatePushup != null ? _theme.PlatePushup : ProcSprite("type_settings"),
+                                          new Vector2(78f, 68f), "PUSHUP", _theme.TextPrimary,
+                                          _theme.IconPushup, 38f);
+
+            // Bottoms on one baseline, centres spaced by half-width + gap + half-width.
+            PlaceInRow(pvp,    -130.5f);
+            PlaceInRow(battle,    0f);
+            PlaceInRow(pushup,  130.5f);
+
+            _findButtonGO = battle; // the search overlay opens from BATTLE
+
+            WireComingSoon(pvp,    toast, "PVP скоро — пока доступен BATTLE");
+            WireComingSoon(pushup, toast, "Тренировка скоро — пока доступен BATTLE");
         }
 
-        // FIND OPPONENT: PrimaryButton prefab + regular main label + gold "+50" + yellow bolt.
-        static PrimaryButton BuildFindButton(RectTransform panel)
+        /// <summary>Pins a plate to the action row's baseline at a given horizontal offset — the
+        /// job a HorizontalLayoutGroup used to do, done once at build time so the result is a
+        /// plain authored position the Scene view can edit.</summary>
+        static void PlaceInRow(GameObject go, float x)
         {
-            var btn = Spawn(Load("PrimaryButton"), panel);
-            if (btn == null) return null;
-            _findButtonGO = btn; // remembered so BuildSearchOverlay can open the matchmaking screen on its click
-            var rt = (RectTransform)btn.transform;
-            Anchor(rt, new Vector2(0.5f, 0), new Vector2(0.5f, 0), new Vector2(0.5f, 0));
-            rt.anchoredPosition = new Vector2(0, 196);
-            rt.sizeDelta        = new Vector2(344, 62);
+            var rt = (RectTransform)go.transform;
+            Anchor(rt, new Vector2(0.5f, 0f), new Vector2(0.5f, 0f), new Vector2(0.5f, 0f));
+            rt.anchoredPosition = new Vector2(x, 0f);
+        }
 
-            var primary = btn.GetComponent<PrimaryButton>();
-            primary?.SetLabel("НАЙТИ СОПЕРНИКА");
+        // One slanted plate: the pre-coloured sprite at its own aspect, a bold label across it,
+        // and — where there is art for it — an icon crowning the top edge, as in the mock-up.
+        static GameObject BuildActionPlate(RectTransform row, string name, Sprite plate, Vector2 size,
+                                           string label, Color labelColor, Sprite icon, float iconSize)
+        {
+            var go = new GameObject(name, typeof(RectTransform), typeof(CanvasRenderer), typeof(Image));
+            go.transform.SetParent(row, false);
+            var rt = (RectTransform)go.transform;
+            rt.sizeDelta = size;
+            var le = go.AddComponent<LayoutElement>();
+            le.preferredWidth = size.x; le.preferredHeight = size.y; le.flexibleWidth = 0;
 
-            // Main label → Regular weight; leave clearance on the right for the reward.
-            // Auto-sizing keeps the longer training label ("НАЧАТЬ ТРЕНИРОВКУ") inside the pill.
-            var label = btn.GetComponentInChildren<TextMeshProUGUI>(true);
-            if (label != null)
+            var img = go.GetComponent<Image>();
+            img.sprite = plate;
+            img.color  = plate != null ? Color.white : _theme.AccentYellow;
+            img.type   = Image.Type.Simple;
+            go.AddComponent<Button>().targetGraphic = img;
+
+            // An icon crowds the top, so the label drops to the plate's foot; without one it
+            // centres.
+            bool crowned  = icon != null;
+            float fontMax = crowned ? 12f : 20f;
+            var lrt = MakeLettering(rt, "label_" + name.Replace("Button", "").ToLowerInvariant(),
+                                    label, labelColor, fontMax);
+            Anchor(lrt, new Vector2(0f, 0f), new Vector2(1f, 0f), new Vector2(0.5f, 0f));
+            lrt.sizeDelta        = new Vector2(-8f, 24f);
+            lrt.anchoredPosition = new Vector2(0f, crowned ? 8f : (size.y - 24f) * 0.5f);
+
+            if (crowned)
             {
-                var reg = FontSetup.LoadRegular();
-                if (reg != null) label.font = reg;
-                label.fontStyle        = FontStyles.Normal;
-                label.alignment        = TextAlignmentOptions.Center;
-                label.enableWordWrapping = false;
-                label.enableAutoSizing = true;
-                label.fontSizeMax      = 19;
-                label.fontSizeMin      = 14;
-                var lrt = label.rectTransform;
-                lrt.offsetMax = new Vector2(-94, lrt.offsetMax.y);
+                var ic = MakeImage(rt, "Icon", Color.white, icon);
+                ic.preserveAspect = true;
+                ic.raycastTarget  = false;
+                var irt = ic.rectTransform;
+                Anchor(irt, new Vector2(0.5f, 1f), new Vector2(0.5f, 1f), new Vector2(0.5f, 0.5f));
+                irt.sizeDelta        = new Vector2(iconSize, iconSize);
+                irt.anchoredPosition = new Vector2(0f, 6f);
+            }
+            return go;
+        }
+
+        /// <summary>
+        /// A headline label, drawn from exported Figma art when it exists and set in TMP when it
+        /// does not. Returns whichever RectTransform the caller has to place.
+        ///
+        /// TMP's outline is a threshold on a signed distance field, which makes it a dilation by a
+        /// disc: every convex corner comes back rounded by the outline radius, at any atlas
+        /// resolution. Figma strokes the vector contour and mitres the corners. The two cannot be
+        /// made to agree, and no amount of tuning closes it.
+        ///
+        /// So for a label whose text never changes — never localised, never computed — the field
+        /// buys nothing and costs the mismatch. Drop <c>label_battle.png</c> (and _pvp, _pushup,
+        /// _shop) into UI/Sprites, exported at @3x with a transparent background, and the builder
+        /// picks it up on the next run: pixel for pixel what the designer drew. Until then the TMP
+        /// label stands in, so nothing is blocked on the export.
+        /// </summary>
+        static RectTransform MakeLettering(RectTransform parent, string artName, string text,
+                                           Color color, float fontMax)
+        {
+            var art = ProcSprite(artName);
+            if (art != null)
+            {
+                var img = MakeImage(parent, "Label", Color.white, art);
+                img.preserveAspect = true;   // the export carries its own proportions
+                img.raycastTarget  = false;
+                return img.rectTransform;
             }
 
-            // Reward: "+50" gold + yellow lightning (lvl.png), pinned to the right edge.
-            var reward = new GameObject("Reward", typeof(RectTransform));
-            reward.transform.SetParent(btn.transform, false);
-            var rrt = (RectTransform)reward.transform;
-            rrt.anchorMin = rrt.anchorMax = new Vector2(1f, 0.5f);
-            rrt.pivot     = new Vector2(1f, 0.5f);
-            rrt.anchoredPosition = new Vector2(-18, 0);
-            rrt.sizeDelta        = new Vector2(84, 30);
+            var lbl = MakeTMP(parent, "Label", color, text, fontMax, FontStyles.Bold);
+            lbl.alignment          = TextAlignmentOptions.Center;
+            lbl.raycastTarget      = false;
+            lbl.enableWordWrapping = false;
+            lbl.enableAutoSizing   = true;
+            lbl.fontSizeMin        = fontMax - 4f;
+            lbl.fontSizeMax        = fontMax;
+            return lbl.rectTransform;
+        }
 
-            var rhl = reward.AddComponent<HorizontalLayoutGroup>();
-            rhl.spacing                = 4;
-            rhl.childAlignment         = TextAnchor.MiddleRight;
-            rhl.childControlWidth      = true;
-            rhl.childControlHeight     = true;
-            rhl.childForceExpandWidth  = false;
-            rhl.childForceExpandHeight = false;
-
-            var plus = MakeTMP(reward.transform, "Plus50", _theme.TrophyGold, "+50", 20, FontStyles.Bold);
-            plus.alignment = TextAlignmentOptions.MidlineRight;
-            var plusLE = plus.gameObject.AddComponent<LayoutElement>();
-            plusLE.preferredWidth = 44; plusLE.preferredHeight = 28;
-
-            var bolt    = new GameObject("Bolt", typeof(RectTransform), typeof(CanvasRenderer), typeof(Image));
-            bolt.transform.SetParent(reward.transform, false);
-            var boltImg = bolt.GetComponent<Image>();
-            boltImg.sprite        = _theme.IconLevel; // lvl.png — yellow lightning bolt
-            boltImg.color         = Color.white;
-            boltImg.preserveAspect = true;
-            boltImg.raycastTarget  = false;
-            var boltLE = bolt.AddComponent<LayoutElement>();
-            boltLE.preferredWidth = 22; boltLE.preferredHeight = 26;
-
-            return primary;
+        // Serialized onClick → Toast.Show(message). A persistent listener rather than a runtime
+        // controller: these two plates have no state to drive, only a line to say.
+        static void WireComingSoon(GameObject go, Toast toast, string message)
+        {
+            var btn = go != null ? go.GetComponent<Button>() : null;
+            if (btn == null || toast == null) return;
+            UnityEventTools.AddStringPersistentListener(btn.onClick, toast.Show, message);
         }
 
         // Covers the shared lightning background with the flat base background, so a tab reads as a
@@ -1380,32 +1693,44 @@ namespace PushStars.Editor
         {
             var navBar = MakeRect(safe, "BottomNav");
             Anchor(navBar, new Vector2(0.5f, 0), new Vector2(0.5f, 0), new Vector2(0.5f, 0));
-            navBar.anchoredPosition = new Vector2(0, 42);
-            navBar.sizeDelta        = new Vector2(234, 72);
+            navBar.anchoredPosition = new Vector2(0, NavBarBottom);
+            // 316 × 66 is 4.79 : 1 against plashka.png's native 4.82 : 1, so the ready plate can
+            // be stretched to fit without the rounded ends visibly deforming.
+            navBar.sizeDelta        = new Vector2(316, 66);
 
-            // Black, slightly transparent menu backing (like the mock).
-            var navBg = MakeImage(navBar, "Bg", new Color(0f, 0f, 0f, 0.55f), ProcSprite("pill_24"));
-            navBg.type = Image.Type.Sliced;
+            var navPlate = _theme.NavPlate != null ? _theme.NavPlate : ProcSprite("plashka");
+            var navBg    = navPlate != null
+                ? MakeImage(navBar, "Bg", Color.white, navPlate)
+                : MakeImage(navBar, "Bg", new Color(0f, 0f, 0f, 0.55f), ProcSprite("pill_24"));
+            if (navPlate == null) navBg.type = Image.Type.Sliced;
             Stretch(navBg.rectTransform, 0, 0, 0, 0);
 
-            var navHL = navBar.gameObject.AddComponent<HorizontalLayoutGroup>();
-            navHL.padding               = new RectOffset(14, 14, 6, 6);
-            navHL.spacing               = 14;
-            navHL.childAlignment        = TextAnchor.MiddleCenter;
-            navHL.childControlWidth     = false;
-            navHL.childControlHeight    = false;
-            navHL.childForceExpandWidth = false;
+            // No layout group, same reasoning as the action row: three fixed buttons, so their
+            // positions are authored below and stay draggable in the Scene view.
 
             // Ready Figma nav buttons (whole circular sprites). Centre VS is larger.
             //   League  → statics.png (Статистика, bar chart)
             //   Duel    → main_btn_VS_active.png (blue VS, primary centre)
             //   Profile → profile.png / profile_active.png
-            var league  = MakeNavButton(navBar, TabId.League,  _theme.IconStatics, _theme.IconStatics,      50);
-            var duel    = MakeNavButton(navBar, TabId.Duel,    _theme.VSBadge,     _theme.VSBadge,          60);
-            var profile = MakeNavButton(navBar, TabId.Profile, _theme.NavProfile,  _theme.NavProfileActive, 50);
+            var league  = MakeNavButton(navBar, TabId.League,  _theme.IconStatics, _theme.IconStatics,      52);
+            var duel    = MakeNavButton(navBar, TabId.Duel,    _theme.VSBadge,     _theme.VSBadge,          66);
+            var profile = MakeNavButton(navBar, TabId.Profile, _theme.NavProfile,  _theme.NavProfileActive, 52);
+
+            // Centres: 52 + 66 + 52 with two 30 pt gaps = 230 wide, centred in the 316 pt plate.
+            PlaceInNav(league,  -89f);
+            PlaceInNav(duel,      0f);
+            PlaceInNav(profile,  89f);
 
             // MainShellView expects an array; order is cosmetic (each knows its TabId).
             return new[] { league, duel, profile };
+        }
+
+        /// <summary>Centres a nav button vertically in the bar at a given horizontal offset.</summary>
+        static void PlaceInNav(TabButton tab, float x)
+        {
+            var rt = (RectTransform)tab.transform;
+            Anchor(rt, new Vector2(0.5f, 0.5f), new Vector2(0.5f, 0.5f), new Vector2(0.5f, 0.5f));
+            rt.anchoredPosition = new Vector2(x, 0f);
         }
 
         // inactiveSprite = the not-active Figma nav button (whole circular sprite, Color.white).
@@ -1446,74 +1771,24 @@ namespace PushStars.Editor
             return tab;
         }
 
-        // ════════════════════════════════════════════════════════════════════════
-        //  UI PRIMITIVES (self-contained; mirror Demo screen conventions)
-        // ════════════════════════════════════════════════════════════════════════
-        // bgSprite = pill background (use a procedural WHITE sprite when you need bgColor tinting;
-        //            pass null for a transparent inner pill). icon keeps its native colours when
-        //            iconColor is white. Fixed 32 px height so the sliced sprite never squishes.
-        static GameObject MakeIconPill(RectTransform parent, string name, Sprite bgSprite, Color bgColor,
-                                       Sprite icon, Color iconColor, string label, Color fg, float width)
-        {
-            var go  = new GameObject(name, typeof(RectTransform), typeof(CanvasRenderer), typeof(Image));
-            go.transform.SetParent(parent, false);
-            var img = go.GetComponent<Image>();
-            if (bgSprite != null) { img.sprite = bgSprite; img.type = Image.Type.Sliced; img.color = bgColor; }
-            else                  { img.color = Color.clear; }
-
-            ((RectTransform)go.transform).sizeDelta = new Vector2(width, 32);
-            var le = go.AddComponent<LayoutElement>();
-            le.preferredWidth = width; le.preferredHeight = 32; le.flexibleWidth = 0;
-
-            var hl = go.AddComponent<HorizontalLayoutGroup>();
-            hl.padding                = new RectOffset(10, 12, 0, 0);
-            hl.spacing                = 6;
-            hl.childAlignment         = TextAnchor.MiddleLeft;
-            hl.childControlWidth      = true;
-            hl.childControlHeight     = true;
-            hl.childForceExpandWidth  = false;
-            hl.childForceExpandHeight = false;
-
-            if (icon != null)
-            {
-                var ic    = new GameObject("Icon", typeof(RectTransform), typeof(CanvasRenderer), typeof(Image));
-                ic.transform.SetParent(go.transform, false);
-                var icImg = ic.GetComponent<Image>();
-                icImg.sprite         = icon;
-                icImg.color          = iconColor;
-                icImg.preserveAspect = true;
-                icImg.raycastTarget  = false;
-                var icLE = ic.AddComponent<LayoutElement>();
-                icLE.preferredWidth = 18; icLE.preferredHeight = 18; icLE.flexibleWidth = 0;
-            }
-
-            var lbl = MakeTMP(go.transform, "Label", fg, label, 13, FontStyles.Bold);
-            lbl.alignment = TextAlignmentOptions.MidlineLeft;
-            lbl.gameObject.AddComponent<LayoutElement>().flexibleWidth = 1;
-            return go;
-        }
-
-        // Top bar pinned to the safe-area edges: the level pill hugs the LEFT, the streak+aura
-        // group hugs the RIGHT (sized to its content, growing leftward). No fixed-width math is
-        // done against the screen, so the content can never overflow — it adapts to any width.
+        // Top bar pinned to the safe-area edges: the trophy pill hugs the LEFT, the currency tags
+        // hug the RIGHT (sized to their content, growing leftward). No fixed-width math is done
+        // against the screen, so the content can never overflow — it adapts to any width.
         static void BuildTopBar(RectTransform panel)
         {
             const float topY = -14f;
 
-            // Level pill — anchored to the top-left corner.
-            var level = MakeIconPill(panel, "LevelPill", ProcSprite("pill_24"), _theme.AccentYellow,
-                                     _theme.IconLevel, _theme.BgDark, "2 УРОВЕНЬ", _theme.BgDark, 138);
-            var lrt = (RectTransform)level.transform;
-            Anchor(lrt, new Vector2(0f, 1f), new Vector2(0f, 1f), new Vector2(0f, 1f));
-            lrt.anchoredPosition = new Vector2(16f, topY);
+            BuildTrophyPill(panel, new Vector2(16f, topY));
 
-            // Streak + Aura — group anchored to the top-right corner, content-sized, growing left.
+            // Streak + gem + aura — group anchored to the top-right corner, content-sized,
+            // growing left. Three tags plus the trophy pill is what fits at 390 pt; that is why
+            // BuildHudPill runs at 18 pt tall rather than the 22 it used with two.
             var hud = MakeRect(panel, "HudGroup");
             Anchor(hud, new Vector2(1f, 1f), new Vector2(1f, 1f), new Vector2(1f, 1f));
             hud.anchoredPosition = new Vector2(-16f, topY);
 
             var hl = hud.gameObject.AddComponent<HorizontalLayoutGroup>();
-            hl.spacing                = 8;
+            hl.spacing                = 4;
             hl.childAlignment         = TextAnchor.MiddleRight;
             hl.childControlWidth      = false;
             hl.childControlHeight     = false;
@@ -1526,23 +1801,84 @@ namespace PushStars.Editor
             BuildStreakAura(hud);
         }
 
-        // Streak + Aura as TWO separate black tags. The icon is LARGER than the tag and sits
-        // ON TOP of its left edge (sticking out left), with the number inside the tag on the right.
+        // Streak + gem + aura as three separate black tags. The icon is LARGER than the tag and
+        // sits ON TOP of its left edge (sticking out left), with the number inside on the right.
         static void BuildStreakAura(RectTransform parent)
         {
             var streakIcon = _theme.IconStreak != null ? _theme.IconStreak : _theme.IconLightning;
-            BuildHudPill(parent, "StreakPill", streakIcon,     "12",  _theme.AccentYellow);
-            BuildHudPill(parent, "AuraPill",   _theme.IconAura, "660", new Color32(206, 178, 247, 255));
+            BuildHudPill(parent, "StreakPill", streakIcon,      "12",  _theme.AccentYellow);
+            BuildHudPill(parent, "GemPill",    _theme.IconGem,  "312", _theme.GemGreen);
+            BuildHudPill(parent, "AuraPill",   _theme.IconAura, "660", _theme.AuraViolet);
+        }
+
+        // Black tag with the cup overhanging its left edge and an "i" badge on its right — the
+        // same overhang trick the currency tags use, so the whole bar reads as one family. Two
+        // rows inside it: the trophy count on top, league progress underneath.
+        // Replaces the old "2 УРОВЕНЬ" pill: the mock-up shows trophies here, and the level
+        // already has its own home on the profile tab.
+        static void BuildTrophyPill(RectTransform panel, Vector2 anchoredPos)
+        {
+            const float plateW = 90f, plateH = 30f, iconSize = 36f, overhang = 14f;
+            const float barW = 48f, barH = 9f, barFill = 0.55f;
+
+            var root = MakeRect(panel, "TrophyPill");
+            Anchor(root, new Vector2(0f, 1f), new Vector2(0f, 1f), new Vector2(0f, 1f));
+            root.anchoredPosition = anchoredPos;
+            root.sizeDelta        = new Vector2(plateW + overhang, iconSize);
+
+            var plate = MakeImage(root, "Plate", new Color32(20, 20, 28, 235), ProcSprite("pill_24"));
+            plate.type          = Image.Type.Sliced;
+            plate.raycastTarget = false;
+            var prt = plate.rectTransform;
+            Anchor(prt, new Vector2(0f, 0.5f), new Vector2(0f, 0.5f), new Vector2(0f, 0.5f));
+            prt.sizeDelta        = new Vector2(plateW, plateH);
+            prt.anchoredPosition = new Vector2(overhang, 0f);
+
+            // Upper row — the count. Left padding clears the cup that overlaps the plate.
+            var num = MakeTMP(prt, "Number", _theme.TrophyGold, "955", 14, FontStyles.Bold);
+            num.alignment     = TextAlignmentOptions.MidlineLeft;
+            num.raycastTarget = false;
+            var nrt = num.rectTransform;
+            Anchor(nrt, new Vector2(0f, 1f), new Vector2(1f, 1f), new Vector2(0.5f, 1f));
+            nrt.sizeDelta        = new Vector2(-30f, 18f);
+            nrt.anchoredPosition = new Vector2(9f, -1f);
+
+            // Lower row — progress toward the next league, on its own dark track.
+            var track = MakeImage(prt, "ProgressTrack", new Color32(48, 48, 62, 255), ProcSprite("pill_12"));
+            track.type          = Image.Type.Sliced;
+            track.raycastTarget = false;
+            var trt = track.rectTransform;
+            Anchor(trt, new Vector2(0f, 0f), new Vector2(0f, 0f), new Vector2(0f, 0f));
+            trt.sizeDelta        = new Vector2(barW, barH);
+            trt.anchoredPosition = new Vector2(30f, 4f);
+
+            var fill = MakeImage(trt, "Fill", new Color32(240, 138, 30, 255), ProcSprite("pill_12"));
+            fill.type          = Image.Type.Sliced;
+            fill.raycastTarget = false;
+            var frt = fill.rectTransform;
+            Anchor(frt, new Vector2(0f, 0f), new Vector2(0f, 1f), new Vector2(0f, 0.5f));
+            frt.sizeDelta        = new Vector2(barW * barFill, 0f);
+            frt.anchoredPosition = new Vector2(0f, 0f);
+
+            var cup = MakeImage(root, "Cup", Color.white, _theme.IconCup);
+            cup.preserveAspect = true;
+            cup.raycastTarget  = false;
+            var crt = cup.rectTransform;
+            Anchor(crt, new Vector2(0f, 0.5f), new Vector2(0f, 0.5f), new Vector2(0.5f, 0.5f));
+            crt.sizeDelta        = new Vector2(iconSize, iconSize);
+            crt.anchoredPosition = new Vector2(iconSize * 0.5f, 0f);
+
+            AddInfoBadge(root, new Vector2(-2f, -2f));
         }
 
         // Backing is drawn at the sprite's OWN aspect ratio (not stretched). Smaller overall.
         static void BuildHudPill(RectTransform parent, string name, Sprite icon, string number,
                                  Color numberColor)
         {
-            const float pillH = 22f;                 // smaller
+            const float pillH = 18f;                 // three of these have to share the right edge
             const float nativeAspect = 66f / 21f;    // bg_streak_aura native ratio — keep it
             float pillW = Mathf.Round(pillH * nativeAspect);
-            const float iconSize = 30f, overhang = 12f;
+            const float iconSize = 26f, overhang = 9f;
             float rootW = pillW + overhang;
 
             var root = MakeRect(parent, name);
@@ -1563,7 +1899,7 @@ namespace PushStars.Editor
             bgRt.anchoredPosition = new Vector2((rootW - pillW) * 0.5f, 0f);
 
             // Number — inside the tag, to the right of the icon overlap.
-            var num = MakeTMP(root, "Number", numberColor, number, 14, FontStyles.Bold);
+            var num = MakeTMP(root, "Number", numberColor, number, 12, FontStyles.Bold);
             num.alignment = TextAlignmentOptions.Center;
             var numRt = num.rectTransform;
             Anchor(numRt, new Vector2(0.5f, 0.5f), new Vector2(0.5f, 0.5f), new Vector2(0.5f, 0.5f));
@@ -1582,43 +1918,6 @@ namespace PushStars.Editor
 
         static Sprite ProcSprite(string name) =>
             AssetDatabase.LoadAssetAtPath<Sprite>($"{SpriteFactory.SpritesDir}/{name}.png");
-
-        static SecondaryChip SpawnChip(GameObject prefab, RectTransform parent, string label, Sprite icon, bool selected)
-        {
-            var go = Spawn(prefab, parent);
-            if (go == null) return null;
-            var chip = go.GetComponent<SecondaryChip>();
-            if (chip == null) return null;
-            chip.SetLabel(label);
-            chip.SetIcon(icon);
-            chip.SetSelected(selected);
-
-            // Slightly larger chip (keep aspect) so the bolder text fits.
-            var rt = (RectTransform)go.transform;
-            if (rt.sizeDelta.y > 1f)
-            {
-                float k = 44f / rt.sizeDelta.y;
-                rt.sizeDelta = rt.sizeDelta * k;
-                var le = go.GetComponent<LayoutElement>();
-                if (le != null) { le.preferredWidth = rt.sizeDelta.x; le.preferredHeight = rt.sizeDelta.y; }
-            }
-
-            // Bolder + smaller label so "ОТЖИМ." / "60 СЕК" fit cleanly. Auto-sizing lets a
-            // runtime swap to a longer label ("ТРЕНИР.") shrink to fit instead of overflowing.
-            var lbl = go.GetComponentInChildren<TextMeshProUGUI>(true);
-            if (lbl != null)
-            {
-                var bold = FontSetup.LoadBold();
-                if (bold != null) lbl.font = bold;
-                lbl.fontStyle          = FontStyles.Bold;
-                lbl.enableWordWrapping = false;
-                lbl.enableAutoSizing   = true;
-                lbl.fontSizeMax        = 13;
-                lbl.fontSizeMin        = 9;
-            }
-
-            return chip;
-        }
 
         static void MakePlusSlot(RectTransform parent, Vector2 anchoredPos)
         {
@@ -1644,6 +1943,39 @@ namespace PushStars.Editor
                 var lbl = MakeTMP(go.transform, "Plus", _theme.TextSecondary, "+", 24, FontStyles.Bold);
                 Stretch(lbl.rectTransform, 0, 0, 0, 0);
             }
+        }
+
+        /// <summary>Round М/Ж button that flips the body on the stage. It sits in the free corner
+        /// of the wardrobe-slot grid, on the character's own panel, because that is what it
+        /// changes: an appearance control with its result visible right behind it — not a setting
+        /// buried two screens away. The label is authored as "М" and re-read from the saved choice
+        /// by <see cref="CharacterRoster"/> on Play.</summary>
+        static void BuildGenderSwitch(RectTransform panel, Vector2 anchoredPos)
+        {
+            var go = new GameObject("GenderSwitch", typeof(RectTransform), typeof(CanvasRenderer), typeof(Image));
+            go.transform.SetParent(panel, false);
+            var rt = (RectTransform)go.transform;
+            Anchor(rt, new Vector2(0.5f, 0.5f), new Vector2(0.5f, 0.5f), new Vector2(0.5f, 0.5f));
+            rt.anchoredPosition = anchoredPos;
+            rt.sizeDelta        = new Vector2(40, 40);
+
+            var img = go.GetComponent<Image>();
+            img.sprite = _theme.CircleShape != null ? _theme.CircleShape : ProcSprite("circle_128");
+            img.color  = _theme.NavBg;
+
+            var btn = go.AddComponent<Button>();
+            btn.targetGraphic = img;
+
+            var lbl = MakeTMP(rt, "Label", _theme.TextPrimary, "М", 16, FontStyles.Bold);
+            lbl.alignment     = TextAlignmentOptions.Center;
+            lbl.raycastTarget = false;
+            Stretch(lbl.rectTransform, 0, 0, 0, 0);
+
+            if (_roster == null) return;
+            var so = new SerializedObject(_roster);
+            so.FindProperty("_switchButton").objectReferenceValue = btn;
+            so.FindProperty("_switchLabel").objectReferenceValue  = lbl;
+            so.ApplyModifiedPropertiesWithoutUndo();
         }
 
         static void BuildLightningPattern(Transform parent, Sprite icon)
@@ -1744,6 +2076,8 @@ namespace PushStars.Editor
 
             var rubik = FontSetup.Resolve(style, out var remaining);
             if (rubik != null) { tmp.font = rubik; tmp.fontStyle = remaining; }
+            // Small labels move to the light-keyline preset; the full one fuses their letters.
+            FontSetup.ApplyOutlineFor(tmp, size);
 
             return tmp;
         }
@@ -1770,13 +2104,18 @@ namespace PushStars.Editor
         {
             EnsureFolder(MaterialsDir);
             string path = $"{MaterialsDir}/{assetName}.mat";
+            // Pipeline-appropriate shader: a URP material renders magenta under the built-in
+            // pipeline (which is what this project is actually set to) and vice versa. Plain lit,
+            // not the character's toon shader — the blockman is a stand-in, not the styled look.
+            var shader = MainCharacterSetup.LitShader();
             var mat = AssetDatabase.LoadAssetAtPath<Material>(path);
             if (mat == null)
             {
-                var shader = Shader.Find("Universal Render Pipeline/Lit") ?? Shader.Find("Standard");
                 mat = new Material(shader);
                 AssetDatabase.CreateAsset(mat, path);
             }
+            if (!MainCharacterSetup.RendersInThisPipeline(mat) && shader != null) mat.shader = shader;
+
             if (mat.HasProperty("_BaseColor")) mat.SetColor("_BaseColor", baseColor);
             if (mat.HasProperty("_Color"))     mat.SetColor("_Color", baseColor);
             if (mat.HasProperty("_Smoothness")) mat.SetFloat("_Smoothness", 0.25f);

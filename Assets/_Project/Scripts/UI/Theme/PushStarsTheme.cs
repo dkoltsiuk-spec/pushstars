@@ -94,6 +94,32 @@ namespace PushStars.UI
         /// <summary>Settings gear (profile header → settings overlay, phase 07). Figma: gear.png</summary>
         public Sprite IconSettings;
 
+        [Header("Sprites — main-screen plates (pre-coloured Figma, use Color.white)")]
+        /// <summary>Orange slanted plate — PVP action button. Figma: type.png</summary>
+        public Sprite PlatePvp;
+        /// <summary>Yellow slanted plate — BATTLE (primary CTA). Figma: btn_start.png</summary>
+        public Sprite PlateBattle;
+        /// <summary>Blue slanted plate — PUSHUP action button. Figma: type_settings.png</summary>
+        public Sprite PlatePushup;
+        /// <summary>Small yellow plate — SHOP tile. Figma: plashka_for_shop.png</summary>
+        public Sprite PlateShop;
+        /// <summary>Spare yellow plate for the second side tile. Figma: plashka_for_next.png</summary>
+        public Sprite PlateSlot;
+        /// <summary>Dark rounded container behind the bottom nav. Figma: plashka.png</summary>
+        public Sprite NavPlate;
+
+        [Header("Sprites — main-screen icons / decor")]
+        /// <summary>Gem / hard-currency icon. Figma: gem.png</summary>
+        public Sprite IconGem;
+        /// <summary>Shop tile icon. Figma: shop.png</summary>
+        public Sprite IconShop;
+        /// <summary>Home tile icon. Figma: house.png</summary>
+        public Sprite IconHouse;
+        /// <summary>White radial falloff, tinted per use — stage glow. Procedural: glow_radial.png</summary>
+        public Sprite GlowRadial;
+        /// <summary>Soft ellipse drawn in black under the character. Procedural: ground_shadow.png</summary>
+        public Sprite GroundShadow;
+
         [Header("Sprites — button shapes (pre-colored Figma, use Color.white)")]
         /// <summary>Red pill button for ВЫЙТИ. Figma: red_btn.png</summary>
         public Sprite BtnExitShape;
@@ -118,6 +144,16 @@ namespace PushStars.UI
         [Header("Secondary accents")]
         public Color AccentYellow  = new Color32(245, 200,  66, 255); // #F5C842 — XP, level, rep counter
         public Color AccentLime    = new Color32(107, 255,  74, 255); // #6BFF4A — ПОБЕДА / win score
+
+        [Header("Main-screen stage glow (behind the character)")]
+        /// <summary>Magenta core of the glow — the warm centre right behind the figure.</summary>
+        public Color GlowCore  = new Color32(196,  46, 112, 150); // #C42E70
+        /// <summary>Violet halo spreading out from the core into the dark background.</summary>
+        public Color GlowHalo  = new Color32( 88,  38, 138, 120); // #58268A
+
+        [Header("HUD currency numbers")]
+        public Color AuraViolet = new Color32(206, 178, 247, 255); // #CEB2F7 — aura count
+        public Color GemGreen   = new Color32(126, 232,  86, 255); // #7EE856 — gem count
 
         [Header("State colours")]
         public Color TrophyGold    = new Color32(245, 200,  66, 255); // #F5C842

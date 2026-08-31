@@ -30,6 +30,8 @@ namespace PushStars.Editor
             SaveRoundedRect("card_history", 256, 48, 24); // 24 px = half-height → very round corners
             SaveCircle     ("circle_128", 128);
             SaveDashedRing ("dashed_ring_512", 512, outerR: 244, thickness: 14, dashes: 36);
+            SaveRadialGlow ("glow_radial", 256);       // stage glow behind the character
+            SaveSoftEllipse("ground_shadow", 256, 96); // contact shadow under his feet
 
             AssetDatabase.SaveAssets();
             AssetDatabase.Refresh();
@@ -81,6 +83,52 @@ namespace PushStars.Editor
                 float d = Mathf.Sqrt(dx * dx + dy * dy);
                 float a = Mathf.Clamp01(r - d + 0.5f);
                 px[y * size + x] = new Color(1, 1, 1, a);
+            }
+            tex.SetPixels(px);
+            tex.Apply();
+            SaveAsSprite(name, tex, Vector4.zero);
+        }
+
+        // ── Radial glow ───────────────────────────────────────────────────────────
+        // White with a smooth alpha falloff from the centre, so one sprite serves every
+        // glow on the screen — the hue comes from Image.color. Squashing the RectTransform
+        // turns it into the tall oval the main screen puts behind the character.
+        // The falloff is smoothstep² rather than linear: a linear ramp leaves a visible
+        // disc edge on a flat dark background.
+        static void SaveRadialGlow(string name, int size)
+        {
+            var tex = new Texture2D(size, size, TextureFormat.RGBA32, false);
+            var px  = new Color[size * size];
+            float c = (size - 1) * 0.5f;
+            float r = size * 0.5f;
+            for (int y = 0; y < size; y++)
+            for (int x = 0; x < size; x++)
+            {
+                float dx = (x - c) / r, dy = (y - c) / r;
+                float d  = Mathf.Sqrt(dx * dx + dy * dy);
+                float a  = 1f - Mathf.SmoothStep(0f, 1f, Mathf.Clamp01(d));
+                px[y * size + x] = new Color(1, 1, 1, a * a);
+            }
+            tex.SetPixels(px);
+            tex.Apply();
+            SaveAsSprite(name, tex, Vector4.zero);
+        }
+
+        // ── Soft contact shadow ───────────────────────────────────────────────────
+        // Flat ellipse, densest at the centre. Drawn in black at low alpha it reads as the
+        // ground contact that stops the character from floating over the background.
+        static void SaveSoftEllipse(string name, int w, int h)
+        {
+            var tex = new Texture2D(w, h, TextureFormat.RGBA32, false);
+            var px  = new Color[w * h];
+            float cx = (w - 1) * 0.5f, cy = (h - 1) * 0.5f;
+            for (int y = 0; y < h; y++)
+            for (int x = 0; x < w; x++)
+            {
+                float dx = (x - cx) / (w * 0.5f), dy = (y - cy) / (h * 0.5f);
+                float d  = Mathf.Sqrt(dx * dx + dy * dy);
+                float a  = 1f - Mathf.SmoothStep(0f, 1f, Mathf.Clamp01(d));
+                px[y * w + x] = new Color(1, 1, 1, a);
             }
             tex.SetPixels(px);
             tex.Apply();

@@ -10,8 +10,9 @@ namespace PushStars.UI
     /// layer; everything else (top bar, Find-Opponent button, mode chips, nav) is normal UI
     /// drawn on top.
     ///
-    /// This is the production pipeline — only the <i>model</i> is a placeholder right now.
-    /// Phase 10 (Genies): load the avatar, then call <see cref="SetAvatar"/>. The camera
+    /// The model on the stage is the owner's own character, imported and animated by the
+    /// editor tool (MainMan.prefab). Swapping it for a different one at runtime — another
+    /// skin, an opponent's character — goes through <see cref="SetAvatar"/>: the camera
     /// framing, render texture and UI wiring stay exactly the same; the composition built
     /// around the character does not move.
     /// </summary>
@@ -22,7 +23,7 @@ namespace PushStars.UI
         [Tooltip("Camera that renders ONLY the character layer into the render texture.")]
         [SerializeField] private Camera _stageCamera;
 
-        [Tooltip("Parent transform the model hangs under. Genies replaces its children in phase 10.")]
+        [Tooltip("Parent transform the model hangs under. SetAvatar replaces its children.")]
         [SerializeField] private Transform _avatarRoot;
 
         [Tooltip("UI surface that displays the rendered character (RawImage in the Duel panel).")]
@@ -35,15 +36,17 @@ namespace PushStars.UI
         [Range(0, 8)]
         [SerializeField] private int _antiAliasing = 2;
 
-        [Header("Idle motion (placeholder only — Genies brings its own animation)")]
-        [SerializeField] private bool  _idleBob  = true;
+        [Header("Idle motion (placeholder only — a rigged character animates itself)")]
+        [Tooltip("Sine bob for a model with no animation. Off for the real character: it " +
+                 "already breathes, and the two motions fight each other.")]
+        [SerializeField] private bool  _idleBob  = false;
         [SerializeField] private float _bobAmplitude = 0.025f;
         [SerializeField] private float _bobSpeed     = 1.1f;
 
         private RenderTexture _rt;
         private Vector3 _avatarBaseLocalPos;
 
-        /// <summary>Where the avatar model lives. Phase 10 parents the Genies avatar here.</summary>
+        /// <summary>Where the avatar model lives. <see cref="SetAvatar"/> parents new ones here.</summary>
         public Transform AvatarRoot => _avatarRoot;
 
         /// <summary>The live render target. Useful for snapshots or wardrobe previews later.</summary>
@@ -77,9 +80,9 @@ namespace PushStars.UI
         }
 
         /// <summary>
-        /// Replaces the placeholder model with a real avatar (e.g. a loaded Genies avatar).
-        /// The new model is parented under <see cref="AvatarRoot"/>, re-centred, and moved
-        /// onto the stage's render layer so the stage camera picks it up. Phase 10 entry point.
+        /// Swaps the model on the stage for another one. The new model is parented under
+        /// <see cref="AvatarRoot"/>, re-centred, and moved onto the stage's render layer so the
+        /// stage camera picks it up. The root's yaw (facing the lens) is inherited.
         /// </summary>
         public void SetAvatar(GameObject avatar)
         {
