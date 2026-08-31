@@ -34,6 +34,10 @@ namespace PushStars.App
             // it awake. Never let the display sleep while the app runs.
             Screen.sleepTimeout = SleepTimeout.NeverSleep;
             _startTime = Time.realtimeSinceStartup;
+
+            // Up before anything else, and it outlives every scene load — the first screen is
+            // exactly where a performance problem has to be measurable, not just felt.
+            PerfOverlay.Ensure();
         }
 
         private async void Start()
