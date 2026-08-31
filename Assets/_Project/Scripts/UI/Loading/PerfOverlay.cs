@@ -68,7 +68,7 @@ namespace PushStars.UI
             var plateRt = (RectTransform)plate.transform;
             plateRt.anchorMin = plateRt.anchorMax = plateRt.pivot = new Vector2(1f, 1f);
             plateRt.anchoredPosition = new Vector2(-6f, -44f); // clear of the notch / status bar
-            plateRt.sizeDelta = new Vector2(196f, 30f);
+            plateRt.sizeDelta = new Vector2(196f, 44f);
             plate.GetComponent<Image>().color = new Color(0f, 0f, 0f, 0.55f);
             plate.GetComponent<Button>().onClick.AddListener(Hide);
 
@@ -107,6 +107,13 @@ namespace PushStars.UI
             _sb.Append(Screen.width).Append('x').Append(Screen.height);
             _sb.Append("  cap ").Append(Application.targetFrameRate);
             _sb.Append("  heap ").Append((System.GC.GetTotalMemory(false) / 1048576L)).Append(" MB");
+            _sb.Append('
+');
+            // The app answering for itself what the build settings are: a Development Build has
+            // its C++ compiled without optimisations on iOS and runs several times slower in every
+            // scene. Asking the dashboard is guesswork; this is the build talking.
+            _sb.Append(Debug.isDebugBuild ? "DEV BUILD" : "RELEASE");
+            _sb.Append("  ").Append(SystemInfo.deviceModel);
             _label.text = _sb.ToString();
 
             // Red once the frame budget is blown badly enough to be felt as lag.
