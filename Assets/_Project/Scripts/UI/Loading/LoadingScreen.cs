@@ -40,9 +40,12 @@ namespace PushStars.UI
 
         private void Update()
         {
-            if (_progressFill == null) return;
+            // The value advances even with no bar to draw it on. AppBootstrap waits for
+            // Finished before it swaps scenes, so an unwired fill would otherwise hold the app
+            // on the loading screen forever — a missing reference must cost a progress bar, not
+            // the launch.
             _shown = Mathf.MoveTowards(_shown, _target, _fillSpeed * Time.unscaledDeltaTime);
-            _progressFill.fillAmount = _shown;
+            if (_progressFill != null) _progressFill.fillAmount = _shown;
         }
 
         /// <summary>Reports how far along startup is. Progress only ever moves forward.</summary>

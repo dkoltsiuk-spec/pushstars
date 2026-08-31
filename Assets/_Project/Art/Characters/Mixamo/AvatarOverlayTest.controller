@@ -1,6 +1,6 @@
 %YAML 1.1
 %TAG !u! tag:unity3d.com,2011:
---- !u!1102 &-7928422115804282194
+--- !u!1102 &-4266828672015485399
 AnimatorState:
   serializedVersion: 6
   m_ObjectHideFlags: 1
@@ -27,14 +27,14 @@ AnimatorState:
   m_MirrorParameter: 
   m_CycleOffsetParameter: 
   m_TimeParameter: 
---- !u!1102 &-4128338982760102055
+--- !u!1102 &-1981575319536226731
 AnimatorState:
   serializedVersion: 6
   m_ObjectHideFlags: 1
   m_CorrespondingSourceObject: {fileID: 0}
   m_PrefabInstance: {fileID: 0}
   m_PrefabAsset: {fileID: 0}
-  m_Name: PushUp
+  m_Name: SittingIdle
   m_Speed: 1
   m_CycleOffset: 0
   m_Transitions: []
@@ -47,7 +47,7 @@ AnimatorState:
   m_MirrorParameterActive: 0
   m_CycleOffsetParameterActive: 0
   m_TimeParameterActive: 0
-  m_Motion: {fileID: -203655887218126122, guid: 402d6688e3470c4429a154a250042fc1,
+  m_Motion: {fileID: -203655887218126122, guid: a9d2b61337accf44eaf1b8a676f236c1,
     type: 3}
   m_Tag: 
   m_SpeedParameter: 
@@ -86,13 +86,13 @@ AnimatorStateMachine:
   m_Name: Base Layer
   m_ChildStates:
   - serializedVersion: 1
-    m_State: {fileID: -7928422115804282194}
+    m_State: {fileID: -4266828672015485399}
     m_Position: {x: 200, y: 0, z: 0}
   - serializedVersion: 1
-    m_State: {fileID: 3211048758955334963}
+    m_State: {fileID: -1981575319536226731}
     m_Position: {x: 235, y: 65, z: 0}
   - serializedVersion: 1
-    m_State: {fileID: -4128338982760102055}
+    m_State: {fileID: 8194143595743852962}
     m_Position: {x: 270, y: 130, z: 0}
   m_ChildStateMachines: []
   m_AnyStateTransitions: []
@@ -103,15 +103,15 @@ AnimatorStateMachine:
   m_EntryPosition: {x: 50, y: 120, z: 0}
   m_ExitPosition: {x: 800, y: 120, z: 0}
   m_ParentStateMachinePosition: {x: 800, y: 20, z: 0}
-  m_DefaultState: {fileID: -7928422115804282194}
---- !u!1102 &3211048758955334963
+  m_DefaultState: {fileID: -4266828672015485399}
+--- !u!1102 &8194143595743852962
 AnimatorState:
   serializedVersion: 6
   m_ObjectHideFlags: 1
   m_CorrespondingSourceObject: {fileID: 0}
   m_PrefabInstance: {fileID: 0}
   m_PrefabAsset: {fileID: 0}
-  m_Name: SittingIdle
+  m_Name: PushUp
   m_Speed: 1
   m_CycleOffset: 0
   m_Transitions: []
@@ -124,7 +124,7 @@ AnimatorState:
   m_MirrorParameterActive: 0
   m_CycleOffsetParameterActive: 0
   m_TimeParameterActive: 0
-  m_Motion: {fileID: -203655887218126122, guid: a9d2b61337accf44eaf1b8a676f236c1,
+  m_Motion: {fileID: -203655887218126122, guid: 402d6688e3470c4429a154a250042fc1,
     type: 3}
   m_Tag: 
   m_SpeedParameter: 
