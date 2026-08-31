@@ -112,6 +112,12 @@ namespace PushStars.Editor
             CopyModelToStreamingAssets();
             ConfigureIOS();
 
+            // Before the scenes, because every one of them is full of Russian copy. The Rubik
+            // atlases are dynamic SDF32; a character missing from them is rendered by the player,
+            // on the main thread, the first time it appears — which cost a 195-second frame on
+            // device. Baking here moves that back to where it was always assumed to happen.
+            FontSetup.BakeGlyphs();
+
             // Regenerate the CV test scene FRESH so the build never depends on stale serialized
             // references (e.g. a MediaPipePoseSource saved as a "missing script" when the define was
             // off — which left PushupSession with no pose source → STATUS "no source" on device).

@@ -180,6 +180,90 @@ namespace PushStars.Editor
             Debug.Log($"[FontSetup] ✓ Outline + drop shadow applied to {styled} Rubik material(s).");
         }
 
+        // ── Glyph pre-bake ────────────────────────────────────────────────────────
+
+        /// <summary>Every character the UI can put on screen: Latin, Cyrillic, digits and the
+        /// punctuation the copy actually uses. Deliberately generous — a character missing from
+        /// here is not a broken glyph, it is a stall, so the set errs toward too much.</summary>
+        private const string Charset =
+            " !\"#%&'()*+,-./0123456789:;<=>?@" +
+            "ABCDEFGHIJKLMNOPQRSTUVWXYZ[]_" +
+            "abcdefghijklmnopqrstuvwxyz" +
+            "«»×÷°±§№•·…–—‘’“”„" +
+            "АБВГДЕЁЖЗИЙКЛМНОПРСТУФХЦЧШЩЪЫЬЭЮЯ" +
+            "абвгдеёжзийклмнопрстуфхцчшщъыьэюя";
+
+        /// <summary>
+        /// Renders <see cref="Charset"/> into every Rubik atlas and saves it, so the shipped app
+        /// never rasterises a glyph itself.
+        ///
+        /// <para><b>Why this has to exist.</b> The assets are <see cref="AtlasPopulationMode.Dynamic"/>
+        /// with <see cref="GlyphRenderMode.SDF32"/> — the right quality choice for the outline
+        /// style, since it supersamples 32× and gives true distances across the padding. But the
+        /// comment above calling that "a one-time editor cost" only held in the editor. Nothing
+        /// pre-populated the atlas, so on device the cost landed on the player: every first
+        /// appearance of a letter baked an SDF32 glyph on the main thread. A screen of Russian
+        /// copy meant a single frame of ~195 seconds, and the app looked frozen — then ran at a
+        /// clean 30 fps the moment the letters were in the atlas.
+        ///
+        /// <para>The fix is not to lower the quality; it is to pay the cost at build time, where
+        /// it was always assumed to be paid. Population stays Dynamic, so an unforeseen character
+        /// still renders — it just costs one glyph instead of a screenful.</para></para>
+        ///
+        /// Menu: Tools ▸ Push Stars ▸ Bake Font Glyphs. Also run by every CI build.
+        /// </summary>
+        [MenuItem("Tools/Push Stars/Bake Font Glyphs", priority = 206)]
+        public static void BakeGlyphs()
+        {
+            var paths = new[] { RegularAsset, MediumAsset, BoldAsset, ItalicAsset, BoldItalicAsset,
+                                FontsDir + "/Rubik Black TMP.asset" };
+
+            int baked = 0;
+            foreach (var path in paths)
+            {
+                var fa = AssetDatabase.LoadAssetAtPath<TMP_FontAsset>(path);
+                if (fa == null) continue;
+                if (Bake(fa, path)) baked++;
+            }
+
+            AssetDatabase.SaveAssets();
+            AssetDatabase.Refresh();
+            Debug.Log($"[FontSetup] Glyphs baked into {baked} font atlas(es): {Charset.Length} characters each.");
+        }
+
+        static bool Bake(TMP_FontAsset fa, string assetPath)
+        {
+            fa.ReadFontAssetDefinition();
+
+            // Touching the property, not a no-op: TMP's m_AtlasTexture field is filled only by the
+            // lazy getter of `atlasTexture`, while SetupNewAtlasTexture reads the field directly to
+            // name the page it is adding. On an asset loaded straight off disk that field is still
+            // null, so the moment the charset needs a second atlas page TMP dereferences null and
+            // the whole bake dies — reading it once here is what primes it.
+            _ = fa.atlasTexture;
+
+            if (!fa.TryAddCharacters(Charset, out string missing) && !string.IsNullOrEmpty(missing))
+                Debug.LogWarning($"[FontSetup] {fa.name}: {missing.Length} character(s) not in the " +
+                                 $"typeface, left to render at runtime: {missing}");
+
+            // An atlas page TMP had to add is a loose object until it is parented to the asset.
+            // Without this it is dropped on save and every glyph that landed on it comes back
+            // blank — the failure looks like missing letters, not like a missing texture.
+            var owned = new HashSet<Object>(AssetDatabase.LoadAllAssetsAtPath(assetPath));
+            var pages = fa.atlasTextures;
+            for (int i = 0; i < pages.Length; i++)
+            {
+                if (pages[i] == null || owned.Contains(pages[i])) continue;
+                pages[i].name = $"{fa.name} Atlas {i}";
+                AssetDatabase.AddObjectToAsset(pages[i], assetPath);
+            }
+
+            EditorUtility.SetDirty(fa);
+            Debug.Log($"[FontSetup] {fa.name}: {fa.characterTable.Count} characters in " +
+                      $"{pages.Length} atlas page(s).");
+            return true;
+        }
+
         /// <summary>
         /// Brings an existing font asset's atlas padding and render mode up to the values above,
         /// in place — edited through SerializedObject and cleared rather than regenerated, so the
