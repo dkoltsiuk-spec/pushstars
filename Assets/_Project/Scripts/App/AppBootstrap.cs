@@ -15,7 +15,16 @@ namespace PushStars.App
     /// <para><b>The router lives here</b> because this is the only place that runs on every launch
     /// before anything is on screen. A first launch goes to the intro; a launch that got through
     /// the intro but not the level test goes straight into the test (an app killed mid-onboarding
-    /// resumes where it stopped); everything else goes to the main screen.</para>
+    /// resumes where it stopped); everything else goes to the main screen. Every one of those
+    /// decisions reads local state, so the route is known before any network exists.</para>
+    ///
+    /// <para><b>The backend never blocks the launch.</b> It used to be awaited here, and on device
+    /// that froze the app solid on "Соединение…": Firebase's dependency check blocks the main
+    /// thread, and a main thread inside native code does not run the player loop — which is also
+    /// why the timeout around it never fired, since <c>UniTask.Delay</c> ticks on that same loop.
+    /// A timeout cannot rescue a synchronous block; only not being in its way can. Firebase is now
+    /// started beside the launch, and <see cref="_initializeBackend"/> switches it off entirely
+    /// while nothing in the app needs it.</para>
     /// </summary>
     public class AppBootstrap : MonoBehaviour
     {
@@ -26,8 +35,13 @@ namespace PushStars.App
                  "logo. Real work longer than this is never cut short.")]
         [SerializeField, Range(0f, 4f)] private float _minVisibleSec = 1.2f;
 
-        [Tooltip("How long any one backend step may hold the launch before the app opens offline.")]
+        [Tooltip("How long any one backend step may wait before it is written off. Only bounds the " +
+                 "logging — the launch never waits for it either way.")]
         [SerializeField, Range(2f, 30f)] private float _serviceTimeoutSec = 8f;
+
+        [Tooltip("Bring Firebase up at all. OFF while the app has nothing that needs it: the intro, " +
+                 "the level test, the ghost duel and XP are all local. Turn back on with phase 11.5.")]
+        [SerializeField] private bool _initializeBackend = false;
 
         private float _startTime;
 
@@ -46,7 +60,10 @@ namespace PushStars.App
         private async void Start()
         {
             Report(0.05f, "Запуск…");
-            await InitServicesAsync();
+
+            // The backend is started beside the launch, never in front of it. Where it runs at all
+            // is decided by _initializeBackend; either way the router below only reads local state.
+            if (_initializeBackend) InitServicesAsync().Forget();
 
             string next = ResolveNextScene();
             Report(0.65f, next == FightConfig.FightSceneName ? "Готовим замер…" : "Почти готово…");

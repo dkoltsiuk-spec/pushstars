@@ -62,12 +62,20 @@ namespace PushStars.Editor
             // ── Wordmark ────────────────────────────────────────────────────────────────────────
             var word = UiBuilder.Text(safe, "Wordmark", AppColors.TextPrimary, "PUSH STARS", 52, FontStyles.Bold);
             word.characterSpacing = 6f;
-            UiBuilder.Place(word.rectTransform, new Vector2(0.5f, 0.5f), new Vector2(0f, 100f), new Vector2(360f, 70f));
+            // One line, always. At 52pt with this letter-spacing the wordmark does not fit the
+            // narrowest phone, and wrapping put "STARS" straight through the tagline underneath.
+            // Auto-sizing shrinks it to whatever the device is instead of breaking the lockup.
+            word.enableWordWrapping = false;
+            word.enableAutoSizing = true;
+            word.fontSizeMin = 28f;
+            word.fontSizeMax = 52f;
+            UiBuilder.Place(word.rectTransform, new Vector2(0.5f, 0.5f), new Vector2(0f, 104f), new Vector2(340f, 72f));
 
             var tagline = UiBuilder.Text(safe, "Tagline", AppColors.TextSecondary,
                                          "ОТЖИМАНИЯ · ДУЭЛИ · РЕЙТИНГ", 13, FontStyles.Bold);
             tagline.characterSpacing = 4f;
-            UiBuilder.Place(tagline.rectTransform, new Vector2(0.5f, 0.5f), new Vector2(0f, 58f), new Vector2(360f, 20f));
+            tagline.enableWordWrapping = false;
+            UiBuilder.Place(tagline.rectTransform, new Vector2(0.5f, 0.5f), new Vector2(0f, 46f), new Vector2(360f, 20f));
 
             // ── Progress bar ────────────────────────────────────────────────────────────────────
             var pill = AssetDatabase.LoadAssetAtPath<Sprite>(PillSprite);
