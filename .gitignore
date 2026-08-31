@@ -82,6 +82,12 @@ Packages/com.github.homuler.mediapipe/
 Assets/MediaPipeUnity/
 Assets/MediaPipeUnity.meta
 
+# Модели Pose Landmarker (~15 МБ) — копии из пакета выше, их кладёт в StreamingAssets
+# BuildScript.CopyModelToStreamingAssets перед каждой сборкой (и локально, и на CI).
+# Источник в git не тащим — значит и копию тоже нет.
+Assets/StreamingAssets/pose_landmarker_*.bytes
+Assets/StreamingAssets/pose_landmarker_*.bytes.meta
+
 # Unity license activation files — НЕ коммитить (это лицензия/секрет). Для CI .ulf хранится
 # как секрет UNITY_LICENSE в Codemagic, не в git.
 *.alf
@@ -94,3 +100,6 @@ Assets/MediaPipeUnity.meta
 *.cer
 *.p12
 *.mobileprovision
+
+# Scratch output of Tools > Push Stars > Dump Main Screen Layout
+layout_dump.txt

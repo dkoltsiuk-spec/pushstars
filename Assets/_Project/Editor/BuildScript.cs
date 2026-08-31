@@ -30,15 +30,42 @@ namespace PushStars.Editor
         private const string StreamingDir = "Assets/StreamingAssets";
         private const string BundleId     = "com.pushstars.app";
 
-        // The real app: Boot (Firebase init) → Main → Fight (boss duel, phase 08.9). testCV ships
-        // as a hidden debug scene (loadable by name) until the fight screen fully replaces it.
+        // The real app. Boot MUST stay at index 0 — it is the loading screen and the router that
+        // sends a first launch to Onboarding, an unfinished onboarding to the level test, and
+        // everyone else to Main. testCV ships as a hidden debug scene (loadable by name only).
         private static readonly string[] AppScenes =
         {
-            "Assets/_Project/Scenes/Boot.unity",
+            BootSceneSetup.ScenePath,
             "Assets/_Project/Scenes/Main.unity",
+            OnboardingSceneSetup.ScenePath,
             FightSceneSetup.ScenePath,
             "Assets/testCV.unity",
         };
+
+        /// <summary>Rebuilds the three scenes that are generated entirely from code — Boot,
+        /// Onboarding, Fight — and refreshes Build Settings. Main.unity is deliberately left
+        /// alone: it is authored through <see cref="MainVsScreenSetup"/> and carries the character
+        /// stage, so regenerating it here would quietly throw that away.
+        ///
+        /// <para>Also the batch entry point used to verify the flow compiles and builds without
+        /// opening the editor:
+        /// <c>Unity -batchmode -quit -projectPath . -executeMethod PushStars.Editor.BuildScript.RebuildFlowScenes</c></para>
+        /// </summary>
+        [MenuItem("Tools/Push Stars/Rebuild Flow Scenes (Boot + Onboarding + Fight)", priority = 6)]
+        public static void RebuildFlowScenes()
+        {
+            BootSceneSetup.BuildScene();
+            OnboardingSceneSetup.BuildScene();
+            bool mediapipe = FightSceneSetup.BuildFightScene();
+
+            EditorBuildSettings.scenes =
+                AppScenes.Where(p => File.Exists(p))
+                         .Select(p => new EditorBuildSettingsScene(p, true))
+                         .ToArray();
+
+            Debug.Log($"[Build] Flow scenes rebuilt (fight pose source: {(mediapipe ? "MediaPipe" : "Mock")}). " +
+                      $"Build Settings: {string.Join(", ", EditorBuildSettings.scenes.Select(s => Path.GetFileNameWithoutExtension(s.path)))}");
+        }
 
         public static void BuildiOS()
         {
@@ -107,10 +134,10 @@ namespace PushStars.Editor
             const string scenePath = "Assets/testCV.unity";
             EditorSceneManager.SaveScene(scene, scenePath);
 
-            // Regenerate the boss-duel scene the same way (phase 08.9). BuildFightScene returns
-            // false when it had to fall back to the mock pose source — on CI that means the
-            // MediaPipe assembly didn't compile, and shipping a camera-less fight screen would be
-            // a broken product: abort like the CVTest guard above.
+            // Regenerate the duel scene the same way. BuildFightScene returns false when it had to
+            // fall back to the mock pose source — on CI that means the MediaPipe assembly didn't
+            // compile, and shipping a fight screen that cannot see the player would be a broken
+            // product: abort like the CVTest guard above.
             if (!FightSceneSetup.BuildFightScene())
             {
                 Debug.LogError("[Build] Fight scene fell back to MockPoseSource — MediaPipe missing. ABORTING.");
@@ -119,12 +146,20 @@ namespace PushStars.Editor
             }
             Debug.Log("[Build] Fight scene regenerated and wired.");
 
-            // Ship the real app: Boot (index 0) initializes Firebase and loads Main by name;
-            // testCV stays in the list as a debug scene reachable via SceneManager.LoadScene.
+            // Boot and Onboarding are pure UI — no plugin dependency, so no abort guard. They are
+            // still regenerated rather than trusted: both are built entirely from code, and a
+            // serialized copy that drifted from it is exactly the failure this pass exists to stop.
+            BootSceneSetup.BuildScene();
+            OnboardingSceneSetup.BuildScene();
+            Debug.Log("[Build] Boot + Onboarding regenerated.");
+
+            // Ship the real app: Boot (index 0) initializes Firebase and routes by onboarding
+            // state; testCV stays in the list as a debug scene reachable via SceneManager.LoadScene.
             EditorBuildSettings.scenes =
                 AppScenes.Select(s => new EditorBuildSettingsScene(s, true)).ToArray();
 
-            Debug.Log("[Build] PrepareForUBA done: scenes = Boot + Main + testCV, model copied, iOS configured.");
+            Debug.Log("[Build] PrepareForUBA done: scenes = Boot + Main + Onboarding + Fight + testCV, " +
+                      "model copied, iOS configured.");
         }
 
         private static void EnableMediaPipeDefine(NamedBuildTarget target)

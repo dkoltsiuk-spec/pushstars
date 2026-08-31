@@ -103,6 +103,24 @@ namespace PushStars.Fight
             }
         }
 
+        // ── Layout modes ────────────────────────────────────────────────────────────────────────────
+
+        /// <summary>Two counters, ours and theirs.</summary>
+        public void ConfigureDuel(string opponentName)
+        {
+            if (_bossName != null) { _bossName.gameObject.SetActive(true); _bossName.text = opponentName; }
+            if (_bossReps != null) { _bossReps.gameObject.SetActive(true); _bossReps.text = "0"; }
+        }
+
+        /// <summary>Level test: there is no opponent, so the right-hand counter would just be a
+        /// zero staring at the player for a minute. The caption stays — it tells them what this
+        /// screen is — and the count goes.</summary>
+        public void ConfigureSolo(string caption)
+        {
+            if (_bossName != null) { _bossName.gameObject.SetActive(true); _bossName.text = caption; }
+            if (_bossReps != null) _bossReps.gameObject.SetActive(false);
+        }
+
         // ── Score row ────────────────────────────────────────────────────────────────────────────
         public void SetBossName(string name) { if (_bossName != null) _bossName.text = name; }
         public void SetPlayerReps(int reps)  { if (_playerReps != null) _playerReps.text = reps.ToString(); }

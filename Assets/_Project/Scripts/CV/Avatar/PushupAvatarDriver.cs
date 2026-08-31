@@ -18,8 +18,8 @@ namespace PushStars.CV
     /// descent and ascent replay the same pose trajectory in both directions. Tune the two values
     /// in Play mode if the trimmed clip doesn't start exactly at the top.</para>
     ///
-    /// Throwaway debug component like <see cref="PushupDebugHud"/> — the production avatar
-    /// (Genies, phase 10) will get a proper controller; this proves the sync concept.
+    /// Throwaway debug component like <see cref="PushupDebugHud"/> — the production character
+    /// will get a proper controller; this proves the sync concept.
     /// </summary>
     public sealed class PushupAvatarDriver : MonoBehaviour
     {
@@ -60,7 +60,22 @@ namespace PushStars.CV
         private float _depthVel;
         private bool _started;
 
-        private void Awake()
+        private void Awake() => RehashStates();
+
+        /// <summary>Binds the driver to a session and an animator built at runtime. The fight
+        /// screen instantiates the player's body after the scene loads (the choice of body is a
+        /// saved preference, not a scene authoring decision), so the references cannot be
+        /// serialized there the way the editor test stand serializes them.</summary>
+        public void Configure(PushupSession session, Animator animator)
+        {
+            _session = session;
+            _animator = animator;
+            _started = false;
+            Mode = AvatarMode.Idle;
+            RehashStates();
+        }
+
+        private void RehashStates()
         {
             _pushupHash = Animator.StringToHash(_pushupStateName);
             _idleHash = Animator.StringToHash(_idleStateName);

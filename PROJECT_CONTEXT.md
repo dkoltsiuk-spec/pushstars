@@ -80,16 +80,22 @@
 | Движок | Unity | Personal, iOS + Android |
 | CV (компьютерное зрение) | MediaPipe | homuler plugin, 33 точки тела, локально на устройстве |
 | Синхронизация дуэли | Photon PUN2 | UDP, ~50ms latency, ~3 KB/s на игрока |
-| Аватары | Genies SDK | 3.8.5, Unity Asset Store, бесплатный |
+| Аватары | Собственные модели | AccuRig-риг (CC_Base), Unity Humanoid, клипы ретаргетятся с Mixamo |
 | Backend | Firebase | Auth, Firestore, RTDB, Storage, Cloud Functions, FCM, Crashlytics, Analytics |
 | IAP / монетизация | RevenueCat | — |
-| Кастомные скины | Cinema 4D → FBX → Genies авториггинг | Разработчик — 3D-специалист |
+| Кастомные скины | Моделинг → AccuRig → FBX → Unity Humanoid | Разработчик — 3D-специалист |
 
 **Почему Photon, а не Agora:** Agora Data Streams ограничены 6 KB/s — недостаточно для сырых данных скелета. Photon PUN2 — прямой UDP peer-to-peer, ~3 KB/s на игрока, задержка ~50ms.
 
 **Почему Firebase, а не Supabase:** Realtime Database лучше для матчмейкинг-очереди с низкой задержкой; FCM нативно интегрирован; Crashlytics + Analytics в одном SDK.
 
-**Почему Genies, а не Ready Player Me:** RPM закрыт (Netflix, январь 2026). Genies — бесплатный, Unity Asset Store, iOS + Android.
+**Почему свои модели, а не готовый SDK:** RPM закрыт (Netflix, январь 2026), Genies привязывает
+внешний вид и гардероб к чужому SDK. Персонажи моделятся и риггятся самостоятельно (AccuRig),
+в Unity живут как обычный Humanoid — анимации берутся откуда угодно (Mixamo и свои) и
+ретаргетятся движком. Тел два — мужское и женское (`Assets/Character/Main_man`,
+`Assets/Character/Main_woman`); клипы общие (`Assets/Character/Animations`), потому что
+ретаргет решает позу на пропорции конкретного скелета, а не копирует углы. Импорт обоих:
+`Tools ▸ Push Stars ▸ Character ▸ Import Main Characters`.
 
 **Скелет:** только 17 верхних суставов (не все 33), int16-квантизация, 30 fps для live PvP, 15 fps для Ghost Mode хранилища (~63 KB на 60-секундную сессию).
 
@@ -145,18 +151,41 @@ LEADERBOARD_CACHE_SEC = 60
 ## 7. Unity — текущее состояние
 
 > ⚠️ Описание ProfileScene с рабочим Genies-аватаром ниже относилось к **раннему прототипу**, а
-> не к текущему репозиторию. В этом проекте на момент фазы 03: **нет** ProfileScene, **нет**
-> Genies SDK (его нет в `Packages/manifest.json`), **нет** кода аватара. Это чистый скелет.
-> Опыт прототипа (двухслойный Animator, Render Texture с прозрачным фоном) переиспользуем как
-> образец, когда будем подключать Genies в фазе 10.
+> не к текущему репозиторию. Genies из планов убран — персонажи теперь свои
+> (`Assets/Character/Main_man` и `Main_woman`, Humanoid + ретаргет Mixamo-клипов). Опыт прототипа
+> (двухслойный Animator, Render Texture с прозрачным фоном) переиспользуем как образец.
 
 ### Что сделано (этот репозиторий)
 - Фазы 00–03: Core/ServiceLocator, AppBootstrap (Boot→Main), дизайн-система (тема, Rubik,
   префабы), демо-экраны.
 - **Главный VS-экран** (`Main.unity`, Duel-вкладка): собран `Tools → Push Stars → Build Main
   VS Screen`. 3D-персонаж в центре через `CharacterStage` (камера → RenderTexture → RawImage,
-  прозрачный фон, слой `Character`), пока placeholder-гуманоид из примитивов. В фазе 10
-  `CharacterStage.SetAvatar(genies)` подменит модель — композиция не меняется.
+  прозрачный фон, слой `Character`). На сцене стоит своя модель; кнопка **М/Ж** рядом с
+  персонажем переключает тело через `CharacterRoster` (выбор пишется в `PlayerPrefs`,
+  ключ `character.gender`). Смена тела идёт тем же `CharacterStage.SetAvatar` — кадр,
+  камера, RenderTexture и вся UI поверх не двигаются.
+- **CV-ядро (фаза 08–08.1):** MediaPipe (homuler) за дефайном `PUSHSTARS_MEDIAPIPE`,
+  счётчик репов + античит-цепочка (`PlankArmer`, `AntiCheatAuditor`, колени/запястья/темп),
+  фронтальная адаптация (камера спереди 1.5–2 м).
+- **Первый запуск (Boot → Онбординг → Замер → Бой):**
+  - `Boot.unity` — экран загрузки (вордмарк, прогресс-бар, статус) + роутер в `AppBootstrap`:
+    первый запуск → `Onboarding`, интро пройдено но замера нет → `Fight` в режиме замера,
+    иначе → `Main`. Собирается `Tools → Push Stars → Build Boot Screen`.
+  - `Onboarding.unity` — 4 страницы (что это / как поставить телефон / М-Ж / камера),
+    последняя кнопка запускает замер. `Tools → Push Stars → Build Onboarding`.
+  - `Fight.unity` — **одна сцена на все три режима** (`FightRequest.Mode`): замер уровня,
+    дуэль против своего госта, лестница боссов. **Камеры на экране нет** — видно только
+    3D-персонажа (слой `Character` → стейдж-камера → RenderTexture → полноэкранный RawImage),
+    который отжимается в такт игроку (`PushupAvatarDriver` скрабит клип по CV-глубине).
+    IMGUI-диагностика спрятана под кнопкой `•••`; пять быстрых тапов по ней сбрасывают
+    первый запуск (для повторного теста на устройстве без переустановки).
+  - **Ghost:** каждый живой подход пишет таймлайн репов; лучший лежит в
+    `Application.persistentDataPath/ghost_pushups.json` (`GhostStore`) и воспроизводится
+    `GhostOpponent` через тот же `IOpponentFeed`, что и босс. «НАЙТИ СОПЕРНИКА» ведёт на
+    дуэль с этой записью, а без записи — на замер.
+  - **Уровень:** `FitnessTest` (репы за 60 с → НОВИЧОК/ЛЮБИТЕЛЬ/АТЛЕТ/ЧЕМПИОН/ЭЛИТА),
+    результат сидит стартовые кубки в `LocalProfile`. Подробности —
+    [phase-09.5](docs/plan/phase-09.5-first-run-and-ghost.md).
 
 ### Прежний прототип (справочно, не в этом репо)
 - **ProfileScene:** Genies-аватар + idle (Mixamo Breathing Idle) через двухслойный Animator
@@ -164,15 +193,14 @@ LEADERBOARD_CACHE_SEC = 60
   (`Background Type: Uninitialized`, формат `R8G8B8A8_UNORM`). Character Controller отключён.
 
 ### Что не начато (нет кода, нет документации)
-- MediaPipe интеграция (homuler plugin)
-- Алгоритм счёта репов
-- Экран калибровки камеры
-- Экран дуэли
-- Матчмейкинг UI
-- Экран результата
-- Онбординг
-- Ghost Mode воспроизведение на клиенте
-- Навигация (3 вкладки)
+- Обучающая тренировка «Эталонное движение» с разбором фаз (остаток фазы 09)
+- Загрузка ghost-записи в Storage и подбор чужих записей (фазы 12 / 12.5) — сейчас запись
+  только локальная, `onGhostMatchFinished` с клиента не вызывается
+- Синхронизация офлайн-прогресса на сервер (`syncOfflineXp`, фаза 11.5): XP и кубки живут
+  в `OfflineXpBank` / `LocalProfile` и на сервер пока не уезжают
+- Живой PvP через Photon (фазы 13–14)
+- Лига / лидерборд (фаза 11)
+- Гардероб и косметика (фаза 10)
 
 ### Нужен Unity Architecture Document
 Отдельный документ по Unity-стороне (MediaPipe, rep-counting, сцены, калибровка) — **не написан**. Без него агент не может полноценно работать с Unity-кодом.

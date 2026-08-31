@@ -20,6 +20,15 @@ namespace PushStars.Core
 
         public const string FightSceneName = "Fight";
         public const string MainSceneName = "Main";
+        /// <summary>First-run intro pages. Only ever loaded by <c>AppBootstrap</c>.</summary>
+        public const string OnboardingSceneName = "Onboarding";
+        /// <summary>Loading screen and router; build index 0.</summary>
+        public const string BootSceneName = "Boot";
+
+        /// <summary>What the player's own recording is called on screen. Never "бот" and never the
+        /// player's own name — the opponent is explicitly their past self, which is the appeal of the
+        /// mode. Lives in Core because both the search overlay (UI) and the duel (Fight) show it.</summary>
+        public const string GhostOpponentName = "ТВОЯ ТЕНЬ";
     }
 
     /// <summary>

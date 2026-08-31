@@ -18,11 +18,11 @@ namespace PushStars.UI
     ///     back forward.
     ///   • While open, <see cref="LoadingVsRing"/> spins the dashed VS ring.
     ///
-    /// Phase 08.9: the spinner is no longer pure cosmetics — after <see cref="FightConfig.SearchDelaySec"/>
-    /// the "opponent" is found (the current <see cref="BossCatalog"/> boss), the card flips to
+    /// The spinner is not pure cosmetics — after <see cref="FightConfig.SearchDelaySec"/> an opponent
+    /// is found (the player's own best recording, see <see cref="GhostStore"/>), the card flips to
     /// СОПЕРНИК НАЙДЕН and the Fight scene loads. The found-state UI is built at runtime from the
     /// overlay's own Title label, so the serialized Main scene needs no regeneration. Phase 12.5
-    /// replaces the fixed delay with the real ladder (live queue → ghost → bot).
+    /// replaces the fixed delay with the real ladder (live queue → other players' ghosts → bot).
     ///
     /// Lives on a small always-active GameObject so it keeps running while the overlay
     /// itself is toggled on/off.
@@ -98,7 +98,12 @@ namespace PushStars.UI
             RecedeMain(false);
         }
 
-        // ── Boss matchmaking (phase 08.9): delay → "СОПЕРНИК НАЙДЕН: <босс>" → Fight scene ──────
+        // ── Matchmaking: delay → "СОПЕРНИК НАЙДЕН: <имя>" → Fight scene ────────────────
+        //
+        // The opponent is the player's own best recorded set. Until real players are in the pool
+        // that IS the match: a duel against your strongest self, fought in real time. A player with
+        // no recording yet is sent to the level test instead of being told "nobody found" — the
+        // search screen always ends in a set.
         private IEnumerator SearchRoutine()
         {
             yield return new WaitForSeconds(FightConfig.SearchDelaySec);
@@ -107,15 +112,27 @@ namespace PushStars.UI
             {
                 // Fight scene absent from this build (stale build settings) — stay in the
                 // searching state instead of hard-failing; ВЫЙТИ still works.
-                Debug.LogError($"[SearchOpponent] Scene '{FightConfig.FightSceneName}' is not in the build — cannot start the boss duel.");
+                Debug.LogError($"[SearchOpponent] Scene '{FightConfig.FightSceneName}' is not in the build — cannot start the duel.");
                 _searchRoutine = null;
                 yield break;
             }
 
-            ShowFoundCard(BossCatalog.Current.DisplayName);
+            var ghost = GhostStore.Load();
+            if (ghost == null)
+            {
+                ShowFoundCard("СНАЧАЛА ЗАМЕР УРОВНЯ");
+                yield return new WaitForSeconds(FightConfig.FoundPauseSec);
+                _searchRoutine = null;
+                FightRequest.LevelTest();
+                SceneManager.LoadScene(FightConfig.FightSceneName);
+                yield break;
+            }
+
+            ShowFoundCard($"{FightConfig.GhostOpponentName}  ·  {ghost.reps}");
             yield return new WaitForSeconds(FightConfig.FoundPauseSec);
 
             _searchRoutine = null;
+            FightRequest.Ghost();
             SceneManager.LoadScene(FightConfig.FightSceneName);
         }
 

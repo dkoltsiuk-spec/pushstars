@@ -29,26 +29,10 @@ namespace PushStars.Editor
         //  MENU ITEMS
         // ════════════════════════════════════════════════════════════════════
 
+        /// <summary>Kept as the old menu path; the boot screen itself is built by
+        /// <see cref="BootSceneSetup"/>, which owns the loading UI as well as the bootstrap.</summary>
         [MenuItem("Tools/Push Stars/Setup Boot Scene", priority = 1)]
-        public static void SetupBootScene()
-        {
-            var scene = OpenOrCreateScene("Assets/_Project/Scenes/Boot.unity");
-
-            ClearScene();
-
-            // AppBootstrap object
-            var go = new GameObject("AppBootstrap");
-            var bootstrap = go.AddComponent<PushStars.App.AppBootstrap>();
-
-            // Set _mainSceneName via SerializedObject so it survives domain reload
-            var so = new SerializedObject(bootstrap);
-            so.FindProperty("_mainSceneName").stringValue = "Main";
-            so.ApplyModifiedPropertiesWithoutUndo();
-
-            EditorSceneManager.MarkSceneDirty(scene);
-            EditorSceneManager.SaveScene(scene);
-            Debug.Log("[PushStars] Boot.unity setup complete.");
-        }
+        public static void SetupBootScene() => BootSceneSetup.BuildScene();
 
         [MenuItem("Tools/Push Stars/Setup Main Scene", priority = 2)]
         public static void SetupMainScene()
@@ -124,11 +108,13 @@ namespace PushStars.Editor
         {
             var scenes = new[]
             {
-                new EditorBuildSettingsScene("Assets/_Project/Scenes/Boot.unity", true),
+                new EditorBuildSettingsScene(BootSceneSetup.ScenePath, true),
                 new EditorBuildSettingsScene("Assets/_Project/Scenes/Main.unity", true),
+                new EditorBuildSettingsScene(OnboardingSceneSetup.ScenePath, true),
+                new EditorBuildSettingsScene(FightSceneSetup.ScenePath, true),
             };
             EditorBuildSettings.scenes = scenes;
-            Debug.Log("[PushStars] Build Settings updated: Boot(0), Main(1).");
+            Debug.Log("[PushStars] Build Settings updated: Boot(0), Main(1), Onboarding(2), Fight(3).");
         }
 
         [MenuItem("Tools/Push Stars/Run Full Setup", priority = 10)]
@@ -136,6 +122,7 @@ namespace PushStars.Editor
         {
             SetupBootScene();
             SetupMainScene();
+            OnboardingSceneSetup.BuildScene();
             AddScenesToBuild();
             EditorSceneManager.OpenScene("Assets/_Project/Scenes/Main.unity");
             Debug.Log("[PushStars] Full setup done. Scene Main is now active — press Play.");
@@ -208,6 +195,8 @@ namespace PushStars.Editor
             tmp.fontSize  = 48;
             tmp.color     = TextWhite;
             tmp.alignment = TextAlignmentOptions.Center;
+            var bold = FontSetup.LoadBold();
+            if (bold != null) tmp.font = bold; // else TMP falls back to LiberationSans
 
             return panel;
         }
@@ -257,6 +246,8 @@ namespace PushStars.Editor
             tmp.fontSize  = 28;
             tmp.color     = TabInactive;
             tmp.alignment = TextAlignmentOptions.Center;
+            var tabFont = FontSetup.LoadBold();
+            if (tabFont != null) tmp.font = tabFont; // else TMP falls back to LiberationSans
 
             so.FindProperty("_label").objectReferenceValue = tmp;
             so.ApplyModifiedPropertiesWithoutUndo();
