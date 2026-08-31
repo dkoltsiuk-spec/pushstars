@@ -103,7 +103,14 @@ namespace PushStars.CV
         /// false the descent state is cleared so a half-rep from a kneeling/sitting pose doesn't
         /// carry across into the next valid plank. Defaults to true for backwards compatibility
         /// with callers (and unit tests) that pre-date the anti-cheat layer.</summary>
-        public void Process(in PoseFrame frame, bool trackingOk, bool isArmed = true)
+        /// <param name="nowSec">The session clock — the SAME one <see cref="AmplitudeTracker"/> is
+        /// ticked with. It must not be <c>frame.TimestampSec</c>: that is the capture clock, a
+        /// stopwatch started when tracking began, while the tracker stamps its latches with
+        /// <c>Time.time</c>, which counts from app launch. Subtracting one from the other gave the
+        /// ascent a negative duration, so every rep failed the ascent floor and was dropped in
+        /// silence — no veto, no vote, the counter simply never moved. The editor mocks stamp their
+        /// frames with <c>Time.time</c>, which is why it only ever showed up on device.</param>
+        public void Process(in PoseFrame frame, bool trackingOk, float nowSec, bool isArmed = true)
         {
             if (!trackingOk || !frame.IsValid) return;
 
@@ -123,14 +130,14 @@ namespace PushStars.CV
 
             if (_tracker != null)
             {
-                ProcessWithTracker(frame.TimestampSec);
+                ProcessWithTracker(nowSec);
                 return;
             }
 
             float angle = PoseMath.ElbowAngle(frame);
             CurrentElbowAngle = angle;
 
-            UpdatePhase(angle, frame.TimestampSec);
+            UpdatePhase(angle, nowSec);
 
             _lastAngle = angle;
         }

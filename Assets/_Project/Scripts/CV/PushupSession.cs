@@ -208,7 +208,9 @@ namespace PushStars.CV
             }
 
             // ── 6. Counter (consumes the tracker's latch pulses; fires the audit on rep arcs) ──
-            Counter?.Process(frame, trackingOk, countingLive);
+            // `now`, not frame.TimestampSec: the counter's rate limits are differences against
+            // the tracker's latch times, and the tracker is ticked with this same clock above.
+            Counter?.Process(frame, trackingOk, now, countingLive);
 
             // ── 7. Set / rest semantics for the UI ──
             SetTracker.Tick(isArmed, Counter != null ? Counter.Reps : 0, now);
