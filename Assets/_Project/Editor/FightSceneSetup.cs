@@ -80,6 +80,12 @@ namespace PushStars.Editor
             dbgSO.ApplyModifiedPropertiesWithoutUndo();
             debugHud.enabled = false;
 
+            // The camera preview with the detected skeleton drawn over it. Without a feed on
+            // screen there is no way to tell "the phone is pointed at the ceiling" from "the model
+            // cannot see you" — both read as TRACK: Lost. Its live controls stay on so the frame
+            // rotation can be corrected on the device instead of through another build.
+            var preview = CreateCameraPreview(cvGO, pose);
+
             // ── 3D stage: the character, alone on its own layer, rendered into a texture ─────────
             var stage = BuildAvatarStage(charLayer, out var stageCamera, out var avatarRoot);
 
@@ -184,7 +190,10 @@ namespace PushStars.Editor
             UiBuilder.Set(ctrlSO, "_result", result);
             UiBuilder.Set(ctrlSO, "_exitButton", exitBtn);
             UiBuilder.Set(ctrlSO, "_exitLabel", exitLabel);
-            UiBuilder.Set(ctrlSO, "_debugHud", debugHud);
+            var panels = preview != null
+                ? new Behaviour[] { debugHud, preview }
+                : new Behaviour[] { debugHud };
+            UiBuilder.SetArray(ctrlSO, "_debugPanels", panels);
             UiBuilder.Set(ctrlSO, "_debugButton", debugBtn);
             ctrlSO.ApplyModifiedPropertiesWithoutUndo();
 
@@ -383,6 +392,24 @@ namespace PushStars.Editor
             }
             usedMediaPipe = false;
             return go.AddComponent<MockPoseSource>();
+        }
+
+        /// <summary>Adds <c>WebCamPreview</c> when the MediaPipe assembly compiled it. Resolved by
+        /// reflection for the same reason the pose source is: this file has to build with the
+        /// plugin absent.</summary>
+        static Behaviour CreateCameraPreview(GameObject go, MonoBehaviour source)
+        {
+            var type = Type.GetType("PushStars.CV.WebCamPreview, PushStars.CV.MediaPipe");
+            if (type == null) return null;
+
+            var preview = (Behaviour)go.AddComponent(type);
+            var so = new SerializedObject(preview);
+            so.FindProperty("_source").objectReferenceValue = source;
+            so.FindProperty("_showSkeleton").boolValue = true;
+            so.FindProperty("_showControls").boolValue = true;
+            so.ApplyModifiedPropertiesWithoutUndo();
+            preview.enabled = false;
+            return preview;
         }
 
         static Sprite LoadSprite(string path) => AssetDatabase.LoadAssetAtPath<Sprite>(path);

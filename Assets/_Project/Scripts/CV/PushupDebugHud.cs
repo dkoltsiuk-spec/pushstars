@@ -122,6 +122,7 @@ namespace PushStars.CV
                 $"θs/θm: {t.SmoothedElbowDeg:0.0} / {t.MedianElbowDeg:0.0}°   FORM: {f.Form:0}\n" +
                 $"TEMPO: {_session.TempoRpm:0} rpm   TRACK: {_session.Quality}   FPS: {(1f / Mathf.Max(Time.smoothDeltaTime, 0.0001f)):0}   POSE: {_session.PoseFps:0}/s\n" +
                 $"VIEW:  {_session.View.View} (R={_session.View.RMedian:0.00})   κ={KappaText()}   Δknee={KneeDropText()}\n" +
+                $"VIS:   {BuildVisibilityLine()}\n" +
                 $"SET:   {BuildSetLine()}\n" +
                 $"ARMER: {BuildArmerLine()}\n" +
                 $"AC:    {BuildAntiCheatLine()}\n" +
@@ -379,6 +380,35 @@ namespace PushStars.CV
         }
 
         /// <summary>Stage 0 axis-convention probe (docs/plan/phase-08.1-pushup-anticheat.md §4).</summary>
+        /// <summary>Per-joint visibility for the six joints tracking quality is judged on, plus the
+        /// second-lowest of them — the number <see cref="PoseQuality"/> actually thresholds.
+        ///
+        /// <para>Without this a "TRACK: Lost" is unfalsifiable from the outside: the detector may be
+        /// finding nobody, or finding somebody it is not confident about, or the landmarks may be
+        /// fine and something further down the chain may be at fault. Those need opposite fixes,
+        /// and the number that separates them was the one thing the HUD did not show.</para></summary>
+        private string BuildVisibilityLine()
+        {
+            var frame = _session.LastFrame;
+            if (!frame.IsValid) return "frame INVALID - no person detected";
+
+            float sl = frame.Visibility(PoseLandmark.LeftShoulder), sr = frame.Visibility(PoseLandmark.RightShoulder);
+            float el = frame.Visibility(PoseLandmark.LeftElbow),    er = frame.Visibility(PoseLandmark.RightElbow);
+            float wl = frame.Visibility(PoseLandmark.LeftWrist),    wr = frame.Visibility(PoseLandmark.RightWrist);
+
+            // Same second-lowest rule PoseQuality applies, recomputed here so the printed number
+            // and the verdict can never disagree.
+            float min1 = float.PositiveInfinity, min2 = float.PositiveInfinity;
+            foreach (float v in new[] { sl, sr, el, er, wl, wr })
+            {
+                if (v < min1) { min2 = min1; min1 = v; }
+                else if (v < min2) { min2 = v; }
+            }
+
+            return $"sh {sl:0.00}/{sr:0.00}  el {el:0.00}/{er:0.00}  wr {wl:0.00}/{wr:0.00}  " +
+                   $"2nd-min={min2:0.00} (Good>=0.50)";
+        }
+
         private string BuildWorldProbeLine()
         {
             var src = _session.LastFrame;

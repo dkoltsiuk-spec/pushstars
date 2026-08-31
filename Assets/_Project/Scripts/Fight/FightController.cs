@@ -44,8 +44,9 @@ namespace PushStars.Fight
         [SerializeField] private TMPro.TextMeshProUGUI _exitLabel;
 
         [Header("Debug")]
-        [Tooltip("The IMGUI tuning HUD, toggled by the corner button. Off until asked for.")]
-        [SerializeField] private Behaviour _debugHud;
+        [Tooltip("IMGUI diagnostics toggled together by the corner button: the tuning HUD and the " +
+                 "camera preview with the detected skeleton drawn on it. Off until asked for.")]
+        [SerializeField] private Behaviour[] _debugPanels;
         [SerializeField] private UnityEngine.UI.Button _debugButton;
 
         private Phase _phase = Phase.WaitPlank;
@@ -71,6 +72,7 @@ namespace PushStars.Fight
         private const float DebugTapWindowSec = 1.2f;
         private int _debugTaps;
         private float _debugTapWindowEnd;
+        private bool _debugVisible;
 
         private void Start()
         {
@@ -84,7 +86,7 @@ namespace PushStars.Fight
             if (_session != null) _session.OnRep += HandleRep;
             if (_exitButton != null) _exitButton.onClick.AddListener(ExitToCaller);
             if (_debugButton != null) _debugButton.onClick.AddListener(ToggleDebugHud);
-            if (_debugHud != null) _debugHud.enabled = false;
+            SetDebugPanels(false);
         }
 
         private void OnDestroy()
@@ -138,7 +140,10 @@ namespace PushStars.Fight
             _hud.SetBossReps(0);
         }
 
-        /// <summary>One tap shows the tuning HUD. Five quick taps wipe the first-run state and
+        /// <summary>One tap shows the diagnostics — the tuning HUD and the camera preview with the
+        /// detected skeleton on it, which is the only way to see what the phone is actually
+        /// pointed at now that the fight screen draws the character instead of the feed. Five
+        /// quick taps wipe the first-run state and
         /// restart from Boot — without it, re-testing onboarding on a TestFlight build means
         /// deleting and reinstalling the app for every run.</summary>
         private void ToggleDebugHud()
@@ -156,8 +161,15 @@ namespace PushStars.Fight
                 return;
             }
 
-            if (_debugHud == null) return;
-            _debugHud.enabled = !_debugHud.enabled;
+            SetDebugPanels(!_debugVisible);
+        }
+
+        private void SetDebugPanels(bool visible)
+        {
+            _debugVisible = visible;
+            if (_debugPanels == null) return;
+            foreach (var panel in _debugPanels)
+                if (panel != null) panel.enabled = visible;
         }
 
         // ── Live counting ────────────────────────────────────────────────────────────────────────
