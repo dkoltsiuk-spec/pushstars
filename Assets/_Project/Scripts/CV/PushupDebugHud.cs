@@ -85,6 +85,7 @@ namespace PushStars.CV
 
         private void HandleBottomLatched()
         {
+            _bottomLatches++;
             _lastBottomFlashTime = Time.time;
             if (!_bottomTickSound || _audio == null || _tick == null) return;
             if (Time.time - _lastTickPlayTime < 0.15f) return; // debounce (arc guarantees 1/rep)
@@ -92,7 +93,22 @@ namespace PushStars.CV
             _audio.PlayOneShot(_tick);
         }
 
-        private void HandleTopLatched() => _lastTopFlashTime = Time.time;
+        private void HandleTopLatched()
+        {
+            _lastTopFlashTime = Time.time;
+            _topLatches++;
+        }
+
+        /// <summary>Widens the depth range the tally reports. Sampled per frame rather than per
+        /// latch: the question it answers is how deep the movement actually got, including the
+        /// attempts that never reached a threshold and so never latched anything.</summary>
+        private void Update()
+        {
+            if (_session == null || !_session.Tracker.SignalValid) return;
+            float depth = _session.Tracker.CurrentDepth01;
+            if (depth < _depthMin) _depthMin = depth;
+            if (depth > _depthMax) _depthMax = depth;
+        }
 
         private void OnGUI()
         {
@@ -123,6 +139,7 @@ namespace PushStars.CV
                 $"TEMPO: {_session.TempoRpm:0} rpm   TRACK: {_session.Quality}   FPS: {(1f / Mathf.Max(Time.smoothDeltaTime, 0.0001f)):0}   POSE: {_session.PoseFps:0}/s\n" +
                 $"VIEW:  {_session.View.View} (R={_session.View.RMedian:0.00})   κ={KappaText()}   Δknee={KneeDropText()}\n" +
                 $"VIS:   {BuildVisibilityLine()}\n" +
+                $"TALLY: {BuildTallyLine()}\n" +
                 $"SET:   {BuildSetLine()}\n" +
                 $"ARMER: {BuildArmerLine()}\n" +
                 $"AC:    {BuildAntiCheatLine()}\n" +
@@ -387,6 +404,32 @@ namespace PushStars.CV
         /// finding nobody, or finding somebody it is not confident about, or the landmarks may be
         /// fine and something further down the chain may be at fault. Those need opposite fixes,
         /// and the number that separates them was the one thing the HUD did not show.</para></summary>
+        // ── Session tally: the numbers that survive standing up ──────────────────────────────────
+        //
+        // Everything else on this HUD is live state, and live state is worthless for diagnosing a
+        // push-up: by the time the phone is in hand the plank is broken, tracking reads Lost and
+        // the arc is Idle again. These four counters keep their value, so one screenshot taken
+        // AFTER the set says which link of the chain broke:
+        //
+        //   bottom=0 top=0            → the depth signal never reached the thresholds at all
+        //   bottom=N top=N reps=0 vetoed=N → arcs formed, the auditor threw them out (see VOTE)
+        //   bottom=N top=N reps=0 vetoed=0 → arcs formed and nothing credited them
+        //
+        // and the depth range says whether "full amplitude" by eye was full amplitude by measure.
+        private int _bottomLatches;
+        private int _topLatches;
+        private float _depthMin = float.PositiveInfinity;
+        private float _depthMax = float.NegativeInfinity;
+
+        private string BuildTallyLine()
+        {
+            string range = _depthMax >= _depthMin
+                ? $"{_depthMin:0.00}..{_depthMax:0.00}"
+                : "--";
+            return $"latch b={_bottomLatches} t={_topLatches}   reps={_session.Reps}   " +
+                   $"depth now={_session.Tracker.CurrentDepth01:0.00} seen {range}";
+        }
+
         private string BuildVisibilityLine()
         {
             var frame = _session.LastFrame;
