@@ -107,8 +107,7 @@ namespace PushStars.UI
             _sb.Append(Screen.width).Append('x').Append(Screen.height);
             _sb.Append("  cap ").Append(Application.targetFrameRate);
             _sb.Append("  heap ").Append((System.GC.GetTotalMemory(false) / 1048576L)).Append(" MB");
-            _sb.Append('
-');
+            _sb.Append('\n');
             // The app answering for itself what the build settings are: a Development Build has
             // its C++ compiled without optimisations on iOS and runs several times slower in every
             // scene. Asking the dashboard is guesswork; this is the build talking.
