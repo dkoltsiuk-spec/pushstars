@@ -204,6 +204,32 @@ namespace PushStars.Editor
             // signed. Without this they fail with "Signing ... requires a development team".
             PlayerSettings.iOS.appleEnableAutomaticSigning = false;
             PlayerSettings.iOS.appleDeveloperTeamID = TeamId;
+
+            ConfigureRuntimePerformance();
+        }
+
+        /// <summary>
+        /// Settings the player's speed depends on, asserted here rather than left to whatever the
+        /// project file happens to carry — they are invisible in the editor and only bite in the
+        /// shipped app.
+        ///
+        /// <para><b>Not here:</b> the optimisation level the managed code ends up running at.
+        /// <c>PlayerSettings.SetIl2CppCompilerConfiguration</c> is a no-op for iOS (setting it and
+        /// reading it back returns the old value) — Unity only emits the Xcode project, and the
+        /// C++ is compiled at whatever level the Xcode <i>build configuration</i> says. A player
+        /// built as a Development Build compiles Debug and runs several times slower everywhere,
+        /// which is what an app that lags in its own onboarding looks like. That switch lives on
+        /// the build target in Unity Build Automation, not in this repo.</para>
+        /// </summary>
+        private static void ConfigureRuntimePerformance()
+        {
+            // The characters are ~50k-vertex skinned meshes and one of them is on screen at all
+            // times, so skinning them on the CPU is the single most expensive thing the app does
+            // per frame. Metal does it for free on the GPU.
+            PlayerSettings.gpuSkinning = true;
+
+            Debug.Log($"[Build] Runtime perf: GPU skinning={PlayerSettings.gpuSkinning}. " +
+                      $"(iOS optimisation level comes from the Xcode build configuration, not from here.)");
         }
 
         private static string GetArg(string name)
