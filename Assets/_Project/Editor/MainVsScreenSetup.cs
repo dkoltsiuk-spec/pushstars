@@ -383,8 +383,8 @@ namespace PushStars.Editor
             lightGO.transform.rotation = Quaternion.Euler(35f, 25f, 0f);
             var light = lightGO.AddComponent<Light>();
             light.type      = LightType.Directional;
-            light.intensity = 1.2f;
-            light.color     = new Color(1f, 0.97f, 0.9f);
+            light.intensity = CharacterLighting.KeyIntensity;
+            light.color     = CharacterLighting.KeyColor;
 
             // Fill from the opposite side — a single key leaves the unlit half of a real
             // character in near-black, which the blockman never showed.
@@ -393,8 +393,8 @@ namespace PushStars.Editor
             fillGO.transform.rotation = Quaternion.Euler(15f, -35f, 0f);
             var fill = fillGO.AddComponent<Light>();
             fill.type      = LightType.Directional;
-            fill.intensity = 0.45f;
-            fill.color     = new Color(0.85f, 0.9f, 1f);
+            fill.intensity = CharacterLighting.FillIntensity;
+            fill.color     = CharacterLighting.FillColor;
 
             var so = new SerializedObject(stage);
             so.FindProperty("_stageCamera").objectReferenceValue = cam;

@@ -620,6 +620,12 @@ namespace PushStars.Editor
             importer.importNormals        = ModelImporterNormals.Calculate;
             importer.normalCalculationMode = ModelImporterNormalCalculationMode.AreaAndAngleWeighted;
             importer.normalSmoothingAngle  = 180f;
+            // Without this the angle above is decoration. The default source is
+            // PreferSmoothingGroups, and where the file carries smoothing groups Unity honours them
+            // and ignores the angle entirely — so a body exported with per-face groups came out
+            // faceted no matter what 180° said, and the polygons showed the moment the light
+            // crossed the model at an angle. FromAngle puts the angle back in charge.
+            importer.normalSmoothingSource = ModelImporterNormalSmoothingSource.FromAngle;
 
             importer.SaveAndReimport();
         }

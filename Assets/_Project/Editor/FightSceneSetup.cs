@@ -274,10 +274,13 @@ namespace PushStars.Editor
             stageCamera.useOcclusionCulling = false;
             stageCamera.allowMSAA = true;
 
-            AddLight(stageGO.transform, "KeyLight", Quaternion.Euler(38f, 200f, 0f), 1.25f,
-                     new Color(1f, 0.97f, 0.9f), layer);
-            AddLight(stageGO.transform, "FillLight", Quaternion.Euler(12f, 140f, 0f), 0.5f,
-                     new Color(0.8f, 0.86f, 1f), layer);
+            // Colour and intensity are shared with the menu stage so the same body reads the same
+            // in both; the angles are this screen's own, because its camera stands on the opposite
+            // side and the menu's angles would light the figure from behind.
+            AddLight(stageGO.transform, "KeyLight", Quaternion.Euler(38f, 200f, 0f),
+                     CharacterLighting.KeyIntensity, CharacterLighting.KeyColor, layer);
+            AddLight(stageGO.transform, "FillLight", Quaternion.Euler(12f, 140f, 0f),
+                     CharacterLighting.FillIntensity, CharacterLighting.FillColor, layer);
             return stage;
         }
 

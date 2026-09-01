@@ -29,6 +29,7 @@ namespace PushStars.Editor
         private const string TaskContactSheet     = "contact-sheet";
         private const string TaskFilmstrip       = "filmstrip";
         private const string TaskBuildMainVs      = "build-main-vs";
+        private const string TaskRebuildFlow      = "rebuild-flow-scenes";
 
         private static double _nextPoll;
 
@@ -102,6 +103,13 @@ namespace PushStars.Editor
                     case TaskFilmstrip:
                         Debug.Log("[EditorTask] Rendering clip filmstrips …");
                         CharacterContactSheet.RenderFilmstrips();
+                        break;
+
+                    case TaskRebuildFlow:
+                        // Same hazard as the Main rebuild below, for the same reason: these scenes
+                        // are regenerated from scratch and take any unsaved edits with them.
+                        Debug.Log("[EditorTask] Rebuilding Boot + Onboarding + Fight …");
+                        BuildScript.RebuildFlowScenes();
                         break;
 
                     case TaskBuildMainVs:
