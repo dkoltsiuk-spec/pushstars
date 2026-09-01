@@ -132,6 +132,15 @@ namespace PushStars.Editor
                 importer.filterMode   = FilterMode.Bilinear;
                 settings.spriteBorder = new Vector4(24, 24, 24, 24); // native 251×79 card
             }
+            // The bottom-nav plate: a capsule at 2.92:1, far off the nav bar's own 4.79:1, so it
+            // has to be 9-sliced (not just stretched, like plashka.png's near-matching aspect gets
+            // away with) or the rounded ends pinch into ellipses. Border ~= the cap radius
+            // (height/2 = 86), pulled in slightly for blend room; native 502×172.
+            else if (name == "menu_floor")
+            {
+                importer.filterMode   = FilterMode.Bilinear;
+                settings.spriteBorder = new Vector4(78, 16, 78, 16);
+            }
             else if (name.StartsWith("icon_sm_"))
             {
                 // Bilinear — small icons still need smooth scaling on Retina displays.

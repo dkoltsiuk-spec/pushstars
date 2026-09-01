@@ -58,7 +58,7 @@ namespace PushStars.Fight
 
         [Header("Framing")]
         [Tooltip("Headroom around the character. 1 = the bones exactly touch the frame edges.")]
-        [SerializeField, Range(1f, 2.5f)] private float _padding = 1.45f;
+        [SerializeField, Range(1f, 2.5f)] private float _padding = 1.2f;
         [Tooltip("Seconds for the camera to reach a new framing. 0 snaps.")]
         [SerializeField, Range(0f, 2f)] private float _easeTime = 0.55f;
         [Tooltip("Camera direction relative to the character: where the phone would be standing. " +
@@ -68,7 +68,10 @@ namespace PushStars.Fight
         [Tooltip("How far the camera's aim rises from the body's centre toward the head. 0 frames " +
                  "the whole figure evenly, 1 stares at the face.")]
         [SerializeField, Range(0f, 1f)] private float _faceBias = 0.5f;
-        [SerializeField, Range(1f, 12f)] private float _minDistance = 1.6f;
+        [Tooltip("Floor on how close the shot may get. Lowered alongside padding — the old 1.6m " +
+                 "floor was clamping the shot back out at the bottom of a rep, exactly the moment " +
+                 "the padding cut was meant to bring the body closer.")]
+        [SerializeField, Range(1f, 12f)] private float _minDistance = 1.25f;
         [SerializeField, Range(2f, 30f)] private float _maxDistance = 9f;
 
         private static readonly HumanBodyBones[] FrameBones =

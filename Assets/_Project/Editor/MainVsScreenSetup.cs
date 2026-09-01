@@ -54,6 +54,36 @@ namespace PushStars.Editor
         [MenuItem("Tools/Push Stars/Build Main VS Screen", priority = 20)]
         public static void Run()
         {
+            if (!RunHeadless(out string error))
+            {
+                EditorUtility.DisplayDialog("Push Stars", error, "OK");
+                return;
+            }
+
+            EditorUtility.DisplayDialog(
+                "Push Stars — Main VS Screen",
+                "Built Main.unity with the 3D character pipeline.\n\n" +
+                "• Scene is open and active — press Play.\n" +
+                "• The character previews live in the centre (the stage camera\n" +
+                "  renders into CharacterStageRT). If it looks blank, press Play\n" +
+                "  once or move the Game view to force a repaint.\n\n" +
+                "The models come from MainMan.prefab / MainWoman.prefab, and the\n" +
+                "М/Ж button beside the character swaps between them on Play.\n" +
+                "Not imported yet? Run Tools ▸ Push Stars ▸ Character ▸ Import\n" +
+                "Main Characters, then rebuild — until then a blockman stands in.",
+                "OK");
+        }
+
+        /// <summary>Does the actual rebuild with no modal dialog anywhere in it. <see cref="Run"/>
+        /// is the interactive menu entry and keeps its dialogs (a human clicked the menu, so a
+        /// dialog costs them nothing); this is for callers that cannot click one — the editor-task
+        /// sentinel, or CI — where the OLD <c>Run</c> would sit forever waiting for an OK nobody is
+        /// there to give, silently blocking whatever else was queued behind it in the same pass.
+        /// Returns false with a message on failure instead of popping a dialog, and logs instead of
+        /// showing one on success.</summary>
+        public static bool RunHeadless(out string error)
+        {
+            error = null;
             try
             {
                 EditorUtility.DisplayProgressBar("Push Stars", "Loading theme …", 0.05f);
@@ -66,10 +96,10 @@ namespace PushStars.Editor
                 }
                 if (_theme == null)
                 {
-                    EditorUtility.DisplayDialog("Push Stars",
-                        "Could not load or create PushStarsTheme. Run\n" +
-                        "Tools → Push Stars → Setup UI Gallery first.", "OK");
-                    return;
+                    error = "Could not load or create PushStarsTheme. Run " +
+                            "Tools → Push Stars → Setup UI Gallery first.";
+                    Debug.LogError($"[MainVsScreen] {error}");
+                    return false;
                 }
 
                 // The screen is composed from the Phase-03 design-system prefabs.
@@ -92,18 +122,8 @@ namespace PushStars.Editor
                 AssetDatabase.Refresh();
                 EnsureSceneInBuildSettings(MainScenePath);
 
-                EditorUtility.DisplayDialog(
-                    "Push Stars — Main VS Screen",
-                    "Built Main.unity with the 3D character pipeline.\n\n" +
-                    "• Scene is open and active — press Play.\n" +
-                    "• The character previews live in the centre (the stage camera\n" +
-                    "  renders into CharacterStageRT). If it looks blank, press Play\n" +
-                    "  once or move the Game view to force a repaint.\n\n" +
-                    "The models come from MainMan.prefab / MainWoman.prefab, and the\n" +
-                    "М/Ж button beside the character swaps between them on Play.\n" +
-                    "Not imported yet? Run Tools ▸ Push Stars ▸ Character ▸ Import\n" +
-                    "Main Characters, then rebuild — until then a blockman stands in.",
-                    "OK");
+                Debug.Log("[MainVsScreen] Built Main.unity with the 3D character pipeline.");
+                return true;
             }
             finally
             {
@@ -1694,16 +1714,38 @@ namespace PushStars.Editor
             var navBar = MakeRect(safe, "BottomNav");
             Anchor(navBar, new Vector2(0.5f, 0), new Vector2(0.5f, 0), new Vector2(0.5f, 0));
             navBar.anchoredPosition = new Vector2(0, NavBarBottom);
-            // 316 × 66 is 4.79 : 1 against plashka.png's native 4.82 : 1, so the ready plate can
-            // be stretched to fit without the rounded ends visibly deforming.
             navBar.sizeDelta        = new Vector2(316, 66);
 
-            var navPlate = _theme.NavPlate != null ? _theme.NavPlate : ProcSprite("plashka");
+            // menu_floor.png (the gold-rimmed plate from the comp) first; the theme's own NavPlate
+            // (plashka.png, 4.82:1 — close enough to this bar's 4.79:1 to stretch cleanly) and the
+            // procedural pill are the fallbacks if it isn't in the project. menu_floor is 2.92:1, far
+            // off the bar's own ratio, so unlike plashka it needs a real 9-slice border to keep its
+            // rounded caps circular instead of pinched into ellipses — see SpriteImporter's
+            // menu_floor case for where that border comes from.
+            var menuFloor = ProcSprite("menu_floor");
+            var navPlate  = menuFloor != null
+                ? menuFloor
+                : (_theme.NavPlate != null ? _theme.NavPlate : ProcSprite("plashka"));
             var navBg    = navPlate != null
                 ? MakeImage(navBar, "Bg", Color.white, navPlate)
                 : MakeImage(navBar, "Bg", new Color(0f, 0f, 0f, 0.55f), ProcSprite("pill_24"));
-            if (navPlate == null) navBg.type = Image.Type.Sliced;
+            // Unconditional: a zero sprite border (plashka, pill_24) makes Sliced behave exactly
+            // like Simple, so this only changes anything for a sprite that actually has a border —
+            // which is precisely the case that needs it.
+            navBg.type = Image.Type.Sliced;
             Stretch(navBg.rectTransform, 0, 0, 0, 0);
+            if (menuFloor != null && navPlate == menuFloor)
+            {
+                // Hand-tuned in the Scene view (Tools ▸ Push Stars ▸ Dump Main Screen Layout is the
+                // usual way to pull numbers like this back out) because the imported sprite border
+                // was not taking effect when this was tuned — the Inspector still reported "This
+                // Image doesn't have a border" with Sliced selected. This scale is what actually
+                // fit the capsule to the bar in that state; if SpriteImporter's menu_floor border
+                // is confirmed working later, this compensating scale should be revisited — the
+                // two are two different fixes for the same squashed-caps problem, not meant to
+                // stack.
+                navBg.rectTransform.localScale = new Vector3(0.76f, 1.1515151f, 1.1515151f);
+            }
 
             // No layout group, same reasoning as the action row: three fixed buttons, so their
             // positions are authored below and stay draggable in the Scene view.
@@ -1716,10 +1758,13 @@ namespace PushStars.Editor
             var duel    = MakeNavButton(navBar, TabId.Duel,    _theme.VSBadge,     _theme.VSBadge,          66);
             var profile = MakeNavButton(navBar, TabId.Profile, _theme.NavProfile,  _theme.NavProfileActive, 52);
 
-            // Centres: 52 + 66 + 52 with two 30 pt gaps = 230 wide, centred in the 316 pt plate.
-            PlaceInNav(league,  -89f);
+            // Off-centre by design, not a leftover: nudged in the Scene view against the actual
+            // menu_floor plate (whose visible capsule, after the scale above, sits slightly
+            // narrower than the bar) so all three icons read as centred within the SHAPE the
+            // player sees, not within the invisible 316 pt bar behind it.
+            PlaceInNav(league,  -80.3f);
             PlaceInNav(duel,      0f);
-            PlaceInNav(profile,  89f);
+            PlaceInNav(profile,  81.3f);
 
             // MainShellView expects an array; order is cosmetic (each knows its TabId).
             return new[] { league, duel, profile };

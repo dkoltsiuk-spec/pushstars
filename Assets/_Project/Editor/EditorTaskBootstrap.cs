@@ -115,7 +115,9 @@ namespace PushStars.Editor
 
                     case TaskBuildMainVs:
                         Debug.Log("[EditorTask] Rebuilding the Main VS screen …");
-                        MainVsScreenSetup.Run();
+                        // RunHeadless, not Run: Run's success dialog has no one to click it here,
+                        // and blocks any task queued after it in the same sentinel pass forever.
+                        MainVsScreenSetup.RunHeadless(out _);
                         break;
 
                     case TaskConfigureSprites:

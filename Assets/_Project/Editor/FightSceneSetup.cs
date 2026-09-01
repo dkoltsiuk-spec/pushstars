@@ -129,8 +129,10 @@ namespace PushStars.Editor
             var opponentHalf = BuildHalf(canvasRoot, "OpponentHalf", SeamY, 1f, out var opponentAvatarImage);
             var playerHalf = BuildHalf(canvasRoot, "PlayerHalf", 0f, SeamY, out var playerAvatarImage);
 
-            WireStage(playerStage, playerCam, playerRoot, playerAvatarImage);
-            WireStage(ghostStage, ghostCam, ghostRoot, opponentAvatarImage);
+            var (oppW, oppH) = HalfRenderSize(1f - SeamY); // opponent half spans [SeamY,1]
+            var (plyW, plyH) = HalfRenderSize(SeamY);      // player half spans [0,SeamY]
+            WireStage(playerStage, playerCam, playerRoot, playerAvatarImage, plyW, plyH);
+            WireStage(ghostStage, ghostCam, ghostRoot, opponentAvatarImage, oppW, oppH);
 
             // ── Safe area + HUD ──────────────────────────────────────────────────────────────────
             var safe = UiBuilder.Rect(canvasRoot, "SafeArea");
@@ -314,15 +316,30 @@ namespace PushStars.Editor
             light.cullingMask = 1 << layer;
         }
 
-        static void WireStage(CharacterStage stage, Camera cam, Transform root, RawImage target)
+        static void WireStage(CharacterStage stage, Camera cam, Transform root, RawImage target,
+                              int width, int height)
         {
             var so = new SerializedObject(stage);
             UiBuilder.Set(so, "_stageCamera", cam);
             UiBuilder.Set(so, "_avatarRoot", root);
             UiBuilder.Set(so, "_targetImage", target);
-            so.FindProperty("_width").intValue = 1080;
-            so.FindProperty("_height").intValue = 1080;
+            so.FindProperty("_width").intValue = width;
+            so.FindProperty("_height").intValue = height;
             so.ApplyModifiedPropertiesWithoutUndo();
+        }
+
+        /// <summary>Render size matching one half's own aspect, at a fixed 1080px vertical budget.
+        /// Both halves used to render into a flat 1080×1080 square no matter their actual shape,
+        /// and RawImage's fill-stretch has no aspect option — it maps texture width/height onto
+        /// rect width/height independently, so a square source shown in a non-square half quietly
+        /// squashed the character along whichever axis the half was shorter on. Deriving the size
+        /// from <paramref name="heightFraction"/> (the half's share of the screen) makes the
+        /// stretch a no-op instead, and keeps tracking correctly if SeamY ever moves.</summary>
+        static (int width, int height) HalfRenderSize(float heightFraction)
+        {
+            const int height = 1080;
+            float aspect = UiBuilder.RefWidth / (UiBuilder.RefHeight * heightFraction);
+            return (Mathf.RoundToInt(height * aspect), height);
         }
 
         static void AddAvatar(GameObject host, MonoBehaviour driver, Camera cam, Transform root,
