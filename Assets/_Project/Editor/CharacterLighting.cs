@@ -24,7 +24,7 @@ namespace PushStars.Editor
         /// (<c>_LightInfluence</c> on the material, 0.35), so intensity here is pushing against that
         /// ceiling rather than lighting a surface in the usual sense.</summary>
         public const float KeyIntensity = 6.77f;
-        public static readonly Color KeyColor = new Color(1f, 0.9474678f, 0.65723264f);
+        public static readonly Color KeyColor = Color.white;
 
         /// <summary>Cold fill from the opposite side. Deeply blue rather than a pale wash — it is
         /// what keeps the unlit half of the figure from going flat grey against the arena.</summary>
