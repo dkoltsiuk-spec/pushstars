@@ -35,6 +35,10 @@ namespace PushStars.App
                  "logo. Real work longer than this is never cut short.")]
         [SerializeField, Range(0f, 4f)] private float _minVisibleSec = 1.2f;
 
+        [Tooltip("Upper bound on the frame rate. The display's own refresh rate wins when it is " +
+                 "lower, so a 60Hz panel gets 60 and a 120Hz one is still held here.")]
+        [SerializeField, Range(30, 120)] private int _maxFrameRate = 60;
+
         [Tooltip("How long any one backend step may wait before it is written off. Only bounds the " +
                  "logging — the launch never waits for it either way.")]
         [SerializeField, Range(2f, 30f)] private float _serviceTimeoutSec = 8f;
@@ -50,6 +54,7 @@ namespace PushStars.App
             // Workout app: the user's hands are on the floor — they can't touch the screen to keep
             // it awake. Never let the display sleep while the app runs.
             Screen.sleepTimeout = SleepTimeout.NeverSleep;
+            ApplyFrameRate(_maxFrameRate);
             _startTime = Time.realtimeSinceStartup;
 
             // Up before anything else, and it outlives every scene load — the first screen is
@@ -191,6 +196,28 @@ namespace PushStars.App
 
             op.allowSceneActivation = true;
             await UniTask.WaitUntil(() => op.isDone);
+        }
+
+        /// <summary>Runs the app at the display's own refresh rate, bounded.
+        ///
+        /// <para>Left alone, <c>Application.targetFrameRate</c> is -1, and on a phone that does not
+        /// mean "as fast as it can" — it means the platform default, which iOS puts at 30. The app
+        /// was locked to half the panel's rate on hardware perfectly able to do more, and nothing
+        /// said so.</para>
+        ///
+        /// <para>The bound is deliberate rather than uncapped. This is a workout app: the phone
+        /// spends the whole set on the floor running pose inference and two character stages, and
+        /// the frames past 60 buy nothing a lifter can see while paying for them in heat and
+        /// battery. Raising <paramref name="cap"/> is all a 120Hz target would need — plus
+        /// ProMotion enabled in the iOS player settings, which is off, and which is what holds
+        /// those panels at 60 today.</para></summary>
+        private static void ApplyFrameRate(int cap)
+        {
+            var rate = Screen.currentResolution.refreshRateRatio;
+            // A headless or not-yet-initialised display reports nonsense; 60 is the safe read.
+            int refresh = rate.value > 1.0 ? Mathf.RoundToInt((float)rate.value) : 60;
+            Application.targetFrameRate = Mathf.Clamp(Mathf.Min(refresh, cap), 30, 240);
+            Debug.Log($"[AppBootstrap] Display {refresh}Hz, target {Application.targetFrameRate} fps.");
         }
 
         private void Report(float progress, string status = null) => _loading?.Report(progress, status);
