@@ -691,17 +691,20 @@ namespace PushStars.Editor
 
             // Sizes follow each plate's own aspect so the pre-coloured art is never distorted:
             // type / type_settings are 1.15 : 1, btn_start is 1.94 : 1.
+            // duel_icon / pushup_icon (the comp's own art) come first — VSBadgeSearch/IconPushup
+            // were placeholders standing in for exactly these two (a VS medal is a matchmaking
+            // glyph, not a clash icon; the old IconPushup was never actually this drawing).
             var pvp = BuildActionPlate(row, "PvpButton",
                                        _theme.PlatePvp != null ? _theme.PlatePvp : ProcSprite("type"),
                                        new Vector2(78f, 68f), "PVP", _theme.TrophyGold,
-                                       _theme.VSBadgeSearch, 42f);
+                                       ProcSprite("duel_icon") ?? _theme.VSBadgeSearch, 42f);
             var battle = BuildActionPlate(row, "BattleButton",
                                           _theme.PlateBattle != null ? _theme.PlateBattle : ProcSprite("btn_start"),
                                           new Vector2(163f, 84f), "BATTLE", _theme.TextPrimary, null, 0f);
             var pushup = BuildActionPlate(row, "PushupButton",
                                           _theme.PlatePushup != null ? _theme.PlatePushup : ProcSprite("type_settings"),
                                           new Vector2(78f, 68f), "PUSHUP", _theme.TextPrimary,
-                                          _theme.IconPushup, 38f);
+                                          ProcSprite("pushup_icon") ?? _theme.IconPushup, 38f);
 
             // Bottoms on one baseline, centres spaced by half-width + gap + half-width.
             PlaceInRow(pvp,    -130.5f);
