@@ -39,9 +39,9 @@ namespace PushStars.Editor
 
         /// <summary>Paths (relative to MainCanvas, same format as Dump Main Screen Layout) of the
         /// elements the Scene view is allowed to own. Everything else is governed by
-        /// <see cref="MainVsScreenSetup"/> alone, as before — the bottom nav plate/tabs and the three
-        /// action-row plates plus their icons, exactly the elements that have needed hand-tuning
-        /// so far.</summary>
+        /// <see cref="MainVsScreenSetup"/> alone, as before — the bottom nav plate/tabs, the three
+        /// action-row plates plus their icons, and the character render quad, exactly the elements
+        /// that have needed hand-tuning so far.</summary>
         static readonly string[] TrackedPaths =
         {
             "MirrorRoot/SafeArea/BottomNav/Bg",
@@ -53,6 +53,7 @@ namespace PushStars.Editor
             "MirrorRoot/SafeArea/DuelPanel/ActionRow/BattleButton",
             "MirrorRoot/SafeArea/DuelPanel/ActionRow/PushupButton",
             "MirrorRoot/SafeArea/DuelPanel/ActionRow/PushupButton/Icon",
+            "MirrorRoot/SafeArea/DuelPanel/CharacterArea/CharacterImage",
         };
 
         [Serializable]
