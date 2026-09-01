@@ -318,6 +318,11 @@ namespace PushStars.Editor
             // gear captured in BuildProfilePanel, closed by its own back button.
             BuildSettingsOverlay(canvasGO.transform, mirror, safe, mainGroup);
 
+            // ── Hand-tuned overrides (nav plate, action-row icons, …) ───────────────────
+            // Applied last, after every object exists with its code-driven default, so anything
+            // captured by MainVsLayoutOverrides always has something to find and overwrite.
+            MainVsLayoutOverrides.Apply(canvasGO.transform);
+
             EditorSceneManager.MarkSceneDirty(scene);
             EditorSceneManager.SaveScene(scene, MainScenePath);
             Debug.Log($"[MainVsScreen] ✓ Saved {MainScenePath}");
