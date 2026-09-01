@@ -134,12 +134,18 @@ namespace PushStars.Editor
             }
             // The bottom-nav plate: a capsule at 2.92:1, far off the nav bar's own 4.79:1, so it
             // has to be 9-sliced (not just stretched, like plashka.png's near-matching aspect gets
-            // away with) or the rounded ends pinch into ellipses. Border ~= the cap radius
-            // (height/2 = 86), pulled in slightly for blend room; native 502×172.
+            // away with) or the rounded ends pinch into ellipses. The end caps are full semicircles
+            // spanning the WHOLE height (native 502×172, radius = height/2 = 86) — every side needs
+            // a border ~= that radius, pulled in slightly for blend room, not just left/right.
+            // (78,16,78,16) was tried first and left the caps mostly inside the stretchy left/right
+            // EDGE tiles instead of the fixed corners — squashing them into a lens/boat shape when
+            // the bar renders far shorter than the source art (66 pt tall vs. 172 px native).
+            // Square corners fix it: Unity's own oversized-border fallback then shrinks all four
+            // sides by the same factor, so the quarter-circle corners stay round, just smaller.
             else if (name == "menu_floor")
             {
                 importer.filterMode   = FilterMode.Bilinear;
-                settings.spriteBorder = new Vector4(78, 16, 78, 16);
+                settings.spriteBorder = new Vector4(78, 78, 78, 78);
             }
             else if (name.StartsWith("icon_sm_"))
             {
