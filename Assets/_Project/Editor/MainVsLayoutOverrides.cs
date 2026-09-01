@@ -55,6 +55,7 @@ namespace PushStars.Editor
             "MirrorRoot/SafeArea/DuelPanel/ActionRow/PushupButton/Icon",
             "MirrorRoot/SafeArea/DuelPanel/CharacterArea/CharacterImage",
             "MirrorRoot/SafeArea/DuelPanel/ShopTile/Icon",
+            "MirrorRoot/SafeArea/DuelPanel/ShopTile/Plate/Label",
         };
 
         [Serializable]
