@@ -1726,10 +1726,7 @@ namespace PushStars.Editor
 
             // menu_floor.png (the gold-rimmed plate from the comp) first; the theme's own NavPlate
             // (plashka.png, 4.82:1 — close enough to this bar's 4.79:1 to stretch cleanly) and the
-            // procedural pill are the fallbacks if it isn't in the project. menu_floor is 2.92:1, far
-            // off the bar's own ratio, so unlike plashka it needs a real 9-slice border to keep its
-            // rounded caps circular instead of pinched into ellipses — see SpriteImporter's
-            // menu_floor case for where that border comes from.
+            // procedural pill are the fallbacks if it isn't in the project.
             var menuFloor = ProcSprite("menu_floor");
             var navPlate  = menuFloor != null
                 ? menuFloor
@@ -1737,17 +1734,31 @@ namespace PushStars.Editor
             var navBg    = navPlate != null
                 ? MakeImage(navBar, "Bg", Color.white, navPlate)
                 : MakeImage(navBar, "Bg", new Color(0f, 0f, 0f, 0.55f), ProcSprite("pill_24"));
-            // Unconditional: a zero sprite border (plashka, pill_24) makes Sliced behave exactly
-            // like Simple, so this only changes anything for a sprite that actually has a border —
-            // which is precisely the case that needs it.
-            navBg.type = Image.Type.Sliced;
-            Stretch(navBg.rectTransform, 0, 0, 0, 0);
-            // A compensating non-uniform localScale used to live here, from when the imported
-            // border wasn't taking effect and Sliced was behaving like a plain stretch. Confirmed
-            // 2026-09-01 that menu_floor.png's border (SpriteImporter, {78,16,78,16}) is now
-            // actually applied — stacking that old scale on top of a real 9-slice pinched the
-            // border regions against the middle stretch and read as two capsules merged into one.
-            // The border alone fits the capsule correctly; do not reintroduce a localScale here.
+
+            if (navPlate == menuFloor)
+            {
+                // menu_floor.png is finished art (2.92:1), not a stretchable panel — forcing it to
+                // the bar's own 4.79:1 rect either pinches the caps (Simple stretch) or, even
+                // 9-sliced correctly, reads thinner/flatter than the comp, which draws it at its
+                // own proportions untouched. So: no stretch, no slicing — sized at its native
+                // aspect instead, computed from the asset itself rather than hardcoded so a future
+                // re-export at different pixel dimensions keeps working. The bar (navBar) keeps its
+                // own 316×66 footprint for hit-testing and icon layout regardless — this ends up
+                // taller than that and bleeds past it, same as the comp.
+                navBg.type           = Image.Type.Simple;
+                navBg.preserveAspect = true;
+                Anchor(navBg.rectTransform, new Vector2(0.5f, 0.5f), new Vector2(0.5f, 0.5f), new Vector2(0.5f, 0.5f));
+                float w = navBar.sizeDelta.x;
+                navBg.rectTransform.sizeDelta        = new Vector2(w, w * menuFloor.rect.height / menuFloor.rect.width);
+                navBg.rectTransform.anchoredPosition = Vector2.zero;
+            }
+            else
+            {
+                // plashka.png and the procedural pill are actual stretchable panels (a zero sprite
+                // border makes Sliced behave like a plain stretch) — fill the bar, as before.
+                navBg.type = Image.Type.Sliced;
+                Stretch(navBg.rectTransform, 0, 0, 0, 0);
+            }
 
             // No layout group, same reasoning as the action row: three fixed buttons, so their
             // positions are authored below and stay draggable in the Scene view.
