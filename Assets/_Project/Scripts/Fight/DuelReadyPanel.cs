@@ -42,17 +42,25 @@ namespace PushStars.Fight
 
         [SerializeField] private GameObject _root;
 
-        [Header("Opponent (top)")]
+        [Header("Opponent (top-right)")]
         [SerializeField] private TextMeshProUGUI _opponentName;
         [SerializeField] private TextMeshProUGUI _opponentTrophies;
         [SerializeField] private TextMeshProUGUI _opponentBest;
         [SerializeField] private TextMeshProUGUI _opponentWinRate;
+        [Tooltip("The ready card's own cropped portrait. Starts blank — MirrorTexture points it at " +
+                 "the source below once the stage has something rendered to show.")]
+        [SerializeField] private RawImage _opponentAvatarImage;
+        [Tooltip("The full-size body already rendering behind this card (the duel screen's own " +
+                 "avatar image). Never modified — only read from, once, in Show().")]
+        [SerializeField] private RawImage _opponentAvatarSource;
 
-        [Header("Player (bottom)")]
+        [Header("Player (bottom-left)")]
         [SerializeField] private TextMeshProUGUI _playerName;
         [SerializeField] private TextMeshProUGUI _playerTrophies;
         [SerializeField] private TextMeshProUGUI _playerBest;
         [SerializeField] private TextMeshProUGUI _playerWinRate;
+        [SerializeField] private RawImage _playerAvatarImage;
+        [SerializeField] private RawImage _playerAvatarSource;
 
         [Header("Action")]
         [SerializeField] private Button _readyButton;
@@ -78,6 +86,12 @@ namespace PushStars.Fight
 
             Fill(opponent, _opponentName, _opponentTrophies, _opponentBest, _opponentWinRate);
             Fill(player, _playerName, _playerTrophies, _playerBest, _playerWinRate);
+
+            // Both stages have already run their own Awake by the time anything's Start() calls
+            // into here (Unity guarantees every Awake before any Start), so the source images'
+            // render textures are already the real thing, not a placeholder swapped in later.
+            MirrorTexture(_opponentAvatarImage, _opponentAvatarSource);
+            MirrorTexture(_playerAvatarImage, _playerAvatarSource);
         }
 
         public void Hide()
@@ -94,6 +108,15 @@ namespace PushStars.Fight
             if (winRate != null) winRate.text = side.WinRatePercent == Side.Unknown
                 ? "—"
                 : $"{side.WinRatePercent}%";
+        }
+
+        /// <summary>Points the card's own crop at the same texture the full-size body already
+        /// renders to. A reference copy, not a render of its own — one stage, shown twice at two
+        /// sizes, rather than a second camera to keep in sync.</summary>
+        private static void MirrorTexture(RawImage target, RawImage source)
+        {
+            if (target == null || source == null) return;
+            target.texture = source.texture;
         }
 
         private static string Number(int value) => value == Side.Unknown ? "—" : value.ToString();

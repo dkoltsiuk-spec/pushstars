@@ -39,6 +39,8 @@ namespace PushStars.Editor
         const string GhostLayer = "CharacterGhost";
         const string GlowSprite = "Assets/_Project/UI/Sprites/glow_radial.png";
         const string PillSprite = "Assets/_Project/UI/Sprites/pill_capsule.png";
+        const string CupSprite = "Assets/_Project/UI/Sprites/cup_.png";
+        const string VsCoinSprite = "Assets/_Project/UI/Sprites/VS_for_serching.png";
 
         /// <summary>Fraction of the screen the opponent's half occupies. Slightly under half: the
         /// player's own body is the one they are steering, and it gets the larger stage.</summary>
@@ -165,10 +167,16 @@ namespace PushStars.Editor
             UiBuilder.Set(readySO, "_opponentTrophies", readyRefs.OpponentTrophies);
             UiBuilder.Set(readySO, "_opponentBest", readyRefs.OpponentBest);
             UiBuilder.Set(readySO, "_opponentWinRate", readyRefs.OpponentWinRate);
+            // The card's own crops mirror the exact bodies already rendering behind it — one stage
+            // each, shown twice, rather than a second camera per fighter to keep in sync.
+            UiBuilder.Set(readySO, "_opponentAvatarImage", readyRefs.OpponentAvatarImage);
+            UiBuilder.Set(readySO, "_opponentAvatarSource", opponentAvatarImage);
             UiBuilder.Set(readySO, "_playerName", readyRefs.PlayerName);
             UiBuilder.Set(readySO, "_playerTrophies", readyRefs.PlayerTrophies);
             UiBuilder.Set(readySO, "_playerBest", readyRefs.PlayerBest);
             UiBuilder.Set(readySO, "_playerWinRate", readyRefs.PlayerWinRate);
+            UiBuilder.Set(readySO, "_playerAvatarImage", readyRefs.PlayerAvatarImage);
+            UiBuilder.Set(readySO, "_playerAvatarSource", playerAvatarImage);
             UiBuilder.Set(readySO, "_readyButton", readyRefs.ReadyButton);
             readySO.ApplyModifiedPropertiesWithoutUndo();
 
@@ -349,11 +357,9 @@ namespace PushStars.Editor
                                 new Vector2(620f, 620f));
             }
 
-            var imgGO = new GameObject("AvatarImage", typeof(RectTransform), typeof(CanvasRenderer), typeof(RawImage));
-            imgGO.transform.SetParent(half, false);
-            avatarImage = imgGO.GetComponent<RawImage>();
-            avatarImage.raycastTarget = false;
-            avatarImage.color = new Color(1f, 1f, 1f, 0.06f); // faint in edit mode; CharacterStage sets white on Play
+            // Faint tint in edit mode (nothing rendered into it yet); CharacterStage sets it to
+            // white once the stage camera actually has a texture to show, at Play.
+            avatarImage = UiBuilder.RawImage(half, "AvatarImage", new Color(1f, 1f, 1f, 0.06f));
             UiBuilder.Stretch(avatarImage.rectTransform);
             return half;
         }
@@ -388,21 +394,24 @@ namespace PushStars.Editor
             refs.OpponentTempo = StatBlock(opp, "OpponentTempo", "ТЕМП", new Vector2(1f, 1f),
                                            new Vector2(-14f, -110f));
 
-            // Player scoreboard: mirrored — stats left, count right — so neither fighter's numbers
-            // sit directly above the other's and the two are never confused mid-set.
+            // Player scoreboard: same side-assignment as the opponent's (name+count share a side,
+            // stats take the other), but pulled up to sit just under the seam instead of down by
+            // the bottom edge. That is the comp's actual layout, and it is not just cosmetic: both
+            // fighters' reps end up close together, so comparing "18 vs 21" costs one glance instead
+            // of a trip down the whole screen.
             var mine = UiBuilder.Rect(safe, "PlayerScore");
             UiBuilder.Stretch(mine);
             refs.PlayerPanel = mine.gameObject;
             refs.PlayerName = NameBadge(mine, "PlayerName", "ТЫ", new Vector2(0f, 0f),
-                                        new Vector2(14f, 132f));
+                                        new Vector2(14f, 380f));
             refs.PlayerReps = UiBuilder.Text(mine, "PlayerReps", AppColors.AccentYellow, "0", 68,
                                              FontStyles.Bold, TextAlignmentOptions.Right);
             UiBuilder.Place(refs.PlayerReps.rectTransform, new Vector2(1f, 0f),
-                            new Vector2(-14f, 44f), new Vector2(180f, 82f));
+                            new Vector2(-14f, 292f), new Vector2(180f, 82f));
             refs.PlayerForm = StatBlock(mine, "PlayerForm", "FORM", new Vector2(0f, 0f),
-                                        new Vector2(14f, 96f));
+                                        new Vector2(14f, 344f));
             refs.PlayerTempo = StatBlock(mine, "PlayerTempo", "ТЕМП", new Vector2(0f, 0f),
-                                         new Vector2(14f, 40f));
+                                         new Vector2(14f, 288f));
 
             // Clock on the seam: both fighters are readable without leaving it.
             var timerPlate = UiBuilder.Image(safe, "TimerPlate", new Color(0f, 0f, 0f, 0.55f));
@@ -452,7 +461,7 @@ namespace PushStars.Editor
             UiBuilder.Place(plate.rectTransform, anchor, position, new Vector2(180f, 26f));
 
             var label = UiBuilder.Text(plate.rectTransform, name, AppColors.TextPrimary, text, 14,
-                                       FontStyles.Bold);
+                                       FontStyles.Bold | FontStyles.Italic);
             UiBuilder.Stretch(label.rectTransform, 8, 2, 8, 2);
             return label;
         }
@@ -481,11 +490,15 @@ namespace PushStars.Editor
             public GameObject Root;
             public TextMeshProUGUI OpponentName, OpponentTrophies, OpponentBest, OpponentWinRate;
             public TextMeshProUGUI PlayerName, PlayerTrophies, PlayerBest, PlayerWinRate;
+            public RawImage OpponentAvatarImage, PlayerAvatarImage;
             public Button ReadyButton;
         }
 
-        /// <summary>The pre-duel card. Deliberately NOT opaque: the two bodies are already standing
-        /// on their stages behind it, and that is the shot the comp asks for.</summary>
+        /// <summary>The pre-duel card: each fighter's portrait in their own corner, stats stacked
+        /// beside them, a VS medal on the seam between. Opaque and its own scene, not a scrim over
+        /// the duel screen underneath — the two portraits are crops of the SAME render targets the
+        /// duel HUD shows full-size (<c>DuelReadyPanel</c> points a RawImage at one already
+        /// rendering elsewhere), so nothing here costs a second camera per fighter.</summary>
         static ReadyRefs BuildReadyOverlay(RectTransform canvasRoot)
         {
             var refs = new ReadyRefs();
@@ -493,39 +506,79 @@ namespace PushStars.Editor
             var root = UiBuilder.Rect(canvasRoot, "ReadyOverlay");
             UiBuilder.Stretch(root);
 
-            var scrim = UiBuilder.Image(root, "Scrim", new Color(0f, 0f, 0f, 0.35f));
-            UiBuilder.Stretch(scrim.rectTransform);
-            scrim.raycastTarget = true; // swallow taps meant for the HUD underneath
+            // Base + warm/cool glows rather than a literal gradient texture: every other soft
+            // backdrop in this project (Boot, Onboarding, the duel halves) is built the same way,
+            // from the same glow sprite, so this card matches their language instead of importing a
+            // one-off gradient asset nothing else uses.
+            var bg = UiBuilder.Image(root, "Bg", AppColors.BgDark);
+            UiBuilder.Stretch(bg.rectTransform);
+            bg.raycastTarget = true; // swallow taps meant for the HUD underneath
+
+            var glowSprite = LoadSprite(GlowSprite);
+            if (glowSprite != null)
+            {
+                var warm = UiBuilder.Image(root, "WarmGlow", new Color(0.78f, 0.10f, 0.24f, 0.85f));
+                warm.sprite = glowSprite;
+                UiBuilder.Place(warm.rectTransform, new Vector2(0.5f, 1f), new Vector2(0f, 30f),
+                                new Vector2(780f, 780f));
+
+                var cool = UiBuilder.Image(root, "CoolGlow", new Color(0.10f, 0.16f, 0.62f, 0.6f));
+                cool.sprite = glowSprite;
+                UiBuilder.Place(cool.rectTransform, new Vector2(0.5f, 0f), new Vector2(0f, -30f),
+                                new Vector2(780f, 780f));
+            }
+
+            // Faint oversized "VS" wallpaper — two copies, tilted, standing in for a tiled pattern
+            // at a fraction of the cost of actually tiling one.
+            AddWatermark(root, "Watermark1", new Vector2(-70f, 140f), 150f, -18f);
+            AddWatermark(root, "Watermark2", new Vector2(80f, -220f), 130f, -18f);
 
             var safe = UiBuilder.Rect(root, "SafeArea");
             UiBuilder.Stretch(safe);
             safe.gameObject.AddComponent<SafeAreaFitter>();
 
+            // ── Portraits — full-bleed on root, not safe: this is backdrop art, not content, and
+            // it is meant to run to the edges the way the comp's does. ──
+            refs.OpponentAvatarImage = UiBuilder.RawImage(root, "OpponentPortrait", Color.white);
+            UiBuilder.Place(refs.OpponentAvatarImage.rectTransform, new Vector2(1f, 1f),
+                            new Vector2(-2f, -60f), new Vector2(196f, 300f));
+
+            refs.PlayerAvatarImage = UiBuilder.RawImage(root, "PlayerPortrait", Color.white);
+            UiBuilder.Place(refs.PlayerAvatarImage.rectTransform, new Vector2(0f, 0f),
+                            new Vector2(2f, 4f), new Vector2(196f, 300f));
+
+            // ── Opponent block, top-left — kept clear of the portrait by stopping at x≈190 ──
             refs.OpponentName = UiBuilder.Text(safe, "OpponentName", AppColors.AccentYellow,
-                                               "СОПЕРНИК", 30, FontStyles.Bold, TextAlignmentOptions.Left);
+                                               "СОПЕРНИК", 24, FontStyles.Bold | FontStyles.Italic,
+                                               TextAlignmentOptions.Left);
             UiBuilder.Place(refs.OpponentName.rectTransform, new Vector2(0f, 1f),
-                            new Vector2(20f, -28f), new Vector2(280f, 38f));
-            refs.OpponentTrophies = CardStat(safe, "OpponentTrophies", "КУБКИ", new Vector2(0f, 1f),
-                                             new Vector2(20f, -72f));
+                            new Vector2(18f, -32f), new Vector2(170f, 34f));
+            refs.OpponentTrophies = TrophyRow(safe, "OpponentTrophies", new Vector2(0f, 1f),
+                                              new Vector2(18f, -80f));
             refs.OpponentBest = CardStat(safe, "OpponentBest", "МАКС. ОТЖИМАНИЙ", new Vector2(0f, 1f),
-                                         new Vector2(20f, -128f));
+                                         new Vector2(18f, -128f));
             refs.OpponentWinRate = CardStat(safe, "OpponentWinRate", "ПОБЕД", new Vector2(0f, 1f),
-                                            new Vector2(20f, -184f));
+                                            new Vector2(18f, -196f));
 
-            var vs = UiBuilder.Text(safe, "VS", AppColors.AccentYellow, "VS", 46, FontStyles.Bold);
-            UiBuilder.Place(vs.rectTransform, new Vector2(0.5f, SeamY), Vector2.zero,
-                            new Vector2(140f, 60f));
+            // ── VS medal, on the seam between the two portraits ──
+            var vsSprite = LoadSprite(VsCoinSprite);
+            var vs = UiBuilder.Image(safe, "VsMedal", Color.white);
+            if (vsSprite != null) vs.sprite = vsSprite;
+            else { vs.color = AppColors.AccentYellow; vs.sprite = LoadSprite(PillSprite); } // never blank
+            UiBuilder.Place(vs.rectTransform, new Vector2(0.5f, SeamY), new Vector2(0f, 0f),
+                            new Vector2(108f, 108f));
 
-            refs.PlayerName = UiBuilder.Text(safe, "PlayerName", AppColors.AccentYellow, "ТЫ", 30,
-                                             FontStyles.Bold, TextAlignmentOptions.Right);
+            // ── Player block, bottom-right — mirrors the opponent's, right-aligned ──
+            refs.PlayerName = UiBuilder.Text(safe, "PlayerName", AppColors.AccentYellow, "ТЫ", 24,
+                                             FontStyles.Bold | FontStyles.Italic, TextAlignmentOptions.Right);
             UiBuilder.Place(refs.PlayerName.rectTransform, new Vector2(1f, 0f),
-                            new Vector2(-20f, 268f), new Vector2(280f, 38f));
-            refs.PlayerTrophies = CardStat(safe, "PlayerTrophies", "КУБКИ", new Vector2(1f, 0f),
-                                           new Vector2(-20f, 232f));
+                            new Vector2(-18f, 284f), new Vector2(170f, 34f));
+            refs.PlayerTrophies = TrophyRow(safe, "PlayerTrophies", new Vector2(1f, 0f),
+                                            new Vector2(-18f, 240f));
             refs.PlayerBest = CardStat(safe, "PlayerBest", "МАКС. ОТЖИМАНИЙ", new Vector2(1f, 0f),
-                                       new Vector2(-20f, 176f));
+                                       new Vector2(-18f, 196f));
             refs.PlayerWinRate = CardStat(safe, "PlayerWinRate", "ПОБЕД", new Vector2(1f, 0f),
-                                          new Vector2(-20f, 120f));
+                                          new Vector2(-18f, 140f));
 
             refs.ReadyButton = UiBuilder.Button(safe, "Ready", "ГОТОВ", AppColors.AccentYellow,
                                                 new Color32(24, 20, 8, 255), 22, out _);
@@ -536,6 +589,36 @@ namespace PushStars.Editor
             return refs;
         }
 
+        /// <summary>One huge, near-invisible "VS", tilted — a stand-in for a tiled background
+        /// pattern that costs one TMP object instead of a real tiling texture.</summary>
+        static void AddWatermark(RectTransform parent, string name, Vector2 position, float size, float rotationDeg)
+        {
+            var label = UiBuilder.Text(parent, name, new Color(1f, 1f, 1f, 0.05f), "VS", size, FontStyles.Bold);
+            UiBuilder.Place(label.rectTransform, new Vector2(0.5f, 0.5f), position, new Vector2(size * 3f, size * 1.4f));
+            label.rectTransform.localRotation = Quaternion.Euler(0f, 0f, rotationDeg);
+        }
+
+        /// <summary>Cup icon beside a big number, icon always on the left of the number regardless
+        /// of which side of the screen the row itself sits on. The row is a small fixed-width
+        /// container anchored to that side, and icon/value are placed inside it in local space —
+        /// which is what keeps "icon, then number" true whichever way the container is pivoted.</summary>
+        static TextMeshProUGUI TrophyRow(RectTransform parent, string name, Vector2 anchor, Vector2 position)
+        {
+            var row = UiBuilder.Rect(parent, name + "Row");
+            UiBuilder.Place(row, anchor, position, new Vector2(150f, 34f));
+
+            var icon = UiBuilder.Image(row, "Icon", Color.white);
+            icon.sprite = LoadSprite(CupSprite);
+            icon.preserveAspect = true;
+            UiBuilder.Place(icon.rectTransform, new Vector2(0f, 0.5f), new Vector2(0f, 0f), new Vector2(28f, 28f));
+
+            var value = UiBuilder.Text(row, name, AppColors.AccentYellow, "—", 26, FontStyles.Bold,
+                                       TextAlignmentOptions.Left);
+            UiBuilder.Place(value.rectTransform, new Vector2(0f, 0.5f), new Vector2(36f, 0f),
+                            new Vector2(110f, 34f));
+            return value;
+        }
+
         /// <summary>Caption above a big value, as on the comp's fighter cards.</summary>
         static TextMeshProUGUI CardStat(RectTransform parent, string name, string caption,
                                         Vector2 anchor, Vector2 position)
@@ -544,12 +627,12 @@ namespace PushStars.Editor
 
             var cap = UiBuilder.Text(parent, name + "Caption", AppColors.TextSecondary, caption, 11,
                                      FontStyles.Bold, align);
-            UiBuilder.Place(cap.rectTransform, anchor, position, new Vector2(220f, 14f));
+            UiBuilder.Place(cap.rectTransform, anchor, position, new Vector2(170f, 14f));
 
             var value = UiBuilder.Text(parent, name, AppColors.TextPrimary, "—", 28,
                                        FontStyles.Bold, align);
             UiBuilder.Place(value.rectTransform, anchor, position + new Vector2(0f, -22f),
-                            new Vector2(220f, 34f));
+                            new Vector2(170f, 34f));
             return value;
         }
 

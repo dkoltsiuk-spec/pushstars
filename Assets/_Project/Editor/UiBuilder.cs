@@ -74,6 +74,22 @@ namespace PushStars.Editor
             return img;
         }
 
+        /// <summary>An un-textured RawImage placeholder. Its texture is assigned at runtime — a
+        /// stage's render target, a mirrored copy of one — so nothing here can wire it; the scene
+        /// stores the empty component and a script fills it in once the game is actually running.</summary>
+        public static RawImage RawImage(RectTransform parent, string name, Color tint)
+        {
+            // Fully qualified inside the body on purpose: this method's own name shadows the type
+            // name it needs, and a bare `RawImage` here would ask the compiler to guess between the
+            // two rather than settle it.
+            var go = new GameObject(name, typeof(RectTransform), typeof(CanvasRenderer), typeof(UnityEngine.UI.RawImage));
+            go.transform.SetParent(parent, false);
+            var img = go.GetComponent<UnityEngine.UI.RawImage>();
+            img.color = tint;
+            img.raycastTarget = false;
+            return img;
+        }
+
         public static TextMeshProUGUI Text(RectTransform parent, string name, Color color, string text,
                                            float size, FontStyles style = FontStyles.Bold,
                                            TextAlignmentOptions align = TextAlignmentOptions.Center)
