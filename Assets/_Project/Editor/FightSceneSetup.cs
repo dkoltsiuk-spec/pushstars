@@ -41,6 +41,14 @@ namespace PushStars.Editor
         const string PillSprite = "Assets/_Project/UI/Sprites/pill_capsule.png";
         const string CupSprite = "Assets/_Project/UI/Sprites/cup_.png";
         const string VsCoinSprite = "Assets/_Project/UI/Sprites/VS_for_serching.png";
+        /// <summary>The arena backdrop: pink-red top, periwinkle bottom, a jagged seam baked in at
+        /// roughly the same height as <see cref="SeamY"/>. Sized 796×1716 — a near-exact match for
+        /// this project's 390×844 reference canvas — so it is meant to be shown at native aspect,
+        /// full-bleed, not tiled or cropped.</summary>
+        const string FightBgSprite = "Assets/_Project/UI/Sprites/bg_fight.png";
+        /// <summary>The jagged ribbon banner the verdict sits on. 811×296 (aspect 2.74) — placed at
+        /// that same aspect so its torn edges render as drawn, not stretched.</summary>
+        const string BannerWinSprite = "Assets/_Project/UI/Sprites/bg_winner.png";
 
         /// <summary>Fraction of the screen the opponent's half occupies. Slightly under half: the
         /// player's own body is the one they are steering, and it gets the larger stage.</summary>
@@ -109,22 +117,17 @@ namespace PushStars.Editor
             UiBuilder.Canvas("FightCanvas", out var canvasRoot);
             canvasRoot.gameObject.AddComponent<ThemeInitializer>();
 
+            // Real art now, not the flat ArenaRed/ArenaBlue rectangles + a bare tilted bar that
+            // used to stand in for an arena backdrop. AppColors.BgDark is only the fallback for a
+            // checkout where the sprite hasn't been imported yet — the scene must never draw
+            // literally nothing.
             var baseBg = UiBuilder.Image(canvasRoot, "BaseBackground", AppColors.BgDark);
             UiBuilder.Stretch(baseBg.rectTransform);
+            var fightBgSprite = LoadSprite(FightBgSprite);
+            if (fightBgSprite != null) { baseBg.sprite = fightBgSprite; baseBg.color = Color.white; }
 
-            var opponentHalf = BuildHalf(canvasRoot, "OpponentHalf", AppColors.ArenaRed,
-                                         SeamY, 1f, out var opponentAvatarImage);
-            var playerHalf = BuildHalf(canvasRoot, "PlayerHalf", AppColors.ArenaBlue,
-                                       0f, SeamY, out var playerAvatarImage);
-
-            // The seam. A bright bar tilted a few degrees off level — the whole layout is two flat
-            // rectangles otherwise, and the tilt is what makes it read as an arena rather than a
-            // settings screen.
-            var seam = UiBuilder.Image(canvasRoot, "Seam", AppColors.AccentBlue);
-            UiBuilder.Anchor(seam.rectTransform, new Vector2(0.5f, SeamY), new Vector2(0.5f, SeamY),
-                             new Vector2(0.5f, 0.5f));
-            seam.rectTransform.sizeDelta = new Vector2(900f, 5f);
-            seam.rectTransform.localRotation = Quaternion.Euler(0f, 0f, -5f);
+            var opponentHalf = BuildHalf(canvasRoot, "OpponentHalf", SeamY, 1f, out var opponentAvatarImage);
+            var playerHalf = BuildHalf(canvasRoot, "PlayerHalf", 0f, SeamY, out var playerAvatarImage);
 
             WireStage(playerStage, playerCam, playerRoot, playerAvatarImage);
             WireStage(ghostStage, ghostCam, ghostRoot, opponentAvatarImage);
@@ -189,10 +192,16 @@ namespace PushStars.Editor
             UiBuilder.Set(resultSO, "_opponentReps", resultRefs.OpponentReps);
             UiBuilder.Set(resultSO, "_opponentForm", resultRefs.OpponentForm);
             UiBuilder.Set(resultSO, "_opponentTempo", resultRefs.OpponentTempo);
+            // Same crops-of-the-live-stage trick as the ready card, pointed at the same two source
+            // images the duel HUD renders full-size.
+            UiBuilder.Set(resultSO, "_opponentAvatarImage", resultRefs.OpponentAvatarImage);
+            UiBuilder.Set(resultSO, "_opponentAvatarSource", opponentAvatarImage);
             UiBuilder.Set(resultSO, "_playerName", resultRefs.PlayerName);
             UiBuilder.Set(resultSO, "_playerReps", resultRefs.PlayerReps);
             UiBuilder.Set(resultSO, "_playerForm", resultRefs.PlayerForm);
             UiBuilder.Set(resultSO, "_playerTempo", resultRefs.PlayerTempo);
+            UiBuilder.Set(resultSO, "_playerAvatarImage", resultRefs.PlayerAvatarImage);
+            UiBuilder.Set(resultSO, "_playerAvatarSource", playerAvatarImage);
             UiBuilder.Set(resultSO, "_duelRewards", resultRefs.DuelRewards);
             UiBuilder.Set(resultSO, "_duelNote", resultRefs.DuelNote);
             UiBuilder.Set(resultSO, "_levelTestLayout", resultRefs.TestLayout);
@@ -336,7 +345,10 @@ namespace PushStars.Editor
 
         /// <summary>One fighter's band of the screen: a tinted panel, a glow behind where the body
         /// stands, and the RawImage its stage renders into.</summary>
-        static RectTransform BuildHalf(RectTransform parent, string name, Color tint,
+        /// <summary>One fighter's band of the screen — just a clipping region for their avatar
+        /// render now. Its own flat fill and radial glow are gone: <c>bg_fight.png</c> sits behind
+        /// the whole canvas and already carries the colour and the mood for both halves at once.</summary>
+        static RectTransform BuildHalf(RectTransform parent, string name,
                                        float fromY, float toY, out RawImage avatarImage)
         {
             var half = UiBuilder.Rect(parent, name);
@@ -344,18 +356,6 @@ namespace PushStars.Editor
             half.anchorMax = new Vector2(1f, toY);
             half.offsetMin = Vector2.zero;
             half.offsetMax = Vector2.zero;
-
-            var bg = UiBuilder.Image(half, "Bg", tint);
-            UiBuilder.Stretch(bg.rectTransform);
-
-            var glowSprite = LoadSprite(GlowSprite);
-            if (glowSprite != null)
-            {
-                var glow = UiBuilder.Image(half, "Glow", new Color(1f, 1f, 1f, 0.18f));
-                glow.sprite = glowSprite;
-                UiBuilder.Place(glow.rectTransform, new Vector2(0.5f, 0.5f), Vector2.zero,
-                                new Vector2(620f, 620f));
-            }
 
             // Faint tint in edit mode (nothing rendered into it yet); CharacterStage sets it to
             // white once the stage camera actually has a texture to show, at Play.
@@ -495,10 +495,12 @@ namespace PushStars.Editor
         }
 
         /// <summary>The pre-duel card: each fighter's portrait in their own corner, stats stacked
-        /// beside them, a VS medal on the seam between. Opaque and its own scene, not a scrim over
-        /// the duel screen underneath — the two portraits are crops of the SAME render targets the
-        /// duel HUD shows full-size (<c>DuelReadyPanel</c> points a RawImage at one already
-        /// rendering elsewhere), so nothing here costs a second camera per fighter.</summary>
+        /// beside them, a VS medal on the seam between. Its own background is just a transparent
+        /// tap-blocker — the arena art (<c>bg_fight.png</c>) already sits behind it on the canvas,
+        /// so Ready, the live duel and the result share one backdrop instead of three improvised
+        /// ones. The two portraits are crops of the SAME render targets the duel HUD shows
+        /// full-size (<c>DuelReadyPanel</c> points a RawImage at one already rendering elsewhere),
+        /// so nothing here costs a second camera per fighter.</summary>
         static ReadyRefs BuildReadyOverlay(RectTransform canvasRoot)
         {
             var refs = new ReadyRefs();
@@ -506,27 +508,13 @@ namespace PushStars.Editor
             var root = UiBuilder.Rect(canvasRoot, "ReadyOverlay");
             UiBuilder.Stretch(root);
 
-            // Base + warm/cool glows rather than a literal gradient texture: every other soft
-            // backdrop in this project (Boot, Onboarding, the duel halves) is built the same way,
-            // from the same glow sprite, so this card matches their language instead of importing a
-            // one-off gradient asset nothing else uses.
-            var bg = UiBuilder.Image(root, "Bg", AppColors.BgDark);
-            UiBuilder.Stretch(bg.rectTransform);
-            bg.raycastTarget = true; // swallow taps meant for the HUD underneath
-
-            var glowSprite = LoadSprite(GlowSprite);
-            if (glowSprite != null)
-            {
-                var warm = UiBuilder.Image(root, "WarmGlow", new Color(0.78f, 0.10f, 0.24f, 0.85f));
-                warm.sprite = glowSprite;
-                UiBuilder.Place(warm.rectTransform, new Vector2(0.5f, 1f), new Vector2(0f, 30f),
-                                new Vector2(780f, 780f));
-
-                var cool = UiBuilder.Image(root, "CoolGlow", new Color(0.10f, 0.16f, 0.62f, 0.6f));
-                cool.sprite = glowSprite;
-                UiBuilder.Place(cool.rectTransform, new Vector2(0.5f, 0f), new Vector2(0f, -30f),
-                                new Vector2(780f, 780f));
-            }
+            // No background of its own: bg_fight.png already sits on the canvas behind this overlay
+            // (FightCanvas's own BaseBackground) and the two glows this used to improvise were only
+            // ever standing in for exactly that art. A fully transparent hit-blocker still has to
+            // exist here, or taps fall through to the HUD underneath.
+            var tapBlock = UiBuilder.Image(root, "TapBlock", Color.clear);
+            UiBuilder.Stretch(tapBlock.rectTransform);
+            tapBlock.raycastTarget = true;
 
             // Faint oversized "VS" wallpaper — two copies, tilted, standing in for a tiled pattern
             // at a fraction of the cost of actually tiling one.
@@ -643,6 +631,7 @@ namespace PushStars.Editor
             public GameObject Root, DuelLayout, TestLayout;
             public TextMeshProUGUI Banner;
             public TextMeshProUGUI OpponentName, OpponentReps, OpponentForm, OpponentTempo;
+            public RawImage OpponentAvatarImage, PlayerAvatarImage;
             public TextMeshProUGUI PlayerName, PlayerReps, PlayerForm, PlayerTempo;
             public TextMeshProUGUI DuelRewards, DuelNote;
             public TextMeshProUGUI TestTitle, TestTier, TestScore, TestRewards, TestNote;
@@ -656,59 +645,78 @@ namespace PushStars.Editor
 
             var root = UiBuilder.Rect(canvasRoot, "ResultOverlay");
             UiBuilder.Stretch(root);
-            var scrim = UiBuilder.Image(root, "Scrim", new Color(0f, 0f, 0f, 0.55f));
+            // A light darkening, not a cover: bg_fight.png behind everything is what this screen
+            // is shown over, and it should still read as the same arena, just a shade moodier for
+            // the verdict.
+            var scrim = UiBuilder.Image(root, "Scrim", new Color(0f, 0f, 0f, 0.22f));
             UiBuilder.Stretch(scrim.rectTransform);
             scrim.raycastTarget = true;
+
+            // ── Duel layout: a trading card per fighter — portrait in one corner, name/reps/FORM/
+            // TEMPO stacked in the other — mirroring the ready card's grammar exactly, because this
+            // and that card answer the same kind of question ("how did each of us do") instead of
+            // the live HUD's "glance at both at once" split-screen.
+            var duel = UiBuilder.Rect(root, "DuelLayout");
+            UiBuilder.Stretch(duel);
+            refs.DuelLayout = duel.gameObject;
+
+            refs.OpponentAvatarImage = UiBuilder.RawImage(duel, "OpponentPortrait", Color.white);
+            UiBuilder.Place(refs.OpponentAvatarImage.rectTransform, new Vector2(1f, 1f),
+                            new Vector2(-2f, -60f), new Vector2(196f, 300f));
+            refs.PlayerAvatarImage = UiBuilder.RawImage(duel, "PlayerPortrait", Color.white);
+            UiBuilder.Place(refs.PlayerAvatarImage.rectTransform, new Vector2(0f, 0f),
+                            new Vector2(2f, 4f), new Vector2(196f, 300f));
+
+            var duelSafe = UiBuilder.Rect(duel, "SafeArea");
+            UiBuilder.Stretch(duelSafe);
+            duelSafe.gameObject.AddComponent<SafeAreaFitter>();
+
+            // Opponent column, top-left — kept clear of the portrait by stopping short of x≈190.
+            refs.OpponentName = NameBadge(duelSafe, "OpponentName", "СОПЕРНИК", new Vector2(0f, 1f),
+                                          new Vector2(18f, -32f));
+            refs.OpponentReps = UiBuilder.Text(duelSafe, "OpponentReps", AppColors.TextPrimary, "0", 64,
+                                               FontStyles.Bold, TextAlignmentOptions.Left);
+            UiBuilder.Place(refs.OpponentReps.rectTransform, new Vector2(0f, 1f),
+                            new Vector2(18f, -72f), new Vector2(170f, 82f));
+            refs.OpponentForm = CardStat(duelSafe, "OpponentResultForm", "FORM", new Vector2(0f, 1f),
+                                         new Vector2(18f, -166f));
+            refs.OpponentTempo = CardStat(duelSafe, "OpponentResultTempo", "ТЕМП", new Vector2(0f, 1f),
+                                          new Vector2(18f, -234f));
+
+            // Verdict banner, on the seam, on the torn-ribbon art rather than a flat rectangle.
+            var bannerSprite = LoadSprite(BannerWinSprite);
+            var bannerPlate = UiBuilder.Image(duelSafe, "BannerPlate", Color.white);
+            if (bannerSprite != null) { bannerPlate.sprite = bannerSprite; bannerPlate.preserveAspect = true; }
+            else bannerPlate.color = AppColors.AccentBlue; // never blank if the asset is missing
+            UiBuilder.Place(bannerPlate.rectTransform, new Vector2(0.5f, SeamY), Vector2.zero,
+                            new Vector2(380f, 139f));
+            bannerPlate.rectTransform.localRotation = Quaternion.Euler(0f, 0f, -3f);
+            refs.Banner = UiBuilder.Text(bannerPlate.rectTransform, "Banner", AppColors.TextPrimary,
+                                         "ПОБЕДА", 30, FontStyles.Bold | FontStyles.Italic);
+            UiBuilder.Stretch(refs.Banner.rectTransform, 16, 4, 16, 4);
+
+            // Player column, bottom-right — mirrors the opponent's, right-aligned.
+            refs.PlayerName = NameBadge(duelSafe, "PlayerName", "ТЫ", new Vector2(1f, 0f),
+                                        new Vector2(-18f, 286f));
+            refs.PlayerReps = UiBuilder.Text(duelSafe, "PlayerReps", AppColors.TextPrimary, "0", 64,
+                                             FontStyles.Bold, TextAlignmentOptions.Right);
+            UiBuilder.Place(refs.PlayerReps.rectTransform, new Vector2(1f, 0f),
+                            new Vector2(-18f, 192f), new Vector2(170f, 82f));
+            refs.PlayerForm = CardStat(duelSafe, "PlayerResultForm", "FORM", new Vector2(1f, 0f),
+                                       new Vector2(-18f, 166f));
+            refs.PlayerTempo = CardStat(duelSafe, "PlayerResultTempo", "ТЕМП", new Vector2(1f, 0f),
+                                        new Vector2(-18f, 140f));
+
+            refs.DuelRewards = UiBuilder.Text(duelSafe, "DuelRewards", AppColors.AccentLime, "+0 XP", 22,
+                                              FontStyles.Bold);
+            UiBuilder.PlaceWide(refs.DuelRewards.rectTransform, 0f, 110f, 28f);
+            refs.DuelNote = UiBuilder.Text(duelSafe, "DuelNote", AppColors.AccentYellow, "", 13,
+                                           FontStyles.Bold);
+            UiBuilder.PlaceWide(refs.DuelNote.rectTransform, 0f, 84f, 20f);
 
             var safe = UiBuilder.Rect(root, "SafeArea");
             UiBuilder.Stretch(safe);
             safe.gameObject.AddComponent<SafeAreaFitter>();
-
-            // ── Duel layout: the scoreboard, kept, with the verdict on the seam ─────────────────
-            var duel = UiBuilder.Rect(safe, "DuelLayout");
-            UiBuilder.Stretch(duel);
-            refs.DuelLayout = duel.gameObject;
-
-            refs.OpponentName = UiBuilder.Text(duel, "OpponentName", AppColors.TextPrimary, "СОПЕРНИК",
-                                               16, FontStyles.Bold, TextAlignmentOptions.Left);
-            UiBuilder.Place(refs.OpponentName.rectTransform, new Vector2(0f, 1f),
-                            new Vector2(20f, -28f), new Vector2(240f, 22f));
-            refs.OpponentReps = UiBuilder.Text(duel, "OpponentReps", AppColors.TextPrimary, "0", 64,
-                                               FontStyles.Bold, TextAlignmentOptions.Left);
-            UiBuilder.Place(refs.OpponentReps.rectTransform, new Vector2(0f, 1f),
-                            new Vector2(20f, -56f), new Vector2(200f, 76f));
-            refs.OpponentForm = StatBlock(duel, "OpponentResultForm", "FORM", new Vector2(1f, 1f),
-                                          new Vector2(-20f, -50f));
-            refs.OpponentTempo = StatBlock(duel, "OpponentResultTempo", "ТЕМП", new Vector2(1f, 1f),
-                                           new Vector2(-20f, -110f));
-
-            var bannerPlate = UiBuilder.Image(duel, "BannerPlate", AppColors.AccentBlue);
-            UiBuilder.Place(bannerPlate.rectTransform, new Vector2(0.5f, SeamY), Vector2.zero,
-                            new Vector2(420f, 62f));
-            bannerPlate.rectTransform.localRotation = Quaternion.Euler(0f, 0f, -5f);
-            refs.Banner = UiBuilder.Text(bannerPlate.rectTransform, "Banner", AppColors.TextPrimary,
-                                         "ПОБЕДА", 34, FontStyles.Bold);
-            UiBuilder.Stretch(refs.Banner.rectTransform, 8, 4, 8, 4);
-
-            refs.PlayerName = UiBuilder.Text(duel, "PlayerName", AppColors.TextPrimary, "ТЫ", 16,
-                                             FontStyles.Bold, TextAlignmentOptions.Right);
-            UiBuilder.Place(refs.PlayerName.rectTransform, new Vector2(1f, 0f),
-                            new Vector2(-20f, 268f), new Vector2(240f, 22f));
-            refs.PlayerReps = UiBuilder.Text(duel, "PlayerReps", AppColors.TextPrimary, "0", 64,
-                                             FontStyles.Bold, TextAlignmentOptions.Right);
-            UiBuilder.Place(refs.PlayerReps.rectTransform, new Vector2(1f, 0f),
-                            new Vector2(-20f, 188f), new Vector2(200f, 76f));
-            refs.PlayerForm = StatBlock(duel, "PlayerResultForm", "FORM", new Vector2(0f, 0f),
-                                        new Vector2(20f, 252f));
-            refs.PlayerTempo = StatBlock(duel, "PlayerResultTempo", "ТЕМП", new Vector2(0f, 0f),
-                                         new Vector2(20f, 196f));
-
-            refs.DuelRewards = UiBuilder.Text(duel, "DuelRewards", AppColors.AccentLime, "+0 XP", 24,
-                                              FontStyles.Bold);
-            UiBuilder.PlaceWide(refs.DuelRewards.rectTransform, 0f, 152f, 30f);
-            refs.DuelNote = UiBuilder.Text(duel, "DuelNote", AppColors.AccentYellow, "", 14,
-                                           FontStyles.Bold);
-            UiBuilder.PlaceWide(refs.DuelNote.rectTransform, 0f, 124f, 22f);
 
             // ── Level-test layout ──────────────────────────────────────────────────────────────
             var test = UiBuilder.Rect(safe, "LevelTestLayout");

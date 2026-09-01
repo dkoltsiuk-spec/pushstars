@@ -10,9 +10,11 @@ namespace PushStars.Fight
     /// Full-screen result overlay, in two layouts because the two results answer different
     /// questions.
     ///
-    ///   • <see cref="ShowDuel"/> — the scoreboard the duel was fought on, kept: both fighters,
-    ///     their reps, FORM and tempo, with the banner between them. The winner's count goes green
-    ///     and the loser's red, so who won is legible before a single word is read.
+    ///   • <see cref="ShowDuel"/> — a trading card for each fighter: portrait, name, reps, FORM and
+    ///     tempo, with the verdict banner across the seam. The winner's count goes green and the
+    ///     loser's red, so who won is legible before a single word is read — and FORM/TEMPO get the
+    ///     same treatment stat-by-stat, so "who actually moved better" doesn't hide behind who
+    ///     happened to finish more reps.
     ///   • <see cref="ShowLevelTest"/> — the onboarding measurement: the tier the player landed in,
     ///     what it means, and the fact that their set is now the opponent they will fight.
     ///
@@ -29,10 +31,16 @@ namespace PushStars.Fight
         [SerializeField] private TextMeshProUGUI _opponentReps;
         [SerializeField] private TextMeshProUGUI _opponentForm;
         [SerializeField] private TextMeshProUGUI _opponentTempo;
+        [Tooltip("This screen's own crop of the opponent's body. MirrorTexture points it at the " +
+                 "render the duel HUD already shows full-size — no camera of its own.")]
+        [SerializeField] private RawImage _opponentAvatarImage;
+        [SerializeField] private RawImage _opponentAvatarSource;
         [SerializeField] private TextMeshProUGUI _playerName;
         [SerializeField] private TextMeshProUGUI _playerReps;
         [SerializeField] private TextMeshProUGUI _playerForm;
         [SerializeField] private TextMeshProUGUI _playerTempo;
+        [SerializeField] private RawImage _playerAvatarImage;
+        [SerializeField] private RawImage _playerAvatarSource;
         [SerializeField] private TextMeshProUGUI _duelRewards;
         [SerializeField] private TextMeshProUGUI _duelNote;
 
@@ -54,6 +62,7 @@ namespace PushStars.Fight
         private static readonly Color WinColor = new Color32(107, 255, 74, 255); // AccentLime
         private static readonly Color LossColor = new Color32(255, 80, 80, 255);
         private static readonly Color DrawColor = new Color32(245, 200, 66, 255); // AccentYellow
+        private static readonly Color NeutralColor = Color.white;
 
         private void Awake()
         {
@@ -81,15 +90,30 @@ namespace PushStars.Fight
             Color mine = draw ? DrawColor : win ? WinColor : LossColor;
             Color theirs = draw ? DrawColor : win ? LossColor : WinColor;
 
-            SetText(_opponentName, opponentName, Color.white);
-            SetText(_opponentReps, oppReps.ToString(), theirs);
-            SetText(_opponentForm, $"{oppForm:0}", Color.white);
-            SetText(_opponentTempo, oppSecondsPerRep > 0.01f ? $"{oppSecondsPerRep:0.0}с" : "—", Color.white);
+            // FORM and TEMPO are judged against each other too, independently of who won on reps —
+            // a loser who moved better than the winner should see that, not just red across the
+            // board. Tempo is compared on ONE clock (seconds per rep, converted from whichever unit
+            // the caller handed us) so "faster" always means the same thing on both sides.
+            float mySecondsPerRep = myRepsPerMinute > 0.01f ? 60f / myRepsPerMinute : float.PositiveInfinity;
+            float oppSecPerRep = oppSecondsPerRep > 0.01f ? oppSecondsPerRep : float.PositiveInfinity;
+            BetterWorse(myForm, oppForm, higherIsBetter: true, out Color myFormColor, out Color oppFormColor);
+            BetterWorse(mySecondsPerRep, oppSecPerRep, higherIsBetter: false, out Color myTempoColor, out Color oppTempoColor);
 
-            SetText(_playerName, playerName, Color.white);
+            SetText(_opponentName, opponentName, NeutralColor);
+            SetText(_opponentReps, oppReps.ToString(), theirs);
+            SetText(_opponentForm, $"{oppForm:0}", oppFormColor);
+            SetText(_opponentTempo, oppSecPerRep < float.PositiveInfinity ? $"{oppSecPerRep:0.0}с" : "—", oppTempoColor);
+
+            SetText(_playerName, playerName, NeutralColor);
             SetText(_playerReps, myReps.ToString(), mine);
-            SetText(_playerForm, $"{myForm:0}", Color.white);
-            SetText(_playerTempo, myRepsPerMinute > 0.01f ? $"{60f / myRepsPerMinute:0.0}с" : "—", Color.white);
+            SetText(_playerForm, $"{myForm:0}", myFormColor);
+            SetText(_playerTempo, mySecondsPerRep < float.PositiveInfinity ? $"{mySecondsPerRep:0.0}с" : "—", myTempoColor);
+
+            // Same trick as the ready card: both stages already have the real bodies rendering by
+            // the time anything's Start() reaches here (Unity runs every Awake before any Start),
+            // so pointing at their textures needs no camera of this screen's own.
+            MirrorTexture(_opponentAvatarImage, _opponentAvatarSource);
+            MirrorTexture(_playerAvatarImage, _playerAvatarSource);
 
             string rewards = xp > 0 ? $"+{xp} XP" : "";
             // Spelled out, not an emoji: the UI font is Rubik and a trophy glyph would render
@@ -104,6 +128,29 @@ namespace PushStars.Fight
             HideSecondary();
         }
 
+        /// <summary>Colours two comparable numbers by which one actually is better, not by who won
+        /// the match — a tie (including "neither side has a number") stays neutral rather than
+        /// picking a winner that doesn't exist.</summary>
+        private static void BetterWorse(float mine, float theirs, bool higherIsBetter,
+                                        out Color mineColor, out Color theirsColor)
+        {
+            bool bothMissing = float.IsInfinity(mine) && float.IsInfinity(theirs);
+            bool tied = !bothMissing && Mathf.Approximately(mine, theirs);
+            if (bothMissing || tied) { mineColor = NeutralColor; theirsColor = NeutralColor; return; }
+
+            bool iAmBetter = higherIsBetter ? mine > theirs : mine < theirs;
+            mineColor = iAmBetter ? WinColor : LossColor;
+            theirsColor = iAmBetter ? LossColor : WinColor;
+        }
+
+        /// <summary>Points this screen's crop at the same texture the duel HUD already renders to —
+        /// a reference copy, not a render of its own.</summary>
+        private static void MirrorTexture(RawImage target, RawImage source)
+        {
+            if (target == null || source == null) return;
+            target.texture = source.texture;
+        }
+
         // ── Level test ───────────────────────────────────────────────────────────────────────────
 
         /// <summary>The onboarding measurement. A zero-rep result is not a level: nothing was
@@ -116,9 +163,9 @@ namespace PushStars.Fight
             if (reps <= 0)
             {
                 SetText(_testTitle, "НЕ ЗАСЧИТАНО", LossColor);
-                SetText(_testTier, "0", Color.white);
+                SetText(_testTier, "0", NeutralColor);
                 SetText(_testScore, "Ни одного повтора за 60 секунд", new Color(1f, 1f, 1f, 0.7f));
-                SetText(_testRewards, "", Color.white);
+                SetText(_testRewards, "", NeutralColor);
                 SetText(_testNote, "Поставь телефон в 1.5–2 метрах так, чтобы в кадр попало всё тело.",
                         new Color(1f, 1f, 1f, 0.55f));
 
@@ -129,7 +176,7 @@ namespace PushStars.Fight
 
             SetText(_testTitle, "ТВОЙ УРОВЕНЬ", new Color(1f, 1f, 1f, 0.7f));
             SetText(_testTier, FitnessTest.DisplayName(tier), DrawColor);
-            SetText(_testScore, $"{reps} отжиманий за 60 секунд", Color.white);
+            SetText(_testScore, $"{reps} отжиманий за 60 секунд", NeutralColor);
             SetText(_testRewards, xp > 0 ? $"+{xp} XP" : "", WinColor);
 
             string note = FitnessTest.Blurb(tier);

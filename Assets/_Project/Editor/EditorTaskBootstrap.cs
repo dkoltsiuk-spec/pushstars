@@ -30,6 +30,7 @@ namespace PushStars.Editor
         private const string TaskFilmstrip       = "filmstrip";
         private const string TaskBuildMainVs      = "build-main-vs";
         private const string TaskRebuildFlow      = "rebuild-flow-scenes";
+        private const string TaskConfigureSprites = "configure-sprites";
 
         private static double _nextPoll;
 
@@ -115,6 +116,11 @@ namespace PushStars.Editor
                     case TaskBuildMainVs:
                         Debug.Log("[EditorTask] Rebuilding the Main VS screen …");
                         MainVsScreenSetup.Run();
+                        break;
+
+                    case TaskConfigureSprites:
+                        Debug.Log("[EditorTask] Configuring new Figma sprites …");
+                        SpriteImporter.ConfigureAll();
                         break;
 
                     default:
