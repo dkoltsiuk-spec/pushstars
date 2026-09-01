@@ -1742,18 +1742,12 @@ namespace PushStars.Editor
             // which is precisely the case that needs it.
             navBg.type = Image.Type.Sliced;
             Stretch(navBg.rectTransform, 0, 0, 0, 0);
-            if (menuFloor != null && navPlate == menuFloor)
-            {
-                // Hand-tuned in the Scene view (Tools ▸ Push Stars ▸ Dump Main Screen Layout is the
-                // usual way to pull numbers like this back out) because the imported sprite border
-                // was not taking effect when this was tuned — the Inspector still reported "This
-                // Image doesn't have a border" with Sliced selected. This scale is what actually
-                // fit the capsule to the bar in that state; if SpriteImporter's menu_floor border
-                // is confirmed working later, this compensating scale should be revisited — the
-                // two are two different fixes for the same squashed-caps problem, not meant to
-                // stack.
-                navBg.rectTransform.localScale = new Vector3(0.76f, 1.1515151f, 1.1515151f);
-            }
+            // A compensating non-uniform localScale used to live here, from when the imported
+            // border wasn't taking effect and Sliced was behaving like a plain stretch. Confirmed
+            // 2026-09-01 that menu_floor.png's border (SpriteImporter, {78,16,78,16}) is now
+            // actually applied — stacking that old scale on top of a real 9-slice pinched the
+            // border regions against the middle stretch and read as two capsules merged into one.
+            // The border alone fits the capsule correctly; do not reintroduce a localScale here.
 
             // No layout group, same reasoning as the action row: three fixed buttons, so their
             // positions are authored below and stay draggable in the Scene view.
