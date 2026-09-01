@@ -24,6 +24,14 @@ namespace PushStars.Fight
     /// bounds that do not track the pose. Humanoid bone positions always do, so the camera fits
     /// itself to a handful of them and eases toward the target — the shot pulls in as the body drops
     /// into the plank without anybody tuning two camera positions by hand.</para>
+    ///
+    /// <para><b>The lens stands where the phone does:</b> dead ahead of the character, level, and it
+    /// rides down to the face as the body goes down. That is not a flourish — it is the same view
+    /// the player's own phone has of them from the floor, so what they see on screen and what the
+    /// detector sees are the same shot. It falls out of one rule: aim between the body's centre and
+    /// the head. Standing, the head is far above the centre and the camera settles around chest
+    /// height, framing the whole figure; prone, head and centre are a hand's width apart and both
+    /// near the floor, so the same rule puts the lens level with the face.</para>
     /// </summary>
     public sealed class FightAvatar : MonoBehaviour
     {
@@ -53,8 +61,13 @@ namespace PushStars.Fight
         [SerializeField, Range(1f, 2.5f)] private float _padding = 1.45f;
         [Tooltip("Seconds for the camera to reach a new framing. 0 snaps.")]
         [SerializeField, Range(0f, 2f)] private float _easeTime = 0.55f;
-        [Tooltip("Camera direction relative to the character: where the phone would be standing.")]
-        [SerializeField] private Vector3 _viewDirection = new Vector3(0.35f, 0.42f, 1f);
+        [Tooltip("Camera direction relative to the character: where the phone would be standing. " +
+                 "Dead ahead, barely above the aim point — a phone propped on the floor in front of you.")]
+        [SerializeField] private Vector3 _viewDirection = new Vector3(0f, 0.05f, 1f);
+
+        [Tooltip("How far the camera's aim rises from the body's centre toward the head. 0 frames " +
+                 "the whole figure evenly, 1 stares at the face.")]
+        [SerializeField, Range(0f, 1f)] private float _faceBias = 0.5f;
         [SerializeField, Range(1f, 12f)] private float _minDistance = 1.6f;
         [SerializeField, Range(2f, 30f)] private float _maxDistance = 9f;
 
@@ -72,6 +85,7 @@ namespace PushStars.Fight
 
         private Animator _animator;
         private Transform[] _bones;
+        private Transform _head;
         private Vector3 _focus;
         private Vector3 _focusVelocity;
         private float _distance;
@@ -162,6 +176,7 @@ namespace PushStars.Fight
             _bones = new Transform[FrameBones.Length];
             for (int i = 0; i < FrameBones.Length; i++)
                 _bones[i] = _animator.GetBoneTransform(FrameBones[i]);
+            _head = _animator.GetBoneTransform(HumanBodyBones.Head);
         }
 
         /// <summary>Fits the camera around the bones that are actually posed this frame.</summary>
@@ -182,7 +197,24 @@ namespace PushStars.Fight
             if (found == 0) return;
 
             Vector3 centre = (min + max) * 0.5f;
-            float radius = Mathf.Max(0.25f, Vector3.Distance(min, max) * 0.5f);
+
+            // Aim: lifted from the body's centre toward the head. This is what makes the shot
+            // descend into the plank on its own — standing, the head is far above the centre and
+            // the camera settles around chest height, which frames a whole figure; prone, head and
+            // centre are within a hand's width of each other and both near the floor, so the same
+            // rule puts the lens level with the face. No second camera position, and nothing that
+            // has to know which pose the body is in.
+            Vector3 aim = centre;
+            if (_head != null) aim.y = Mathf.Lerp(centre.y, _head.position.y, _faceBias);
+
+            // Radius measured from the AIM, not across the box: aiming away from the centre and
+            // still fitting a sphere around the centre is how a foot ends up out of frame.
+            float radius = 0.25f;
+            foreach (var bone in _bones)
+            {
+                if (bone == null) continue;
+                radius = Mathf.Max(radius, Vector3.Distance(bone.position, aim));
+            }
 
             // Distance that fits a sphere of that radius in the NARROWER of the two FOVs - in
             // portrait that is the horizontal one, which is exactly the axis a prone body fills.
@@ -194,17 +226,17 @@ namespace PushStars.Fight
             if (!_framed)
             {
                 _framed = true;
-                _focus = centre;
+                _focus = aim;
                 _distance = wanted;
             }
             else if (_easeTime > 0f)
             {
-                _focus = Vector3.SmoothDamp(_focus, centre, ref _focusVelocity, _easeTime);
+                _focus = Vector3.SmoothDamp(_focus, aim, ref _focusVelocity, _easeTime);
                 _distance = Mathf.SmoothDamp(_distance, wanted, ref _distanceVelocity, _easeTime);
             }
             else
             {
-                _focus = centre;
+                _focus = aim;
                 _distance = wanted;
             }
 
