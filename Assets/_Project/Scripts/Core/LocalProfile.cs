@@ -17,6 +17,8 @@ namespace PushStars.Core
         private const string KeyBestReps  = "profile.best_reps";
         private const string KeyTotalReps = "profile.total_reps";
         private const string KeySeeded    = "profile.seeded";
+        private const string KeyWins      = "profile.wins";
+        private const string KeyLosses    = "profile.losses";
 
         public static int Trophies
         {
@@ -38,6 +40,24 @@ namespace PushStars.Core
         }
 
         public static League League => Leagues.ForTrophies(Trophies);
+
+        public static int Wins
+        {
+            get => PlayerPrefs.GetInt(KeyWins, 0);
+            private set { PlayerPrefs.SetInt(KeyWins, Mathf.Max(0, value)); PlayerPrefs.Save(); }
+        }
+
+        public static int Losses
+        {
+            get => PlayerPrefs.GetInt(KeyLosses, 0);
+            private set { PlayerPrefs.SetInt(KeyLosses, Mathf.Max(0, value)); PlayerPrefs.Save(); }
+        }
+
+        public static int Games => Wins + Losses;
+
+        /// <summary>Win rate as a percentage, 0 before the first decided duel. A draw is not a
+        /// loss, so it stays out of the denominator rather than quietly dragging the number down.</summary>
+        public static int WinRatePercent => Games > 0 ? Mathf.RoundToInt(100f * Wins / Games) : 0;
 
         /// <summary>Puts the player on the ladder rung their level test earned. Idempotent: a second
         /// level test improves the best-set record but never re-seeds trophies the player has since
@@ -66,6 +86,8 @@ namespace PushStars.Core
         {
             if (draw) return 0;
 
+            if (win) Wins += 1; else Losses += 1;
+
             int delta = win
                 ? (ghost ? EconomyConfig.TrophyGhostWin : EconomyConfig.TrophyWin)
                 : -(ghost ? EconomyConfig.TrophyGhostLoss : EconomyConfig.TrophyLoss);
@@ -82,6 +104,8 @@ namespace PushStars.Core
             PlayerPrefs.DeleteKey(KeyBestReps);
             PlayerPrefs.DeleteKey(KeyTotalReps);
             PlayerPrefs.DeleteKey(KeySeeded);
+            PlayerPrefs.DeleteKey(KeyWins);
+            PlayerPrefs.DeleteKey(KeyLosses);
             PlayerPrefs.Save();
         }
     }

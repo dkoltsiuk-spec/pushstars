@@ -1,5 +1,4 @@
 using UnityEngine;
-using UnityEngine.UI;
 using TMPro;
 using PushStars.CV;
 using PushStars.CV.AntiCheat;
@@ -7,11 +6,15 @@ using PushStars.CV.AntiCheat;
 namespace PushStars.Fight
 {
     /// <summary>
-    /// The duel HUD (phase 08.9) — the product replacement for the IMGUI debug HUD in the fight
-    /// flow: big player rep counter, boss counter, countdown timer, FORM readout, a guidance
-    /// banner (why counting is paused), and the 3-2-1 countdown. Audio feedback carries over
-    /// from the tuning HUD unchanged: the user can't watch the screen from a plank, so the
-    /// 880Hz rep beep and the veto buzz stay the primary confirmation channel.
+    /// The duel HUD: the screen is split between the two fighters — opponent above, player below —
+    /// and each half carries its own rep count, FORM and tempo over its own body. The timer sits on
+    /// the seam between them, where both can be read without moving your eyes off either.
+    ///
+    /// <para>A level test has no opponent, so <see cref="ConfigureSolo"/> hides that half entirely
+    /// rather than parking a zero there for a minute.</para>
+    ///
+    /// <para>Audio feedback carries over from the tuning HUD unchanged: the user cannot watch the
+    /// screen from a plank, so the 880Hz rep beep and the veto buzz stay the primary channel.</para>
     ///
     /// All references are wired by the FightSceneSetup editor tool; this component only mutates
     /// what it's given.
@@ -20,14 +23,22 @@ namespace PushStars.Fight
     {
         public enum BannerTone { Warn, Good }
 
-        [Header("Score row")]
-        [SerializeField] private TextMeshProUGUI _playerReps;
-        [SerializeField] private TextMeshProUGUI _form;
-        [SerializeField] private TextMeshProUGUI _timer;
-        [SerializeField] private TextMeshProUGUI _bossName;
-        [SerializeField] private TextMeshProUGUI _bossReps;
+        [Header("Opponent half (top)")]
+        [SerializeField] private GameObject _opponentPanel;
+        [SerializeField] private TextMeshProUGUI _opponentName;
+        [SerializeField] private TextMeshProUGUI _opponentReps;
+        [SerializeField] private TextMeshProUGUI _opponentForm;
+        [SerializeField] private TextMeshProUGUI _opponentTempo;
 
-        [Header("Guidance")]
+        [Header("Player half (bottom)")]
+        [SerializeField] private GameObject _playerPanel;
+        [SerializeField] private TextMeshProUGUI _playerName;
+        [SerializeField] private TextMeshProUGUI _playerReps;
+        [SerializeField] private TextMeshProUGUI _playerForm;
+        [SerializeField] private TextMeshProUGUI _playerTempo;
+
+        [Header("Shared")]
+        [SerializeField] private TextMeshProUGUI _timer;
         [SerializeField] private GameObject _bannerRoot;
         [SerializeField] private TextMeshProUGUI _bannerText;
         [SerializeField] private TextMeshProUGUI _countdown;
@@ -47,6 +58,9 @@ namespace PushStars.Fight
         private float _goFlashUntil;
         private Vector3 _playerRepsBaseScale = Vector3.one;
         private float _playerRepsPopTime = -10f;
+        /// <summary>Whether this set has an opponent at all. A level test must not get
+        /// its empty half back when the scoreboards are re-shown.</summary>
+        private bool _showOpponent = true;
 
         private void Awake()
         {
@@ -103,39 +117,60 @@ namespace PushStars.Fight
             }
         }
 
-        // ── Layout modes ────────────────────────────────────────────────────────────────────────────
+        // ── Layout modes ─────────────────────────────────────────────────────────────────────────
 
-        /// <summary>Two counters, ours and theirs.</summary>
-        public void ConfigureDuel(string opponentName)
+        /// <summary>Two fighters, two counters.</summary>
+        public void ConfigureDuel(string opponentName, string playerName)
         {
-            if (_bossName != null) { _bossName.gameObject.SetActive(true); _bossName.text = opponentName; }
-            if (_bossReps != null) { _bossReps.gameObject.SetActive(true); _bossReps.text = "0"; }
+            _showOpponent = true;
+            if (_opponentPanel != null) _opponentPanel.SetActive(true);
+            SetText(_opponentName, opponentName);
+            SetText(_opponentReps, "0");
+            SetText(_playerName, playerName);
+            SetText(_playerReps, "0");
         }
 
-        /// <summary>Level test: there is no opponent, so the right-hand counter would just be a
-        /// zero staring at the player for a minute. The caption stays — it tells them what this
-        /// screen is — and the count goes.</summary>
+        /// <summary>Level test: there is no opponent, so the whole upper half goes rather than
+        /// standing empty for a minute. The caption says what the screen is instead.</summary>
         public void ConfigureSolo(string caption)
         {
-            if (_bossName != null) { _bossName.gameObject.SetActive(true); _bossName.text = caption; }
-            if (_bossReps != null) _bossReps.gameObject.SetActive(false);
+            _showOpponent = false;
+            if (_opponentPanel != null) _opponentPanel.SetActive(false);
+            SetText(_playerName, caption);
+            SetText(_playerReps, "0");
         }
 
-        // ── Score row ────────────────────────────────────────────────────────────────────────────
-        public void SetBossName(string name) { if (_bossName != null) _bossName.text = name; }
-        public void SetPlayerReps(int reps)  { if (_playerReps != null) _playerReps.text = reps.ToString(); }
-        public void SetBossReps(int reps)    { if (_bossReps != null) _bossReps.text = reps.ToString(); }
+        /// <summary>Hides both scoreboards while the ready card is up. The card shows the same
+        /// fighters from the same angle, and a row of zeros behind it reads as a duel already in
+        /// progress and lost.</summary>
+        public void SetScoresVisible(bool visible)
+        {
+            if (_opponentPanel != null) _opponentPanel.SetActive(visible && _showOpponent);
+            if (_playerPanel != null) _playerPanel.SetActive(visible);
+        }
+
+        // ── Live values ──────────────────────────────────────────────────────────────────────────
+
+        public void SetPlayerReps(int reps) => SetText(_playerReps, reps.ToString());
+        public void SetOpponentReps(int reps) => SetText(_opponentReps, reps.ToString());
+
+        public void SetPlayerForm(float form) => SetText(_playerForm, $"{form:0}");
+        public void SetOpponentForm(float form) => SetText(_opponentForm, $"{form:0}");
+
+        /// <summary>Seconds per rep, which is how a lifter thinks about pace — reps per minute is a
+        /// number you have to divide before it means anything mid-set.</summary>
+        public void SetPlayerTempo(float repsPerMinute) => SetText(_playerTempo, TempoText(repsPerMinute));
+        public void SetOpponentTempo(float secondsPerRep) =>
+            SetText(_opponentTempo, secondsPerRep > 0.01f ? $"{secondsPerRep:0.0}с" : "—");
+
+        private static string TempoText(float repsPerMinute)
+            => repsPerMinute > 0.01f ? $"{60f / repsPerMinute:0.0}с" : "—";
 
         public void SetTimer(int seconds)
         {
             if (_timer == null) return;
             _timer.text = $"{seconds / 60}:{seconds % 60:00}";
             _timer.color = seconds <= 10 ? VetoColor : Color.white;
-        }
-
-        public void SetForm(float form)
-        {
-            if (_form != null) _form.text = $"FORM {form:0}";
         }
 
         // ── Guidance banner ──────────────────────────────────────────────────────────────────────
@@ -182,6 +217,11 @@ namespace PushStars.Fight
         {
             _goFlashUntil = 0f;
             if (_countdown != null) _countdown.gameObject.SetActive(false);
+        }
+
+        private static void SetText(TextMeshProUGUI label, string text)
+        {
+            if (label != null) label.text = text;
         }
 
         // ── Procedural clips (same recipe as the debug HUD — no audio assets) ────────────────────

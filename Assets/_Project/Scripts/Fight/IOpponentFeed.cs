@@ -15,6 +15,18 @@ namespace PushStars.Fight
         string DisplayName { get; }
         int Reps { get; }
 
+        /// <summary>Total reps this opponent will do across the duel. Shown on the ready card as
+        /// the target — for a ghost it is the player's own record, which they already know, and
+        /// knowing what it takes to win is the point of the screen.</summary>
+        int ExpectedReps { get; }
+
+        /// <summary>Mean FORM (0..100) of the set being replayed, 0 when the opponent has none to
+        /// report. A scripted boss does not — it has no technique, only a timeline.</summary>
+        float FormPercent { get; }
+
+        /// <summary>Mean seconds per rep, 0 when unknown.</summary>
+        float SecondsPerRep { get; }
+
         /// <summary>Raised with the new total each time the opponent completes a rep.</summary>
         event Action<int> OnRep;
 

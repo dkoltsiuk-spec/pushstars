@@ -5,37 +5,48 @@ using PushStars.UI;
 namespace PushStars.Fight
 {
     /// <summary>
-    /// The body on the fight screen. Instantiates the player's chosen character, hands it the
-    /// push-up controller, binds it to <see cref="PushupAvatarDriver"/> (which scrubs the push-up
-    /// clip with the CV depth signal), and keeps the stage camera framed on it.
+    /// One body on the fight screen. Instantiates the player's chosen character, hands it the
+    /// push-up controller, binds it to whichever <see cref="IAvatarAnimator"/> is driving it, and
+    /// keeps its stage camera framed on it.
+    ///
+    /// <para>Used twice: once for the player, driven by <see cref="PushupAvatarDriver"/> off the CV
+    /// depth signal, and once for the opponent, driven by <see cref="GhostAvatarDriver"/> off the
+    /// recording. Everything else about the two is identical, which is the point — the duel screen
+    /// shows two bodies doing the same exercise, and only the source of the movement differs.</para>
     ///
     /// <para><b>Why this and not <see cref="CharacterRoster"/>.</b> The menu stage shows a standing
-    /// hero and only ever needs idle clips, so its controller has no push-up state and its camera
-    /// is framed once, for a standing figure. Here the character spends the duel prone and moving,
-    /// and the controller has to carry the clip the driver scrubs. The two screens share the
-    /// character, the saved gender and the render-to-UI trick; they do not share the rig setup.</para>
+    /// hero and only ever needs idle clips, so its controller has no push-up state and its camera is
+    /// framed once, for a standing figure. Here the character spends the duel prone and moving, and
+    /// the controller has to carry the clip the driver scrubs.</para>
     ///
     /// <para><b>Framing follows the bones, not the mesh.</b> A standing figure and a figure in a
     /// plank need very different shots, and this project has already been bitten by skinned-mesh
     /// bounds that do not track the pose. Humanoid bone positions always do, so the camera fits
-    /// itself to a handful of them and eases toward the target — the shot pulls in as the player
-    /// drops into the plank without anybody tuning two camera positions by hand.</para>
+    /// itself to a handful of them and eases toward the target — the shot pulls in as the body drops
+    /// into the plank without anybody tuning two camera positions by hand.</para>
     /// </summary>
     public sealed class FightAvatar : MonoBehaviour
     {
         [Header("Bindings")]
-        [SerializeField] private PushupSession _session;
-        [SerializeField] private PushupAvatarDriver _driver;
+        [Tooltip("Component driving this body. Must implement IAvatarAnimator.")]
+        [SerializeField] private MonoBehaviour _driverBehaviour;
         [SerializeField] private Camera _stageCamera;
-        [Tooltip("Transform the instantiated body is parented to. Faces the stage camera.")]
+        [Tooltip("Transform the instantiated body is parented to.")]
         [SerializeField] private Transform _avatarRoot;
 
         [Header("Bodies")]
         [SerializeField] private GameObject _malePrefab;
         [SerializeField] private GameObject _femalePrefab;
 
-        [Tooltip("Controller carrying the states the driver plays: PushUp / WarriorIdle / SittingIdle.")]
+        [Tooltip("Controller carrying the states the drivers play: PushUp / WarriorIdle / SittingIdle.")]
         [SerializeField] private RuntimeAnimatorController _fightController;
+
+        [Header("Look")]
+        [Tooltip("Render this body as a dark silhouette. The ghost opponent IS the player's own " +
+                 "character, and two identical figures read as a bug rather than as a duel — the " +
+                 "shadow says whose reps those are without needing a second character.")]
+        [SerializeField] private bool _shadow;
+        [SerializeField] private Color _shadowTint = new Color(0.09f, 0.10f, 0.16f, 1f);
 
         [Header("Framing")]
         [Tooltip("Headroom around the character. 1 = the bones exactly touch the frame edges.")]
@@ -96,7 +107,7 @@ namespace PushStars.Fight
             }
 
             Character = Instantiate(prefab, _avatarRoot);
-            Character.name = prefab.name;
+            Character.name = prefab.name + (_shadow ? " (Shadow)" : "");
             Character.transform.localPosition = Vector3.zero;
             Character.transform.localRotation = Quaternion.identity;
             SetLayerRecursive(Character, _avatarRoot.gameObject.layer);
@@ -109,7 +120,7 @@ namespace PushStars.Fight
             }
 
             // The duel controller replaces the menu one: same rig, different clip set. Without it
-            // the driver's Animator.Play("PushUp") is a silent no-op and the body never moves.
+            // the drivers' Animator.Play("PushUp") is a silent no-op and the body never moves.
             if (_fightController != null) _animator.runtimeAnimatorController = _fightController;
             else Debug.LogWarning("[FightAvatar] No fight AnimatorController assigned - the push-up clip will not play.");
 
@@ -120,8 +131,30 @@ namespace PushStars.Fight
             _animator.applyRootMotion = false;
             _animator.cullingMode = AnimatorCullingMode.AlwaysAnimate;
 
+            if (_shadow) ApplyShadowTint();
+
             CacheBones();
-            if (_driver != null) _driver.Configure(_session, _animator);
+            if (_driverBehaviour is IAvatarAnimator driver) driver.BindAnimator(_animator);
+            else if (_driverBehaviour != null)
+                Debug.LogError($"[FightAvatar] {_driverBehaviour.GetType().Name} does not implement IAvatarAnimator.");
+        }
+
+        /// <summary>Darkens this body's materials on the instance only. <c>renderer.materials</c>
+        /// returns per-instance copies, so the prefab's shared materials — and the player's body
+        /// standing next to it — are untouched.</summary>
+        private void ApplyShadowTint()
+        {
+            foreach (var renderer in Character.GetComponentsInChildren<Renderer>(true))
+            {
+                var mats = renderer.materials;
+                foreach (var mat in mats)
+                {
+                    if (mat == null) continue;
+                    if (mat.HasProperty("_Color")) mat.SetColor("_Color", _shadowTint);
+                    if (mat.HasProperty("_BaseColor")) mat.SetColor("_BaseColor", _shadowTint);
+                }
+                renderer.materials = mats;
+            }
         }
 
         private void CacheBones()

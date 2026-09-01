@@ -8,7 +8,10 @@ using PushStars.CV.AntiCheat;
 namespace PushStars.Fight
 {
     /// <summary>
-    /// State machine of a 60-second set: WaitPlank → Countdown → Live → Finished.
+    /// State machine of a 60-second set: Ready → WaitPlank → Countdown → Live → Finished.
+    ///
+    ///   • Ready — the pre-duel card: both fighters, their records, and a button. Skipped by the
+    ///     level test, which has no opponent to size up.
     ///
     ///   • WaitPlank — the CV session runs, the HUD shows the "встань в планку" guidance
     ///     (same reason mapping the debug HUD proved on device). Nothing starts until
@@ -32,13 +35,15 @@ namespace PushStars.Fight
     /// </summary>
     public sealed class FightController : MonoBehaviour
     {
-        private enum Phase { WaitPlank, Countdown, Live, Finished }
+        private enum Phase { Ready, WaitPlank, Countdown, Live, Finished }
 
         [SerializeField] private PushupSession _session;
         [SerializeField] private BossOpponent _boss;
         [SerializeField] private GhostOpponent _ghost;
         [SerializeField] private FightHud _hud;
         [SerializeField] private FightResultScreen _result;
+        [Tooltip("Pre-duel card. Absent, or in a level test, the set starts straight away.")]
+        [SerializeField] private DuelReadyPanel _readyPanel;
         [SerializeField] private UnityEngine.UI.Button _exitButton;
         [Tooltip("Label on the exit button. Relabelled to ПРОПУСТИТЬ when a level test cannot start.")]
         [SerializeField] private TMPro.TextMeshProUGUI _exitLabel;
@@ -50,6 +55,9 @@ namespace PushStars.Fight
         [SerializeField] private UnityEngine.UI.Button _debugButton;
 
         private Phase _phase = Phase.WaitPlank;
+        /// <summary>The player's own label on the duel screens. A nickname system
+        /// arrives with PvP; until then the second fighter is simply "you".</summary>
+        private const string PlayerLabel = "ТЫ";
         private FightMode _mode;
         private IOpponentFeed _opponent;   // null in the level test
         private float _countdownEndTime;
@@ -85,6 +93,8 @@ namespace PushStars.Fight
 
             if (_session != null) _session.OnRep += HandleRep;
             if (_exitButton != null) _exitButton.onClick.AddListener(ExitToCaller);
+            if (_readyPanel != null) _readyPanel.OnReady += BeginSet;
+            ShowReadyOrStart();
             if (_debugButton != null) _debugButton.onClick.AddListener(ToggleDebugHud);
             SetDebugPanels(false);
         }
@@ -93,6 +103,7 @@ namespace PushStars.Fight
         {
             if (_session != null) _session.OnRep -= HandleRep;
             if (_exitButton != null) _exitButton.onClick.RemoveListener(ExitToCaller);
+            if (_readyPanel != null) _readyPanel.OnReady -= BeginSet;
             if (_debugButton != null) _debugButton.onClick.RemoveListener(ToggleDebugHud);
         }
 
@@ -136,8 +147,42 @@ namespace PushStars.Fight
                 return;
             }
 
-            _hud.ConfigureDuel(_opponent.DisplayName);
-            _hud.SetBossReps(0);
+            _hud.ConfigureDuel(_opponent.DisplayName, PlayerLabel);
+            _hud.SetOpponentForm(_opponent.FormPercent);
+            _hud.SetOpponentTempo(_opponent.SecondsPerRep);
+        }
+
+        /// <summary>A duel opens on the ready card; a level test has no opponent to size up, so it
+        /// goes straight to looking for the plank.</summary>
+        private void ShowReadyOrStart()
+        {
+            if (_mode == FightMode.LevelTest || _readyPanel == null)
+            {
+                _phase = Phase.WaitPlank;
+                return;
+            }
+
+            _phase = Phase.Ready;
+            _hud.HideBanner();
+            _hud.SetScoresVisible(false);
+
+            var me = new DuelReadyPanel.Side(PlayerLabel, LocalProfile.Trophies, LocalProfile.BestReps,
+                LocalProfile.Games > 0 ? LocalProfile.WinRatePercent : DuelReadyPanel.Side.Unknown);
+
+            // A ghost carries no ladder of its own: the trophies and win rate on that card would be
+            // the player's own numbers wearing someone else's name. Its record IS its reputation.
+            var them = new DuelReadyPanel.Side(_opponent.DisplayName, DuelReadyPanel.Side.Unknown,
+                _opponent.ExpectedReps, DuelReadyPanel.Side.Unknown);
+
+            _readyPanel.Show(me, them);
+        }
+
+        private void BeginSet()
+        {
+            if (_phase != Phase.Ready) return;
+            _phase = Phase.WaitPlank;
+            _hud.SetScoresVisible(true);
+            _sceneStartTime = Time.time; // the stuck-test timer starts when the set does
         }
 
         /// <summary>One tap shows the diagnostics — the tuning HUD and the camera preview with the
@@ -274,9 +319,10 @@ namespace PushStars.Fight
             if (_opponent != null)
             {
                 _opponent.Tick(elapsed);
-                _hud.SetBossReps(_opponent.Reps);
+                _hud.SetOpponentReps(_opponent.Reps);
             }
-            _hud.SetForm(_session.Form);
+            _hud.SetPlayerForm(_session.Form);
+            _hud.SetPlayerTempo(_session.TempoRpm);
 
             float remain = FightConfig.DuelDurationSec - elapsed;
             _hud.SetTimer(Mathf.Max(0, Mathf.CeilToInt(remain)));
@@ -350,19 +396,26 @@ namespace PushStars.Fight
 
             if (!ghost) BossCatalog.ReportResult(win);
 
-            _result.ShowDuel(win, draw, myReps, oppReps, xp, trophies,
-                             _opponent.DisplayName, newRecord);
+            _result.ShowDuel(win, draw, myReps, oppReps,
+                             AverageForm(), _opponent.FormPercent,
+                             _session.TempoRpm, _opponent.SecondsPerRep,
+                             xp, trophies, _opponent.DisplayName, PlayerLabel, newRecord);
+        }
+
+        /// <summary>Mean FORM across the reps that actually counted — the same list the ghost
+        /// record stores, so the number on the result screen and the number the shadow carries into
+        /// the next duel are the same number.</summary>
+        private float AverageForm()
+        {
+            if (_repForms.Count == 0) return 0f;
+            float sum = 0f;
+            foreach (float form in _repForms) sum += form;
+            return sum / _repForms.Count;
         }
 
         private GhostRecord NewRecord(string source)
         {
-            float avgForm = 0f;
-            if (_repForms.Count > 0)
-            {
-                foreach (float f in _repForms) avgForm += f;
-                avgForm /= _repForms.Count;
-            }
-            return GhostRecord.From(_repTimes.ToArray(), avgForm, source);
+            return GhostRecord.From(_repTimes.ToArray(), AverageForm(), source);
         }
 
         private void ExitToCaller()

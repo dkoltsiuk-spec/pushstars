@@ -21,7 +21,7 @@ namespace PushStars.CV
     /// Throwaway debug component like <see cref="PushupDebugHud"/> — the production character
     /// will get a proper controller; this proves the sync concept.
     /// </summary>
-    public sealed class PushupAvatarDriver : MonoBehaviour
+    public sealed class PushupAvatarDriver : MonoBehaviour, IAvatarAnimator
     {
         public enum AvatarMode { Idle = 0, Pushup = 1, Rest = 2 }
 
@@ -69,6 +69,16 @@ namespace PushStars.CV
         public void Configure(PushupSession session, Animator animator)
         {
             _session = session;
+            _animator = animator;
+            _started = false;
+            Mode = AvatarMode.Idle;
+            RehashStates();
+        }
+
+        /// <summary>Late binding of the body, for a character instantiated after the scene loaded.
+        /// The session is serialized (it is a scene object); only the Animator arrives late.</summary>
+        public void BindAnimator(Animator animator)
+        {
             _animator = animator;
             _started = false;
             Mode = AvatarMode.Idle;

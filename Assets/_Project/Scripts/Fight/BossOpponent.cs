@@ -16,6 +16,16 @@ namespace PushStars.Fight
         public string DisplayName => _profile != null ? _profile.DisplayName : "БОСС";
         public int Reps { get; private set; }
 
+        public int ExpectedReps => _profile != null ? _profile.RepTimes.Count : 0;
+
+        /// <summary>A scripted boss has no technique to report, only a timeline.</summary>
+        public float FormPercent => 0f;
+
+        public float SecondsPerRep =>
+            _profile != null && _profile.RepTimes.Count > 0
+                ? FightConfig.DuelDurationSec / (float)_profile.RepTimes.Count
+                : 0f;
+
         public event Action<int> OnRep;
 
         /// <summary>Called by the controller on scene start with the ladder's current boss.</summary>
