@@ -13,7 +13,9 @@ namespace PushStars.Editor
     ///   badge_*.png        →  9-slice Sprite, border 12 px, Bilinear filter
     ///   icon_sm_*.png      →  Simple Sprite,  no border,   Bilinear filter (≤64 px)
     ///   icon_*.png         →  Simple Sprite,  no border,   Bilinear filter (128 px)
-    ///   bg_*.png           →  Simple Sprite,  no border,   Bilinear filter (full-screen)
+    ///   bg_*.png, *_bg.png →  Simple Sprite,  no border,   Bilinear filter (full-screen)
+    ///   bar_*.png          →  3-slice Sprite, caps only,  @3x export (loading bar)
+    ///   onb_*.png          →  Simple Sprite,  no border,   @3x export (onboarding art)
     ///   ring_*.png         →  Simple Sprite,  no border,   Bilinear filter (rotating ring)
     ///   (any other name)   →  Simple Sprite,  no border,   Bilinear filter
     ///
@@ -58,6 +60,34 @@ namespace PushStars.Editor
                       "Re-run  Tools → Push Stars → Setup UI Gallery  to update prefabs.");
         }
 
+        /// <summary>
+        /// Loads a UI sprite, fixing its import settings first if the PNG has only ever been
+        /// imported as a plain texture.
+        ///
+        /// <para>This project is in 3D mode, so a Figma export dropped into the sprites folder
+        /// arrives as a Texture. Asking for a Sprite it was never imported as returns null with
+        /// nothing to say why — a blank space in a built screen and no error anywhere. Every scene
+        /// tool goes through here rather than through AssetDatabase, so dropping a file in and
+        /// running a build tool is the whole workflow.</para>
+        /// </summary>
+        public static Sprite Load(string assetPath)
+        {
+            var sprite = AssetDatabase.LoadAssetAtPath<Sprite>(assetPath);
+            if (sprite != null) return sprite;
+
+            if (!File.Exists(assetPath))
+            {
+                Debug.LogWarning($"[SpriteImporter] Missing sprite: {assetPath}");
+                return null;
+            }
+
+            ConfigureSingle(assetPath);
+            sprite = AssetDatabase.LoadAssetAtPath<Sprite>(assetPath);
+            if (sprite == null)
+                Debug.LogWarning($"[SpriteImporter] {assetPath} exists but would not load as a Sprite.");
+            return sprite;
+        }
+
         /// <summary>Configures a single PNG at <paramref name="assetPath"/>.</summary>
         public static void ConfigureSingle(string assetPath)
         {
@@ -75,6 +105,18 @@ namespace PushStars.Editor
             foreach (var prefix in SkipPrefixes)
                 if (filename.StartsWith(prefix)) return true;
             return false;
+        }
+
+        /// <summary>Pixel height straight out of the PNG's header. The imported texture cannot be
+        /// asked: an earlier pass may already have clamped it to a maxTextureSize, and a border
+        /// measured against a clamped height is wrong for the source it is stored against.</summary>
+        static int PngHeight(string path)
+        {
+            using var fs = File.OpenRead(path);
+            var head = new byte[24];
+            if (fs.Read(head, 0, 24) < 24) return 0;
+            // IHDR: width at byte 16, height at byte 20, both big-endian.
+            return (head[20] << 24) | (head[21] << 16) | (head[22] << 8) | head[23];
         }
 
         static void ApplySettings(string path, string name)
@@ -142,6 +184,30 @@ namespace PushStars.Editor
                 importer.filterMode   = FilterMode.Bilinear;
                 settings.spriteBorder = Vector4.zero;
             }
+            // The loading bar's own art, once it has been exported rather than generated. It
+            // stretches horizontally and never vertically, so only the caps are sliced: a top or
+            // bottom border would resample the gradient down its height into one repeated row.
+            // The cap is half the source height — the radius a capsule end has by definition — and
+            // the sprite is read at 3× because these are @3x exports, which is also what keeps that
+            // border at the radius it was drawn with instead of three times it.
+            else if (name.StartsWith("bar_"))
+            {
+                importer.filterMode          = FilterMode.Bilinear;
+                importer.spritePixelsPerUnit = 300f;
+                float cap = PngHeight(path) * 0.5f;
+                settings.spriteBorder = new Vector4(cap, 0f, cap, 0f);
+            }
+            // Onboarding artwork, exported from Figma at @3x. Read back at ppu 300, which is what
+            // makes Image.SetNativeSize hand back the size the element has in the comp instead of
+            // three times it — the layout can then be written in the design's own numbers. The
+            // matching maxTextureSize below has to leave them alone for that to hold: a clamp
+            // shrinks the sprite's rect while the ppu stays, and every native size shrinks with it.
+            else if (name.StartsWith("onb_"))
+            {
+                importer.filterMode          = FilterMode.Bilinear;
+                importer.spritePixelsPerUnit = 300f;
+                settings.spriteBorder        = Vector4.zero;
+            }
             else if (name.StartsWith("icon_sm_"))
             {
                 // Bilinear — small icons still need smooth scaling on Retina displays.
@@ -162,8 +228,13 @@ namespace PushStars.Editor
             // Both are GPU-native compressed formats: look identical to PNG at runtime
             // but take 4-8x less memory and load faster.
             // maxTextureSize: bg images cap at 2048, icons at 512 (enough for 3x Retina).
-            bool isBg = name.StartsWith("bg_") || name == "bg";
-            int  maxSize = isBg ? 2048 : 512;
+            // Full-screen art is matched at either end of the name: the convention is bg_*, but
+            // a Figma export arrives named for its screen first (loading_bg), and capping that at
+            // the icon size resamples a whole background down to 512 px.
+            bool isBg = name.StartsWith("bg_") || name.EndsWith("_bg") || name == "bg";
+            int  maxSize = isBg ? 2048
+                         : name.StartsWith("bar_") || name.StartsWith("onb_") ? 1024
+                         : 512;
 
             importer.SetPlatformTextureSettings(new TextureImporterPlatformSettings
             {
