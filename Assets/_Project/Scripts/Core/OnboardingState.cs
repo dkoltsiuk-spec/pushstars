@@ -17,6 +17,7 @@ namespace PushStars.Core
         private const string KeyIntroSeen     = "onboarding.intro_seen";
         private const string KeyLevelTestDone = "onboarding.level_test_done";
         private const string KeyLevelTestReps = "onboarding.level_test_reps";
+        private const string KeyLevelTestSkipped = "onboarding.level_test_skipped";
 
         /// <summary>The intro pages have been read through to the end.</summary>
         public static bool IntroSeen
@@ -27,6 +28,20 @@ namespace PushStars.Core
 
         /// <summary>The level test has been completed at least once.</summary>
         public static bool LevelTestDone => PlayerPrefs.GetInt(KeyLevelTestDone, 0) != 0;
+
+        /// <summary>
+        /// The player asked to take the level test later rather than refusing it.
+        ///
+        /// <para>Separate from <see cref="LevelTestDone"/> because it means something different:
+        /// done carries a result, skipped carries none. Without the distinction the router has only
+        /// two moves — send them to a maximum-effort set they already declined, on every launch, or
+        /// mark an untaken test as taken and give them a level they never earned.</para>
+        /// </summary>
+        public static bool LevelTestSkipped
+        {
+            get => PlayerPrefs.GetInt(KeyLevelTestSkipped, 0) != 0;
+            set { PlayerPrefs.SetInt(KeyLevelTestSkipped, value ? 1 : 0); PlayerPrefs.Save(); }
+        }
 
         /// <summary>Reps scored in the level test (0 before it is taken).</summary>
         public static int LevelTestReps => PlayerPrefs.GetInt(KeyLevelTestReps, 0);
@@ -41,6 +56,8 @@ namespace PushStars.Core
         {
             PlayerPrefs.SetInt(KeyLevelTestDone, 1);
             PlayerPrefs.SetInt(KeyLevelTestReps, Mathf.Max(0, reps));
+            // A taken test outranks a postponed one: the flag has nothing left to postpone.
+            PlayerPrefs.DeleteKey(KeyLevelTestSkipped);
             PlayerPrefs.Save();
         }
 
@@ -52,6 +69,7 @@ namespace PushStars.Core
             PlayerPrefs.DeleteKey(KeyIntroSeen);
             PlayerPrefs.DeleteKey(KeyLevelTestDone);
             PlayerPrefs.DeleteKey(KeyLevelTestReps);
+            PlayerPrefs.DeleteKey(KeyLevelTestSkipped);
             PlayerPrefs.Save();
             GhostStore.Clear();
         }

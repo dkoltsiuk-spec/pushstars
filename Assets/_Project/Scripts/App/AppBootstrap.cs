@@ -31,9 +31,10 @@ namespace PushStars.App
         [SerializeField] private string _mainSceneName = "Main";
         [SerializeField] private LoadingScreen _loading;
 
-        [Tooltip("Shortest time the loading screen stays up, so a fast launch is not a flash of " +
-                 "logo. Real work longer than this is never cut short.")]
-        [SerializeField, Range(0f, 4f)] private float _minVisibleSec = 1.2f;
+        [Tooltip("Shortest time the loading screen stays up, so a launch that finishes in 100 ms " +
+                 "is not a flash of artwork. The bar is paced to the same number, so it is still " +
+                 "moving for the whole wait. Real work longer than this is never cut short.")]
+        [SerializeField, Range(0f, 4f)] private float _minVisibleSec = 1.5f;
 
         [Tooltip("Upper bound on the frame rate. The display's own refresh rate wins when it is " +
                  "lower, so a 60Hz panel gets 60 and a 120Hz one is still held here.")]
@@ -56,6 +57,12 @@ namespace PushStars.App
             Screen.sleepTimeout = SleepTimeout.NeverSleep;
             ApplyFrameRate(_maxFrameRate);
             _startTime = Time.realtimeSinceStartup;
+
+            // One number decides how long a launch looks like it takes, and it lives here because
+            // this is what actually holds the screen. Told the same figure, the bar spends the
+            // whole hold travelling: on a machine where every service answers instantly the app
+            // still shows a full sweep rather than a flash and a bar already at the end.
+            _loading?.PaceOver(_minVisibleSec);
 
             // Up before anything else, and it outlives every scene load — the first screen is
             // exactly where a performance problem has to be measurable, not just felt.
@@ -159,7 +166,10 @@ namespace PushStars.App
             if (!OnboardingState.IntroSeen)
                 return FightConfig.OnboardingSceneName;
 
-            if (!OnboardingState.LevelTestDone)
+            // Postponed counts as answered. A player who tapped SKIP has said no to a
+            // maximum-effort set today; asking again every single launch is how they stop opening
+            // the app at all. The test is offered again from the main screen instead.
+            if (!OnboardingState.LevelTestDone && !OnboardingState.LevelTestSkipped)
             {
                 FightRequest.LevelTest(_mainSceneName);
                 return FightConfig.FightSceneName;

@@ -165,6 +165,14 @@ namespace PushStars.Editor
                 arr.GetArrayElementAtIndex(i).objectReferenceValue = items[i];
         }
 
+        public static void SetIntArray(SerializedObject so, string property, int[] items)
+        {
+            var arr = so.FindProperty(property);
+            arr.arraySize = items.Length;
+            for (int i = 0; i < items.Length; i++)
+                arr.GetArrayElementAtIndex(i).intValue = items[i];
+        }
+
         public static void SetStringArray(SerializedObject so, string property, string[] items)
         {
             var arr = so.FindProperty(property);
