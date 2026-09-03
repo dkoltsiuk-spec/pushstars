@@ -88,14 +88,6 @@ namespace PushStars.CV
                  "them back to idle rather than dropping them.")]
         [SerializeField, Range(0.05f, 1.5f)] private float _skeletonBlendSec = 0.35f;
 
-        [Header("Calibration")]
-        [Tooltip("Zero the mirror on the stance the person is actually standing in, captured the " +
-                 "moment the whole skeleton first holds still, and drive the body by the difference " +
-                 "from it. Off, the reference is the rig's own rest pose, and standing normally " +
-                 "already reads as a deviation from it: a rig whose legs rest apart gets its thighs " +
-                 "pulled together the moment a real pair of nearly-vertical ones is mapped onto it.")]
-        [SerializeField] private bool _calibrateToStance = true;
-
         [Header("Hybrid handoff (owner's flow: mirror until the plank arms, then the animation)")]
         [Tooltip("When the session ARMS, the mirror blends OUT over this time and the Animator " +
                  "(push-up scrub, PushupAvatarDriver) takes the body; on disarm it blends back in. " +
@@ -125,8 +117,7 @@ namespace PushStars.CV
             public PoseLandmark LmA, LmB;
             public Quaternion RestRotInRoot;
             public Vector3 RestDirInRoot;
-            public Vector3 NeutralDir;
-            public Quaternion NeutralRotInRoot;
+            public Vector3 StandDirInRoot;
             public Vector3 SmoothedDir;
             public bool HasDir;
         }
@@ -143,9 +134,6 @@ namespace PushStars.CV
 
         private float _wholeSince = -1f;
         private bool _limbsReady;
-        private bool _calibrated;
-        private Quaternion _neutralHips = Quaternion.identity;
-        private Quaternion _neutralHipsRotInRoot = Quaternion.identity;
 
         private Segment[] _segments;
         private Transform _root;
@@ -215,6 +203,10 @@ namespace PushStars.CV
                 if (bone == null || child == null) continue;
                 Vector3 restDir = invRoot * (child.position - bone.position);
                 if (restDir.sqrMagnitude < 1e-8f) continue;
+                bool isArm = d.parent == HumanBodyBones.LeftUpperArm
+                          || d.parent == HumanBodyBones.LeftLowerArm
+                          || d.parent == HumanBodyBones.RightUpperArm
+                          || d.parent == HumanBodyBones.RightLowerArm;
                 list.Add(new Segment
                 {
                     Bone = bone,
@@ -222,6 +214,7 @@ namespace PushStars.CV
                     LmB = d.b,
                     RestRotInRoot = invRoot * bone.rotation,
                     RestDirInRoot = restDir.normalized,
+                    StandDirInRoot = StandingDirection(restDir.normalized, isArm),
                     SmoothedDir = restDir.normalized,
                     HasDir = false,
                 });
@@ -286,7 +279,6 @@ namespace PushStars.CV
             if (limbsReady && !_limbsReady && _segments != null)
             {
                 for (int i = 0; i < _segments.Length; i++) _segments[i].HasDir = false;
-                if (_calibrateToStance) Calibrate(in frame);
             }
             _limbsReady = limbsReady;
 
@@ -331,9 +323,7 @@ namespace PushStars.CV
                     _hipsSmoothedRight = Vector3.Slerp(_hipsSmoothedRight, right.normalized, k);
                     if (TorsoRotation(_hipsSmoothedRight, _hipsSmoothedUp, out var torso))
                     {
-                        Quaternion target = _calibrated
-                            ? rootRot * (torso * Quaternion.Inverse(_neutralHips)) * _neutralHipsRotInRoot
-                            : rootRot * torso * _hipsRestRotInRoot;
+                        Quaternion target = rootRot * torso * _hipsRestRotInRoot;
                         _hips.rotation = Quaternion.Slerp(NeutralHips(rootRot), target, w);
                     }
                 }
@@ -353,9 +343,8 @@ namespace PushStars.CV
                 seg.SmoothedDir = seg.HasDir ? Vector3.Slerp(seg.SmoothedDir, dir, k) : dir;
                 seg.HasDir = true;
 
-                Quaternion target = _calibrated
-                    ? rootRot * Swing(seg.NeutralDir, seg.SmoothedDir) * seg.NeutralRotInRoot
-                    : rootRot * Swing(seg.RestDirInRoot, seg.SmoothedDir) * seg.RestRotInRoot;
+                Quaternion target =
+                    rootRot * Swing(seg.RestDirInRoot, seg.SmoothedDir) * seg.RestRotInRoot;
                 seg.Bone.rotation = Quaternion.Slerp(NeutralBone(in seg, rootRot), target, w);
             }
 
@@ -371,59 +360,6 @@ namespace PushStars.CV
             pose.bodyRotation = Quaternion.identity;
             handler.SetHumanPose(ref pose);
             handler.Dispose();
-        }
-
-        /// <summary>
-        /// Zeroes the mirror on the stance the person is standing in right now.
-        ///
-        /// <para>Without it the reference is the rig's rest pose, and every difference between that
-        /// pose and a real body reads as movement the person is not making. The legs are the
-        /// obvious one: the rig rests with its thighs apart, a person standing normally has them
-        /// close to vertical, and swinging one onto the other pulls the knees together — which is
-        /// exactly what the level test showed. Captured here, standing normally maps onto the
-        /// character standing in its own idle stance, and only what the person actually does moves
-        /// it off that.</para>
-        ///
-        /// <para><b>A frozen frame of the idle, not the idle.</b> Both halves of the zero are taken
-        /// in one instant and never read again. Laying the deviation on a clip that keeps playing
-        /// was the previous attempt, and it crossed the animation with the person — the body did a
-        /// bit of both at once. Once the mirror has the body, the movement on screen is the
-        /// person's; the clip only ever said where they were standing when it started.</para>
-        ///
-        /// <para>Taken at the moment the whole skeleton first holds still, which is the one moment
-        /// this screen can be sure the person is in frame and settled. Re-taken every time the gate
-        /// re-opens: someone who walks out of shot and back has re-arranged themselves.</para>
-        /// </summary>
-        private void Calibrate(in PoseFrame frame)
-        {
-            // Both halves of the zero, taken in the same instant and never read again: the
-            // person's stance, and the character's. Nothing has written to the bones yet this
-            // frame, so what is read here is the idle clip and only the idle clip.
-            Quaternion invRoot = Quaternion.Inverse(_root.rotation);
-
-            for (int i = 0; i < _segments.Length; i++)
-            {
-                ref var seg = ref _segments[i];
-                Vector3 dir = MapDir(World(frame, seg.LmB) - World(frame, seg.LmA));
-                if (dir.sqrMagnitude < 1e-6f) return; // nothing usable — keep the rig's rest pose
-                seg.NeutralDir = dir.normalized;
-                seg.NeutralRotInRoot = invRoot * seg.Bone.rotation;
-            }
-
-            Vector3 up = MapDir(World(frame, PoseLandmark.LeftShoulder)
-                              + World(frame, PoseLandmark.RightShoulder)
-                              - World(frame, PoseLandmark.LeftHip)
-                              - World(frame, PoseLandmark.RightHip));
-            Vector3 right = MapDir(World(frame, PoseLandmark.RightShoulder)
-                                 - World(frame, PoseLandmark.LeftShoulder));
-            if (up.sqrMagnitude < 1e-6f || right.sqrMagnitude < 1e-6f) return;
-
-            Vector3 fwd = Vector3.Cross(right.normalized, up.normalized);
-            if (fwd.sqrMagnitude < 1e-6f) return;
-
-            if (!TorsoRotation(right.normalized, up.normalized, out _neutralHips)) return;
-            _neutralHipsRotInRoot = invRoot * _hips.rotation;
-            _calibrated = true;
         }
 
         /// <summary>Whether every joint the limbs are driven from is in shot at once — both ends of
@@ -451,11 +387,10 @@ namespace PushStars.CV
         /// mirror: the pose captured at calibration, or the rig's own rest pose before that.
         /// Absolute, so the body settles in the same place every time rather than wherever the
         /// last tracked frame happened to leave it.</summary>
-        private Quaternion NeutralHips(Quaternion rootRot)
-            => rootRot * (_calibrated ? _neutralHipsRotInRoot : _hipsRestRotInRoot);
+        private Quaternion NeutralHips(Quaternion rootRot) => rootRot * _hipsRestRotInRoot;
 
         private Quaternion NeutralBone(in Segment seg, Quaternion rootRot)
-            => rootRot * (_calibrated ? seg.NeutralRotInRoot : seg.RestRotInRoot);
+            => rootRot * Swing(seg.RestDirInRoot, seg.StandDirInRoot) * seg.RestRotInRoot;
 
         /// <summary>Puts the whole body in that stance. Written every frame it applies, so a body
         /// with nothing to follow stands still instead of holding a half-finished gesture.</summary>
@@ -471,6 +406,27 @@ namespace PushStars.CV
                 ref var seg = ref _segments[i];
                 if (seg.Bone != null) seg.Bone.rotation = NeutralBone(in seg, rootRot);
             }
+        }
+
+        /// <summary>
+        /// Where a limb points on a body that is simply standing: down, and a little out to its
+        /// own side.
+        ///
+        /// <para>This is the pose the character holds before anyone is tracked, and it exists
+        /// because the humanoid muscle-zero pose is not it. Zero is the middle of each muscle's
+        /// range, which is a body with bent elbows, soft knees and curled wrists — the twisted
+        /// stance the level test was standing in. Built through the same swing the live mirror
+        /// uses, so standing still and starting to track are the same pose from two sources
+        /// rather than two poses that have to be blended.</para>
+        ///
+        /// <para>Which way is "out" is read off the rest pose rather than assumed: an A-posed rig
+        /// already holds each limb on its own side, and the sign of that is all this needs.</para>
+        /// </summary>
+        private static Vector3 StandingDirection(Vector3 restDirInRoot, bool isArm)
+        {
+            float outward = Mathf.Sign(restDirInRoot.x == 0f ? 1f : restDirInRoot.x)
+                          * (isArm ? 0.16f : 0.06f);
+            return new Vector3(outward, -1f, 0f).normalized;
         }
 
         /// <summary>The rotation the torso is standing at. Flat, that is one angle - how far
