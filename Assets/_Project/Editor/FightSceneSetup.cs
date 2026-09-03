@@ -41,6 +41,9 @@ namespace PushStars.Editor
         const string PillSprite = "Assets/_Project/UI/Sprites/pill_capsule.png";
         const string CupSprite = "Assets/_Project/UI/Sprites/cup_.png";
         const string ClockSprite = "Assets/_Project/UI/Sprites/time.png";
+        /// <summary>The app's own ground — the dark blue with the glow up its middle that the main
+        /// screen stands on. The level test uses it rather than the arena: same app, one room.</summary>
+        const string MainBgSprite = "Assets/_Project/UI/Sprites/BG.png";
         const string BoltTopSprite = "Assets/_Project/UI/Sprites/bolt_corner_top.png";
         const string BoltBottomSprite = "Assets/_Project/UI/Sprites/bolt_corner_bottom.png";
         const string VsCoinSprite = "Assets/_Project/UI/Sprites/VS_for_serching.png";
@@ -176,6 +179,9 @@ namespace PushStars.Editor
             UiBuilder.Set(hudSO, "_soloTimer", soloRefs.Timer);
             UiBuilder.Set(hudSO, "_soloPauseOverlay", soloRefs.PauseOverlay);
             UiBuilder.Set(hudSO, "_playerHalf", playerHalf);
+            UiBuilder.Set(hudSO, "_opponentHalf", opponentHalf.gameObject);
+            UiBuilder.Set(hudSO, "_opponentStage", ghostStage.gameObject);
+            UiBuilder.Set(hudSO, "_timerPlate", hudRefs.TimerPlate);
             UiBuilder.Set(hudSO, "_soloCorners", cornerAccents);
             UiBuilder.Set(hudSO, "_session", session);
             hudSO.ApplyModifiedPropertiesWithoutUndo();
@@ -436,7 +442,7 @@ namespace PushStars.Editor
 
         struct HudRefs
         {
-            public GameObject OpponentPanel, PlayerPanel, BannerRoot;
+            public GameObject OpponentPanel, PlayerPanel, BannerRoot, TimerPlate;
             public TextMeshProUGUI OpponentName, OpponentReps, OpponentForm, OpponentTempo;
             public TextMeshProUGUI PlayerName, PlayerReps, PlayerForm, PlayerTempo;
             public TextMeshProUGUI Timer, BannerText, Countdown;
@@ -485,6 +491,7 @@ namespace PushStars.Editor
             var timerPlate = UiBuilder.Image(safe, "TimerPlate", new Color(0f, 0f, 0f, 0.55f));
             var pill = LoadSprite(PillSprite);
             if (pill != null) { timerPlate.sprite = pill; timerPlate.type = Image.Type.Sliced; }
+            refs.TimerPlate = timerPlate.gameObject;
             UiBuilder.Place(timerPlate.rectTransform, new Vector2(0.5f, SeamY), Vector2.zero,
                             new Vector2(104f, 38f));
             refs.Timer = UiBuilder.Text(timerPlate.rectTransform, "Timer", AppColors.TextPrimary,
@@ -529,39 +536,54 @@ namespace PushStars.Editor
         }
 
         /// <summary>
-        /// The two dark bolts that close in on the corners once the set is live.
+        /// Everything the level test puts behind the body: its own ground, and the two dark bolts
+        /// that close in on the corners once the set is live.
         ///
-        /// <para>Built on the canvas root rather than in the HUD, right above the backdrop: they
-        /// are scenery, and the body has to pass in front of them. Everything in the HUD draws over
-        /// the avatar's render, so a corner piece parked there would cut across the character on
-        /// any screen tall enough for the two to meet.</para>
+        /// <para><b>Its own ground, because a measurement is not a duel.</b> bg_fight is an arena
+        /// split red against blue down a jagged seam — two fighters' halves. There is only one
+        /// person here and no side to be on, so the test stands on the flat dark ground the rest
+        /// of the app uses, with the same blue wash under it that every onboarding page has.</para>
+        ///
+        /// <para>Built on the canvas root rather than in the HUD: this is scenery, and the body has
+        /// to pass in front of it. Everything in the HUD draws over the avatar's render, so a piece
+        /// parked there would cut across the character.</para>
         /// </summary>
         static CornerAccents BuildCornerAccents(RectTransform canvasRoot)
         {
-            var root = UiBuilder.Rect(canvasRoot, "LevelTestCorners");
+            var root = UiBuilder.Rect(canvasRoot, "LevelTestScenery");
             UiBuilder.Stretch(root);
+
+            var mainBg = LoadSprite(MainBgSprite);
+            var ground = UiBuilder.Image(root, "Backdrop",
+                                         mainBg != null ? Color.white : AppColors.BgDark);
+            if (mainBg != null) ground.sprite = mainBg;
+            UiBuilder.Stretch(ground.rectTransform);
+            ground.raycastTarget = false;
 
             var accents = root.gameObject.AddComponent<CornerAccents>();
             var so = new SerializedObject(accents);
             var list = so.FindProperty("_accents");
 
-            // Anchored into their own corners, at the art's own aspect, spanning the full width —
-            // which is how they are drawn: two pieces of one shape torn across the screen.
-            var pieces = new (string name, string sprite, Vector2 anchor, Vector2 size)[]
+            // Anchored into their own corners at the art's own aspect, and pushed outward past
+            // them: these are the corners darkening, not two shapes laid across the middle of the
+            // screen. The offset is what keeps them off the counter and off the body.
+            var pieces = new (string name, string sprite, Vector2 anchor, Vector2 offset, Vector2 size)[]
             {
-                ("BoltTop",    BoltTopSprite,    new Vector2(0f, 1f), new Vector2(390f, 443f)),
-                ("BoltBottom", BoltBottomSprite, new Vector2(1f, 0f), new Vector2(390f, 433f)),
+                ("BoltTop",    BoltTopSprite,    new Vector2(0f, 1f),
+                 new Vector2(-46f, 34f),  new Vector2(390f, 443f)),
+                ("BoltBottom", BoltBottomSprite, new Vector2(1f, 0f),
+                 new Vector2(46f, -34f),  new Vector2(390f, 433f)),
             };
 
             list.arraySize = pieces.Length;
             for (int i = 0; i < pieces.Length; i++)
             {
-                var (name, spritePath, anchor, size) = pieces[i];
+                var (name, spritePath, anchor, offset, size) = pieces[i];
                 var image = UiBuilder.Image(root, name, Color.white);
                 var sprite = LoadSprite(spritePath);
                 if (sprite != null) image.sprite = sprite;
                 image.raycastTarget = false;
-                UiBuilder.Place(image.rectTransform, anchor, Vector2.zero, size);
+                UiBuilder.Place(image.rectTransform, anchor, offset, size);
 
                 var group = image.gameObject.AddComponent<CanvasGroup>();
                 group.alpha = 0f;
@@ -572,7 +594,7 @@ namespace PushStars.Editor
             }
 
             so.ApplyModifiedPropertiesWithoutUndo();
-            root.gameObject.SetActive(false); // a duel has the backdrop's own bolts; this is the test's
+            root.gameObject.SetActive(false); // a duel keeps the arena; this is the test's own ground
             return accents;
         }
 

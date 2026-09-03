@@ -53,7 +53,7 @@ namespace PushStars.Editor
         /// </summary>
         private static readonly string[] SoftGradients =
             { "glow_radial", "glow_character", "ground_shadow", "onb_cam_points", "onb_cam_avatar",
-              "icon_lightning_bg", "bg_fight" };
+              "icon_lightning_bg", "bg_fight", "bg" };
 
         /// <summary>True for the glow sprites above. Also read by <see cref="UISpriteAtlasSetup"/>:
         /// a packed sprite is drawn from the atlas texture and takes the atlas's format, so one

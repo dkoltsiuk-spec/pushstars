@@ -56,6 +56,20 @@ namespace PushStars.Fight
                  "has the screen to itself and stands the body in the middle of it.")]
         [SerializeField] private RectTransform _playerHalf;
 
+        [Tooltip("The opponent's band, and the 3D stage that renders into it. A level test has no " +
+                 "opponent, so both go — the stage as well as the picture, or a camera nobody can " +
+                 "see keeps rendering a body nobody is fighting.")]
+        [SerializeField] private GameObject _opponentHalf;
+        [SerializeField] private GameObject _opponentStage;
+
+        [Tooltip("The duel's clock, on the seam between the two fighters. The level test has its " +
+                 "own down by the button that ends the set.")]
+        [SerializeField] private GameObject _timerPlate;
+
+        [Tooltip("Where the guidance banner sits in a level test, above the safe-area bottom. The " +
+                 "duel parks it in the player's half, which in this layout is across the body.")]
+        [SerializeField] private float _soloBannerY = 96f;
+
         [Tooltip("Anchors the player's band takes in a level test — the same shape, moved up, so " +
                  "the render texture's aspect still matches its rect and the body is not stretched.")]
         [SerializeField] private Vector2 _soloHalfAnchorY = new Vector2(0.17f, 0.65f);
@@ -98,9 +112,23 @@ namespace PushStars.Fight
             _beep = MakeTone("repBeep", 880f, 0.10f);
             _buzz = MakeTone("vetoBuzz", 220f, 0.25f, thirdHarmonic: true);
 
+            if (_bannerRoot != null && _bannerRoot.transform is RectTransform bannerRect)
+                _duelBannerY = bannerRect.anchoredPosition.y;
+
             // The duel layout until told otherwise — the scene opens on it, and a mode that never
             // configures anything still gets working labels rather than four silent nulls.
             UseDuelLabels();
+        }
+
+        /// <summary>Where the banner sat when the scene was built — the duel's place for it, kept
+        /// so switching back to a duel restores it without a second number to keep in step.</summary>
+        private float _duelBannerY;
+
+        private void SetBannerY(float y)
+        {
+            if (_bannerRoot == null) return;
+            if (_bannerRoot.transform is RectTransform rect)
+                rect.anchoredPosition = new Vector2(rect.anchoredPosition.x, y);
         }
 
         private void UseDuelLabels()
@@ -170,6 +198,10 @@ namespace PushStars.Fight
             if (_soloCorners != null) _soloCorners.gameObject.SetActive(false);
             if (_opponentPanel != null) _opponentPanel.SetActive(true);
             if (_playerPanel != null) _playerPanel.SetActive(true);
+            if (_opponentHalf != null) _opponentHalf.SetActive(true);
+            if (_opponentStage != null) _opponentStage.SetActive(true);
+            if (_timerPlate != null) _timerPlate.SetActive(true);
+            if (_bannerRoot != null) SetBannerY(_duelBannerY);
             SetText(_opponentName, opponentName);
             SetText(_opponentReps, "0");
             SetText(_playerName, playerName);
@@ -191,6 +223,13 @@ namespace PushStars.Fight
             _showOpponent = false;
             if (_opponentPanel != null) _opponentPanel.SetActive(false);
             if (_playerPanel != null) _playerPanel.SetActive(false);
+
+            // There is no second fighter, so nothing of one is left standing: not the band, not
+            // the stage rendering into it, not the clock that sat on the seam between them.
+            if (_opponentHalf != null) _opponentHalf.SetActive(false);
+            if (_opponentStage != null) _opponentStage.SetActive(false);
+            if (_timerPlate != null) _timerPlate.SetActive(false);
+            SetBannerY(_soloBannerY);
             if (_soloPanel != null) _soloPanel.SetActive(true);
             // On, but still off-screen at zero alpha: they arrive on the cue below, not with the
             // page. CornerAccents parks them there in Awake.

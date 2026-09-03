@@ -116,9 +116,12 @@ namespace PushStars.Fight
             if (_animator == null || _stageCamera == null) return;
 
             // Framed once regardless, so the shot starts on the body rather than wherever the
-            // scene's camera was authored — then held for as long as the mirror owns it.
+            // scene's camera was authored — then held for the whole mirror phase. The phase, not
+            // the limb weight: the anchor is moving the body from the moment it locks on, long
+            // before the limbs join, and a camera re-centring through that is the one thing that
+            // cancels the anchor.
             if (_framed && _holdFramingWhileMirroring != null
-                        && _holdFramingWhileMirroring.MirrorWeight > 0.5f) return;
+                        && _holdFramingWhileMirroring.MirrorPhase) return;
 
             FrameCharacter();
         }

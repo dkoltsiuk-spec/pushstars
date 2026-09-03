@@ -83,6 +83,8 @@ namespace PushStars.CV
         private int _medCount, _medHead;
 
         private bool _planeCaptured;
+        private Vector3 _baseScale = Vector3.one;
+        private bool _baseScaleTaken;
         private float _lastSampleTime = -1f;
         private float _stableSince = -1f;
         private float _lostSince = -1f;
@@ -253,7 +255,16 @@ namespace PushStars.CV
         {
             Vector3 hipWorld = _stageCamera.ViewportToWorldPoint(
                 new Vector3(_shownVp.x, _shownVp.y, _characterDistance));
-            _characterRoot.localScale = Vector3.one * _shownScale;
+
+            // Against the body's own scale, not instead of it. The fight screen's characters are
+            // authored at 1.66, and writing Vector3.one * scale here threw that away and stood a
+            // body 40% short of the one every other screen shows.
+            if (!_baseScaleTaken)
+            {
+                _baseScale = _characterRoot.localScale;
+                _baseScaleTaken = true;
+            }
+            _characterRoot.localScale = _baseScale * _shownScale;
 
             if (_hipsBone != null)
             {
