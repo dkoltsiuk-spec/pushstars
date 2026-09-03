@@ -52,10 +52,10 @@ namespace PushStars.CV
         [SerializeField, Range(0f, 1f)] private float _minJointVis = 0.35f;
 
         [Header("What the camera drives")]
-        [Tooltip("Drive the limbs from the camera at all. Off, the body holds one clean stance " +
-                 "and only the anchor moves it - where you are and how far away, which are the " +
-                 "two things landmark data is actually solid about. Nothing that can twist.")]
-        [SerializeField] private bool _mirrorLimbs = false;
+        [Tooltip("Drive the limbs from the camera. Off, the body holds the stance it was " +
+                 "calibrated in and only the anchor moves it - where you are and how far away - " +
+                 "which is the half that cannot break. On is the point of the component.")]
+        [SerializeField] private bool _mirrorLimbs = true;
 
         [Tooltip("Swing the limbs in the plane of the screen and ignore the landmarks' depth. A " +
                  "world landmark's z at two metres is mostly noise, and it is what was turning " +
@@ -252,7 +252,7 @@ namespace PushStars.CV
             // humanoid neutral at bind, so a stopped Animator holds that stance - one clean pose
             // for the anchor to carry - and there is nothing underneath any more for the mirror to
             // be crossed with. It starts again on the arm, where the push-up scrub needs it.
-            if (_freezeClipWhileMirroring && _animator != null && _animator.enabled == armed)
+            if (_freezeClipWhileMirroring && _animator != null && _animator.enabled != armed)
                 _animator.enabled = armed;
 
             if (!_mirrorLimbs)
@@ -260,6 +260,7 @@ namespace PushStars.CV
                 MirrorWeight = 0f;
                 _limbsReady = false;
                 _wholeSince = -1f;
+                HoldNeutral();
                 return;
             }
 
@@ -295,8 +296,14 @@ namespace PushStars.CV
                 ? Mathf.MoveTowards(MirrorWeight, targetWeight, Time.deltaTime / blendSec)
                 : targetWeight;
 
-            if (MirrorWeight <= 0.001f) return; // idle or animation owns the bones
-            if (!live) return;
+            if (MirrorWeight <= 0.001f || !live)
+            {
+                // Nothing to mirror: stand in the calibrated stance. Returning here used to leave
+                // the bones wherever the last tracked frame put them, so losing the person froze
+                // the body mid-gesture instead of letting it settle.
+                HoldNeutral();
+                return;
+            }
 
             float w = MirrorWeight;
             float k = 1f - Mathf.Exp(-Time.deltaTime * _followRate);
@@ -327,7 +334,7 @@ namespace PushStars.CV
                         Quaternion target = _calibrated
                             ? rootRot * (torso * Quaternion.Inverse(_neutralHips)) * _neutralHipsRotInRoot
                             : rootRot * torso * _hipsRestRotInRoot;
-                        _hips.rotation = Quaternion.Slerp(_hips.rotation, target, w);
+                        _hips.rotation = Quaternion.Slerp(NeutralHips(rootRot), target, w);
                     }
                 }
             }
@@ -349,7 +356,7 @@ namespace PushStars.CV
                 Quaternion target = _calibrated
                     ? rootRot * Swing(seg.NeutralDir, seg.SmoothedDir) * seg.NeutralRotInRoot
                     : rootRot * Swing(seg.RestDirInRoot, seg.SmoothedDir) * seg.RestRotInRoot;
-                seg.Bone.rotation = Quaternion.Slerp(seg.Bone.rotation, target, w);
+                seg.Bone.rotation = Quaternion.Slerp(NeutralBone(in seg, rootRot), target, w);
             }
 
             Mirroring = true;
@@ -438,6 +445,32 @@ namespace PushStars.CV
                 if (frame.Visibility(_segments[i].LmB) < _minSkeletonVis) return false;
             }
             return true;
+        }
+
+        /// <summary>The stance the mirror blends out of and holds when there is nothing to
+        /// mirror: the pose captured at calibration, or the rig's own rest pose before that.
+        /// Absolute, so the body settles in the same place every time rather than wherever the
+        /// last tracked frame happened to leave it.</summary>
+        private Quaternion NeutralHips(Quaternion rootRot)
+            => rootRot * (_calibrated ? _neutralHipsRotInRoot : _hipsRestRotInRoot);
+
+        private Quaternion NeutralBone(in Segment seg, Quaternion rootRot)
+            => rootRot * (_calibrated ? seg.NeutralRotInRoot : seg.RestRotInRoot);
+
+        /// <summary>Puts the whole body in that stance. Written every frame it applies, so a body
+        /// with nothing to follow stands still instead of holding a half-finished gesture.</summary>
+        private void HoldNeutral()
+        {
+            if (!_bound || _root == null) return;
+
+            Quaternion rootRot = _root.rotation;
+            if (_hips != null) _hips.rotation = NeutralHips(rootRot);
+
+            for (int i = 0; i < _segments.Length; i++)
+            {
+                ref var seg = ref _segments[i];
+                if (seg.Bone != null) seg.Bone.rotation = NeutralBone(in seg, rootRot);
+            }
         }
 
         /// <summary>The rotation the torso is standing at. Flat, that is one angle - how far
