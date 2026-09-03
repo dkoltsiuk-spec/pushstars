@@ -3,27 +3,38 @@ using UnityEngine;
 namespace PushStars.CV
 {
     /// <summary>
-    /// Variant B of the avatar experiment (owner's request after seeing variant A): NO canned
-    /// animation — the character's limbs LIVE-MIRROR the user's skeleton from the camera.
+    /// Puts the character where the person is and, once the whole body is in frame, moves its
+    /// limbs with theirs.
     ///
-    /// <para><b>How:</b> MediaPipe world landmarks (3D, meters, hip-centered) give a direction for
-    /// every limb segment (shoulder→elbow, elbow→wrist, hip→knee, knee→ankle). At bind time the
-    /// character's rest-pose bone directions are captured in root space; each frame the bone gets
-    /// the rotation that swings its rest direction onto the (smoothed) live direction:
-    /// <c>bone.rotation = root.rotation * FromToRotation(restDir, liveDir) * restRot</c>.
-    /// The hips take a full orientation from the torso frame (shoulders line × spine). Absolute
-    /// assignments parent-first, so the hierarchy stays consistent.</para>
+    /// <para><b>Two stages, and only the first one is on by default.</b> Position and distance come
+    /// from <see cref="AvatarMirrorAnchor"/> and are solid: they need two hip points and a torso
+    /// length, which landmark data gives reliably. Limbs are the fragile half and are gated behind
+    /// <see cref="_mirrorLimbs"/> — with it off the body holds one clean stance and simply follows
+    /// you around the frame, which is the behaviour that cannot break.</para>
     ///
-    /// <para><b>Coordinate mapping:</b> world landmarks are camera-frame (x right, y down, z away
-    /// from viewer); the character faces the camera, so the same-side, sign-flipped mapping
-    /// (−x, −y, −z) makes the character move like a MIRROR: your left hand rises — the hand on the
-    /// same side of the screen rises. <see cref="_flipX"/>/<see cref="_flipZ"/> are exposed for
-    /// live correction, same spirit as the old orientation buttons.</para>
+    /// <para><b>Flat by default, and that is the fix for the twisting.</b> A world landmark's z at
+    /// the two metres this app asks people to stand at is mostly noise, and it used to drive both
+    /// the hips' full 3D orientation and every limb direction — so the body turned and folded on
+    /// readings that were not measurements. With <see cref="_planarOnly"/> the depth is dropped:
+    /// the torso becomes one angle (how far the shoulder line is off level on screen) and a limb
+    /// becomes one swing about one axis, which has no twist left to get wrong. Reaching at the lens
+    /// no longer foreshortens; that is the whole price.</para>
     ///
-    /// <para>The Animator must be a Humanoid with NO controller (the stand builds it that way) —
-    /// bones rest in the import pose and this component owns them in LateUpdate. Per-segment
-    /// smoothing (slerp toward target) plus visibility hold keep it from twitching; the
-    /// <see cref="AvatarMirrorAnchor"/> keeps owning root position/scale.</para>
+    /// <para><b>Zeroed on the person, not on the rig.</b> The reference is the stance they are
+    /// standing in when the skeleton first holds still, captured together with the character's own
+    /// bone rotations at that instant. Standing at that stance puts the character exactly there;
+    /// moving swings a limb off it by what moved, clamped to <see cref="_maxSwingDeg"/> so one bad
+    /// frame cannot throw an arm somewhere a person could not reach.</para>
+    ///
+    /// <para><b>Nothing plays underneath.</b> The Animator is stopped for the whole mirror phase
+    /// (<see cref="_freezeClipWhileMirroring"/>). Leaving it running is what crossed the idle clip
+    /// with the person and had the body doing a bit of both; stopped, it also holds the neutral
+    /// pose the rig was left in at bind, which is the stance the anchor carries while the limbs are
+    /// off. It starts again on the arm, where the push-up scrub needs it.</para>
+    ///
+    /// <para><see cref="_flipX"/> and <see cref="_flipZ"/> stay as live corrections for a limb that
+    /// moves the wrong way; which way is up is worked out from the 2D landmarks rather than
+    /// configured — see <see cref="ResolveUpSign"/>.</para>
     /// </summary>
     public sealed class PoseMirrorRetargeter : MonoBehaviour, IAvatarAnimator
     {
@@ -39,6 +50,28 @@ namespace PushStars.CV
         [SerializeField, Range(4f, 40f)] private float _followRate = 16f;
         [Tooltip("Segments whose landmarks fall below this visibility hold their last pose.")]
         [SerializeField, Range(0f, 1f)] private float _minJointVis = 0.35f;
+
+        [Header("What the camera drives")]
+        [Tooltip("Drive the limbs from the camera at all. Off, the body holds one clean stance " +
+                 "and only the anchor moves it - where you are and how far away, which are the " +
+                 "two things landmark data is actually solid about. Nothing that can twist.")]
+        [SerializeField] private bool _mirrorLimbs = false;
+
+        [Tooltip("Swing the limbs in the plane of the screen and ignore the landmarks' depth. A " +
+                 "world landmark's z at two metres is mostly noise, and it is what was turning " +
+                 "the body: it fed the hips' full 3D orientation and every limb direction. Flat, " +
+                 "a limb rotation is one angle about one axis and there is nothing left to " +
+                 "twist. The cost is foreshortening - an arm reaching at the lens stays long.")]
+        [SerializeField] private bool _planarOnly = true;
+
+        [Tooltip("Most a limb may swing off the stance it was calibrated in. A landmark that " +
+                 "jumps cannot throw an arm further than a person could.")]
+        [SerializeField, Range(15f, 180f)] private float _maxSwingDeg = 120f;
+
+        [Tooltip("Hold the Animator still for the whole mirror phase. The clip underneath is " +
+                 "what crossed the animation with the person; with it stopped, what is on screen " +
+                 "is the calibrated stance plus exactly what the camera saw, and nothing else.")]
+        [SerializeField] private bool _freezeClipWhileMirroring = true;
 
         [Header("Skeleton gate (the limbs only join once the whole body is in frame)")]
         [Tooltip("Every segment's landmarks must be at least this visible before the limbs are " +
@@ -197,6 +230,13 @@ namespace PushStars.CV
             _bound = _segments.Length > 0;
         }
 
+        private void OnDisable()
+        {
+            // Whatever owns the body next brings its own clips; leaving the Animator off would
+            // hand it a rig that cannot move.
+            if (_animator != null) _animator.enabled = true;
+        }
+
         private void LateUpdate()
         {
             if (!_bound || _session == null) return;
@@ -207,6 +247,21 @@ namespace PushStars.CV
             // animator-written pose TOWARD the live-mirrored one.
             bool armed = _session.Armer != null && _session.Armer.IsArmed;
             MirrorPhase = !armed;
+
+            // The clip stops for the whole mirror phase. NeutralizePose left the rig in the
+            // humanoid neutral at bind, so a stopped Animator holds that stance - one clean pose
+            // for the anchor to carry - and there is nothing underneath any more for the mirror to
+            // be crossed with. It starts again on the arm, where the push-up scrub needs it.
+            if (_freezeClipWhileMirroring && _animator != null && _animator.enabled == armed)
+                _animator.enabled = armed;
+
+            if (!_mirrorLimbs)
+            {
+                MirrorWeight = 0f;
+                _limbsReady = false;
+                _wholeSince = -1f;
+                return;
+            }
 
             var frame = _session.LastFrame;
             bool live = frame.IsValid && frame.HasWorldLandmarks;
@@ -267,10 +322,8 @@ namespace PushStars.CV
                 {
                     _hipsSmoothedUp = Vector3.Slerp(_hipsSmoothedUp, up.normalized, k);
                     _hipsSmoothedRight = Vector3.Slerp(_hipsSmoothedRight, right.normalized, k);
-                    Vector3 fwd = Vector3.Cross(_hipsSmoothedRight, _hipsSmoothedUp);
-                    if (fwd.sqrMagnitude > 1e-6f)
+                    if (TorsoRotation(_hipsSmoothedRight, _hipsSmoothedUp, out var torso))
                     {
-                        Quaternion torso = Quaternion.LookRotation(fwd, _hipsSmoothedUp);
                         Quaternion target = _calibrated
                             ? rootRot * (torso * Quaternion.Inverse(_neutralHips)) * _neutralHipsRotInRoot
                             : rootRot * torso * _hipsRestRotInRoot;
@@ -294,10 +347,8 @@ namespace PushStars.CV
                 seg.HasDir = true;
 
                 Quaternion target = _calibrated
-                    ? rootRot * Quaternion.FromToRotation(seg.NeutralDir, seg.SmoothedDir)
-                              * seg.NeutralRotInRoot
-                    : rootRot * Quaternion.FromToRotation(seg.RestDirInRoot, seg.SmoothedDir)
-                              * seg.RestRotInRoot;
+                    ? rootRot * Swing(seg.NeutralDir, seg.SmoothedDir) * seg.NeutralRotInRoot
+                    : rootRot * Swing(seg.RestDirInRoot, seg.SmoothedDir) * seg.RestRotInRoot;
                 seg.Bone.rotation = Quaternion.Slerp(seg.Bone.rotation, target, w);
             }
 
@@ -363,7 +414,7 @@ namespace PushStars.CV
             Vector3 fwd = Vector3.Cross(right.normalized, up.normalized);
             if (fwd.sqrMagnitude < 1e-6f) return;
 
-            _neutralHips = Quaternion.LookRotation(fwd, up.normalized);
+            if (!TorsoRotation(right.normalized, up.normalized, out _neutralHips)) return;
             _neutralHipsRotInRoot = invRoot * _hips.rotation;
             _calibrated = true;
         }
@@ -389,6 +440,37 @@ namespace PushStars.CV
             return true;
         }
 
+        /// <summary>The rotation the torso is standing at. Flat, that is one angle - how far
+        /// the shoulder line is off level in the plane of the screen - and a body cannot be turned
+        /// inside out by a noisy depth reading, because no depth reading is used.</summary>
+        private bool TorsoRotation(Vector3 right, Vector3 up, out Quaternion rotation)
+        {
+            if (_planarOnly)
+            {
+                rotation = Quaternion.AngleAxis(
+                    Mathf.Atan2(right.y, right.x) * Mathf.Rad2Deg, Vector3.forward);
+                return right.sqrMagnitude > 1e-6f;
+            }
+
+            Vector3 fwd = Vector3.Cross(right, up);
+            bool ok = fwd.sqrMagnitude > 1e-6f;
+            rotation = ok ? Quaternion.LookRotation(fwd, up) : Quaternion.identity;
+            return ok;
+        }
+
+        /// <summary>The rotation that swings a limb from where it was calibrated to where it is,
+        /// with a ceiling on how far one frame of landmarks may claim it moved.</summary>
+        private Quaternion Swing(Vector3 from, Vector3 to)
+        {
+            var swing = Quaternion.FromToRotation(from, to);
+            swing.ToAngleAxis(out float angle, out Vector3 axis);
+            if (float.IsNaN(axis.x) || axis.sqrMagnitude < 1e-8f) return Quaternion.identity;
+
+            if (angle > 180f) angle -= 360f;
+            float clamped = Mathf.Clamp(angle, -_maxSwingDeg, _maxSwingDeg);
+            return Mathf.Approximately(clamped, angle) ? swing : Quaternion.AngleAxis(clamped, axis);
+        }
+
         private static Vector3 World(in PoseFrame f, PoseLandmark id)
         {
             var lm = f.GetWorld(id);
@@ -399,7 +481,9 @@ namespace PushStars.CV
         /// all-axis flip makes the character behave like a mirror (see class doc); the toggles
         /// let the user fix a wrong-way limb live without recompiling.</summary>
         private Vector3 MapDir(Vector3 w)
-            => new Vector3(_flipX ? -w.x : w.x, _upSign * w.y, _flipZ ? -w.z : w.z);
+            => new Vector3(_flipX ? -w.x : w.x,
+                           _upSign * w.y,
+                           _planarOnly ? 0f : (_flipZ ? -w.z : w.z));
 
         /// <summary>
         /// Settles which way is up in the world-landmark frame, by asking the 2D landmarks.
