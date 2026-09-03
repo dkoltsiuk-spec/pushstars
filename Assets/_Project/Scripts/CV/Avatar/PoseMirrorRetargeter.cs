@@ -268,14 +268,10 @@ namespace PushStars.CV
                     Vector3 fwd = Vector3.Cross(_hipsSmoothedRight, _hipsSmoothedUp);
                     if (fwd.sqrMagnitude > 1e-6f)
                     {
-                        // Against the stance that was captured, not against the world: at the
-                        // captured neutral this is identity, and the hips sit exactly where the
-                        // rig rests them.
                         Quaternion torso = Quaternion.LookRotation(fwd, _hipsSmoothedUp);
-                        Quaternion delta = _calibrated
-                            ? torso * Quaternion.Inverse(_neutralHips)
-                            : torso;
-                        Quaternion target = rootRot * delta * _hipsRestRotInRoot;
+                        Quaternion target = _calibrated
+                            ? Deviate(torso * Quaternion.Inverse(_neutralHips), _hips.rotation, rootRot)
+                            : rootRot * torso * _hipsRestRotInRoot;
                         _hips.rotation = Quaternion.Slerp(_hips.rotation, target, w);
                     }
                 }
@@ -295,9 +291,11 @@ namespace PushStars.CV
                 seg.SmoothedDir = seg.HasDir ? Vector3.Slerp(seg.SmoothedDir, dir, k) : dir;
                 seg.HasDir = true;
 
-                Vector3 reference = _calibrated ? seg.NeutralDir : seg.RestDirInRoot;
-                Quaternion delta = Quaternion.FromToRotation(reference, seg.SmoothedDir);
-                Quaternion target = rootRot * delta * seg.RestRotInRoot;
+                Quaternion target = _calibrated
+                    ? Deviate(Quaternion.FromToRotation(seg.NeutralDir, seg.SmoothedDir),
+                              seg.Bone.rotation, rootRot)
+                    : rootRot * Quaternion.FromToRotation(seg.RestDirInRoot, seg.SmoothedDir)
+                              * seg.RestRotInRoot;
                 seg.Bone.rotation = Quaternion.Slerp(seg.Bone.rotation, target, w);
             }
 
@@ -322,8 +320,9 @@ namespace PushStars.CV
         /// pose and a real body reads as movement the person is not making. The legs are the
         /// obvious one: the rig rests with its thighs apart, a person standing normally has them
         /// close to vertical, and swinging one onto the other pulls the knees together — which is
-        /// exactly what the level test showed. Captured here, standing normally maps onto the rig
-        /// standing normally, and only what the person actually does moves the body.</para>
+        /// exactly what the level test showed. Captured here, standing normally maps onto the
+        /// character playing its own idle, and only what the person actually does moves it off
+        /// that — see <see cref="Deviate"/>.</para>
         ///
         /// <para>Taken at the moment the whole skeleton first holds still, which is the one moment
         /// this screen can be sure the person is in frame and settled. Re-taken every time the gate
@@ -374,6 +373,23 @@ namespace PushStars.CV
             }
             return true;
         }
+
+        /// <summary>
+        /// Lays a root-space deviation on top of the pose the Animator wrote this frame.
+        ///
+        /// <para>This is what "calibrated" means, and the first attempt got it wrong: it zeroed
+        /// onto <c>RestRotInRoot</c>, which is the humanoid muscle-zero pose — arms out, legs
+        /// apart — so a person standing normally mapped onto a character standing in a T. The zero
+        /// has to be the character's own stance, and the only thing that knows that stance is the
+        /// idle clip playing underneath. At the captured neutral the deviation is identity and the
+        /// body simply plays its idle; move, and the limb swings off that idle by exactly as much
+        /// as yours moved.</para>
+        ///
+        /// <para>Read parent-first, so a bone reads a parent that has already been corrected and
+        /// keeps its own local pose under it.</para>
+        /// </summary>
+        private static Quaternion Deviate(Quaternion deltaInRoot, Quaternion animated, Quaternion rootRot)
+            => rootRot * deltaInRoot * Quaternion.Inverse(rootRot) * animated;
 
         private static Vector3 World(in PoseFrame f, PoseLandmark id)
         {
