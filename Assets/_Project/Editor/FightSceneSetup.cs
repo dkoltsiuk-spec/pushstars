@@ -41,6 +41,14 @@ namespace PushStars.Editor
         const string PillSprite = "Assets/_Project/UI/Sprites/pill_capsule.png";
         const string CupSprite = "Assets/_Project/UI/Sprites/cup_.png";
         const string ClockSprite = "Assets/_Project/UI/Sprites/time.png";
+
+        // ── The level test's own controls ───────────────────────────────────────────────────────
+        // Finished art, drawn with their glyphs and their lip already on them, so nothing here
+        // improvises a button out of sliced pills any more. The yellow plate is the one every
+        // onboarding CTA stands on — the test is the last page of that flow.
+        const string ClosePlateSprite = "Assets/_Project/UI/Sprites/btn_close.png";
+        const string PausePlateSprite = "Assets/_Project/UI/Sprites/btn_pause.png";
+        const string YellowPlateSprite = "Assets/_Project/UI/Sprites/onb_btn_allow.png";
         /// <summary>The app's own ground — the dark blue with the glow up its middle that the main
         /// screen stands on. The level test uses it rather than the arena: same app, one room.</summary>
         const string MainBgSprite = "Assets/_Project/UI/Sprites/BG.png";
@@ -541,8 +549,8 @@ namespace PushStars.Editor
         ///
         /// <para><b>Its own ground, because a measurement is not a duel.</b> bg_fight is an arena
         /// split red against blue down a jagged seam — two fighters' halves. There is only one
-        /// person here and no side to be on, so the test stands on the flat dark ground the rest
-        /// of the app uses, with the same blue wash under it that every onboarding page has.</para>
+        /// person here and no side to be on, so the test stands on BG.png, the dark blue with the
+        /// glow up its middle that the main screen stands on.</para>
         ///
         /// <para>Built on the canvas root rather than in the HUD: this is scenery, and the body has
         /// to pass in front of it. Everything in the HUD draws over the avatar's render, so a piece
@@ -616,29 +624,19 @@ namespace PushStars.Editor
             refs.Panel = root.gameObject;
 
             // ── Top bar: leave, what this is, hold ──────────────────────────────────────────────
-            refs.Exit = PlateButton(root, "SoloExit", "X", new Color32(226, 58, 58, 255),
-                                    new Vector2(0f, 1f), new Vector2(14f, -12f),
-                                    new Vector2(48f, 36f), 20, Color.white);
+            // Drawn art, glyph and lip included, rather than a plate assembled here out of two
+            // sliced pills with a letter on top.
+            refs.Exit = SpriteButton(root, "SoloExit", ClosePlateSprite, new Vector2(0f, 1f),
+                                     new Vector2(14f, -12f), new Vector2(50f, 36f));
 
             // A label, not a button: nothing happens when it is pressed, so it is not built as
             // something that can be.
-            var title = Plate(root, "SoloTitle", "ЗАМЕР", AppColors.AccentYellow,
-                              new Vector2(0.5f, 1f), new Vector2(0f, -10f),
-                              new Vector2(124f, 44f), 20, new Color32(24, 20, 8, 255), out _);
-            refs.Caption = title.GetComponentInChildren<TextMeshProUGUI>();
+            refs.Caption = SpritePlate(root, "SoloTitle", "ЗАМЕР", YellowPlateSprite,
+                                       new Vector2(0.5f, 1f), new Vector2(0f, -10f),
+                                       new Vector2(124f, 44f), 20);
 
-            refs.Pause = PlateButton(root, "SoloPause", "", AppColors.AccentBlue,
-                                     new Vector2(1f, 1f), new Vector2(-14f, -12f),
-                                     new Vector2(48f, 36f), 20, Color.white);
-            // Two bars rather than a glyph: Rubik has no pause character and a font that falls
-            // back to a box here would be the first thing anyone sees on this screen.
-            var pauseRect = (RectTransform)refs.Pause.transform;
-            for (int i = 0; i < 2; i++)
-            {
-                var bar = UiBuilder.Image(pauseRect, "Bar" + i, Color.white);
-                UiBuilder.Place(bar.rectTransform, new Vector2(0.5f, 0.5f),
-                                new Vector2(i == 0 ? -5f : 5f, 0f), new Vector2(4f, 15f));
-            }
+            refs.Pause = SpriteButton(root, "SoloPause", PausePlateSprite, new Vector2(1f, 1f),
+                                      new Vector2(-14f, -12f), new Vector2(50f, 36f));
 
             // ── Pace and technique, either side of the count ────────────────────────────────────
             refs.Tempo = SoloStat(root, "SoloTempo", "TEMPO", new Vector2(0f, 1f),
@@ -668,10 +666,9 @@ namespace PushStars.Editor
             UiBuilder.Place(refs.Timer.rectTransform, new Vector2(0f, 0f), new Vector2(56f, 42f),
                             new Vector2(110f, 28f));
 
-            refs.Finish = PlateButton(root, "SoloFinish", "FINISH", AppColors.AccentYellow,
-                                      new Vector2(0.5f, 0f), new Vector2(0f, 34f),
-                                      new Vector2(128f, 44f), 18, new Color32(24, 20, 8, 255));
-            refs.FinishLabel = refs.Finish.GetComponentInChildren<TextMeshProUGUI>();
+            refs.Finish = SpriteButton(root, "SoloFinish", YellowPlateSprite, new Vector2(0.5f, 0f),
+                                       new Vector2(0f, 34f), new Vector2(125f, 48f));
+            refs.FinishLabel = SoloLabel((RectTransform)refs.Finish.transform, "FINISH", 18);
 
             // ── Paused ──────────────────────────────────────────────────────────────────────────
             // The curtain is itself the way back: a paused set has exactly one thing to do next,
@@ -699,48 +696,58 @@ namespace PushStars.Editor
             return refs;
         }
 
-        /// <summary>A flat rounded plate with a lip under it — the button shape the whole app uses.
-        /// Two sliced pills rather than one piece of art, because these come in four colours here
-        /// and a sprite per colour is four assets that have to be kept agreeing.</summary>
-        static RectTransform Plate(RectTransform parent, string name, string label, Color fill,
-                                   Vector2 anchor, Vector2 position, Vector2 size,
-                                   float fontSize, Color labelColor, out Image face)
+        /// <summary>
+        /// A button that is one piece of finished art: the plate, its lip and any glyph on it come
+        /// from the sprite. Shown at the art's own aspect, so a rect a few points off does not
+        /// stretch a drawn corner.
+        /// </summary>
+        static Button SpriteButton(RectTransform parent, string name, string spritePath,
+                                   Vector2 anchor, Vector2 position, Vector2 size)
         {
-            var root = UiBuilder.Rect(parent, name);
-            UiBuilder.Place(root, anchor, position, size);
+            var button = UiBuilder.Button(parent, name, "", Color.white, Color.white, 12,
+                                          out var placeholder);
+            placeholder.gameObject.SetActive(false);
 
-            var pill = LoadSprite(PillSprite);
+            var image = button.GetComponent<Image>();
+            var sprite = LoadSprite(spritePath);
+            if (sprite != null) { image.sprite = sprite; image.preserveAspect = true; }
+            else image.color = new Color(1f, 1f, 1f, 0.15f); // never draw literally nothing
 
-            // The lip: the same shape darker, showing only along the bottom edge.
-            var lip = UiBuilder.Image(root, "Lip", new Color(fill.r * 0.5f, fill.g * 0.5f,
-                                                             fill.b * 0.5f, fill.a));
-            if (pill != null) { lip.sprite = pill; lip.type = Image.Type.Sliced; }
-            UiBuilder.Stretch(lip.rectTransform);
-
-            face = UiBuilder.Image(root, "Face", fill);
-            if (pill != null) { face.sprite = pill; face.type = Image.Type.Sliced; }
-            UiBuilder.Stretch(face.rectTransform, 0f, 4f, 0f, 0f);
-
-            if (!string.IsNullOrEmpty(label))
-            {
-                var text = UiBuilder.Text(face.rectTransform, "Label", labelColor, label, fontSize,
-                                          FontStyles.Bold);
-                UiBuilder.Stretch(text.rectTransform, 6f, 2f, 6f, 2f);
-            }
-            return root;
+            UiBuilder.Place((RectTransform)button.transform, anchor, position, size);
+            return button;
         }
 
-        /// <summary>The same plate, pressable. The face is the target graphic rather than the empty
-        /// root, so the press tint lands on something that is actually on screen.</summary>
-        static Button PlateButton(RectTransform parent, string name, string label, Color fill,
-                                  Vector2 anchor, Vector2 position, Vector2 size,
-                                  float fontSize, Color labelColor)
+        /// <summary>The same plate as a label — nothing happens when it is pressed, so it is not
+        /// built as something that can be. Returns the text, which is what the HUD writes to.</summary>
+        static TextMeshProUGUI SpritePlate(RectTransform parent, string name, string label,
+                                           string spritePath, Vector2 anchor, Vector2 position,
+                                           Vector2 size, float fontSize)
         {
-            var root = Plate(parent, name, label, fill, anchor, position, size, fontSize,
-                             labelColor, out var face);
-            var button = root.gameObject.AddComponent<Button>();
-            button.targetGraphic = face;
-            return button;
+            var plate = UiBuilder.Image(parent, name, Color.white);
+            var sprite = LoadSprite(spritePath);
+            if (sprite != null) { plate.sprite = sprite; plate.preserveAspect = true; }
+            plate.raycastTarget = false;
+            UiBuilder.Place(plate.rectTransform, anchor, position, size);
+            return SoloLabel(plate.rectTransform, label, fontSize);
+        }
+
+        /// <summary>
+        /// Text on a plate: white, on the keyline and drop shadow every Rubik material in the
+        /// project already carries (see FontSetup).
+        ///
+        /// <para>White rather than the near-black these plates were built with. Dark type on the
+        /// yellow is legible in isolation and wrong everywhere else in the app — every other button
+        /// in it reads white-on-plate with a black edge, and the edge is what keeps it legible over
+        /// a plate that is nearly the same value as the type.</para>
+        /// </summary>
+        static TextMeshProUGUI SoloLabel(RectTransform plate, string label, float fontSize)
+        {
+            var text = UiBuilder.Text(plate, "Label", AppColors.TextPrimary, label, fontSize,
+                                      FontStyles.Bold);
+            // Off the plate's lip: the art carries a darker edge along the bottom, and type
+            // centred on the whole rect sits low against it.
+            UiBuilder.Stretch(text.rectTransform, 6f, 6f, 6f, 2f);
+            return text;
         }
 
         /// <summary>A caption over a live number, on the level test's own scale — these are read

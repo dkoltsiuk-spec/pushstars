@@ -26,12 +26,17 @@ namespace PushStars.Fight
     /// into the plank without anybody tuning two camera positions by hand.</para>
     ///
     /// <para><b>The lens stands where the phone does:</b> dead ahead of the character, level, and it
-    /// rides down to the face as the body goes down. That is not a flourish — it is the same view
-    /// the player's own phone has of them from the floor, so what they see on screen and what the
-    /// detector sees are the same shot. It falls out of one rule: aim between the body's centre and
-    /// the head. Standing, the head is far above the centre and the camera settles around chest
-    /// height, framing the whole figure; prone, head and centre are a hand's width apart and both
-    /// near the floor, so the same rule puts the lens level with the face.</para>
+    /// rides down to the face as the body drops into the plank. That is not a flourish — it is the
+    /// same view the player's own phone has of them from the floor, so what they see on screen and
+    /// what the detector sees are the same shot. It falls out of one rule: aim between the body's
+    /// centre and the head. Standing, the head is far above the centre and the camera settles around
+    /// chest height, framing the whole figure; prone, head and centre are a hand's width apart and
+    /// both near the floor, so the same rule puts the lens level with the face.</para>
+    ///
+    /// <para><b>Then it stops.</b> That aim travels through a rep as well, and a shot still chasing
+    /// it slides down with the chest and back up on the way out — which the eye reads as the ground
+    /// moving under a body that is holding still, and as hands the clip has planted coming unstuck.
+    /// So the shot pulls in when the plank arms, settles, and holds for the set.</para>
     /// </summary>
     public sealed class FightAvatar : MonoBehaviour
     {
@@ -49,6 +54,7 @@ namespace PushStars.Fight
                  "camera that re-centres it every frame cancels exactly that. Framing resumes on " +
                  "the arm, which is what rides the lens down into the plank.")]
         [SerializeField] private PoseMirrorRetargeter _holdFramingWhileMirroring;
+
         [SerializeField] private Camera _stageCamera;
         [Tooltip("Transform the instantiated body is parented to.")]
         [SerializeField] private Transform _avatarRoot;
@@ -72,6 +78,10 @@ namespace PushStars.Fight
         [SerializeField, Range(1f, 2.5f)] private float _padding = 1.2f;
         [Tooltip("Seconds for the camera to reach a new framing. 0 snaps.")]
         [SerializeField, Range(0f, 2f)] private float _easeTime = 0.55f;
+        [Tooltip("How long the shot keeps pulling in after the plank arms, before it locks for the " +
+                 "rest of the set. Long enough for the ease to land on the plank, short enough that " +
+                 "the first rep is already on a still camera.")]
+        [SerializeField, Range(0f, 3f)] private float _settleSeconds = 0.9f;
         [Tooltip("Camera direction relative to the character: where the phone would be standing. " +
                  "Dead ahead, barely above the aim point — a phone propped on the floor in front of you.")]
         [SerializeField] private Vector3 _viewDirection = new Vector3(0f, 0.05f, 1f);
@@ -105,6 +115,8 @@ namespace PushStars.Fight
         private float _distance;
         private float _distanceVelocity;
         private bool _framed;
+        private bool _wasMirroring;
+        private float _settleUntil;
 
         /// <summary>The instantiated body, for anything that wants to decorate it later.</summary>
         public GameObject Character { get; private set; }
@@ -115,13 +127,35 @@ namespace PushStars.Fight
         {
             if (_animator == null || _stageCamera == null) return;
 
+            // Nothing to hold the shot for — the opponent's body, which is on a recording and
+            // stays where its stage puts it. Frames every frame, as it always did.
+            if (_holdFramingWhileMirroring == null)
+            {
+                FrameCharacter();
+                return;
+            }
+
             // Framed once regardless, so the shot starts on the body rather than wherever the
             // scene's camera was authored — then held for the whole mirror phase. The phase, not
             // the limb weight: the anchor is moving the body from the moment it locks on, long
             // before the limbs join, and a camera re-centring through that is the one thing that
             // cancels the anchor.
-            if (_framed && _holdFramingWhileMirroring != null
-                        && _holdFramingWhileMirroring.MirrorPhase) return;
+            bool mirroring = _holdFramingWhileMirroring.MirrorPhase;
+            if (mirroring != _wasMirroring)
+            {
+                _wasMirroring = mirroring;
+                // Leaving the mirror phase means the plank just armed: let the shot pull in for a
+                // moment, then stop.
+                if (!mirroring) _settleUntil = Time.time + _settleSeconds;
+            }
+
+            // Locked for the set, and this is the point of it. The aim rides between the body's
+            // centre and its head, both of which travel through a rep — so a shot that keeps
+            // re-framing slides down as the chest goes down and back up on the way up, and what
+            // the eye reads is the floor moving under a body that is standing still. It also
+            // unpins the hands, which the clip has planted. One pull-in, then the ground stays
+            // where it is.
+            if (_framed && (mirroring || Time.time >= _settleUntil)) return;
 
             FrameCharacter();
         }
