@@ -23,6 +23,11 @@ namespace PushStars.Editor
         public const string ScenePath = "Assets/_Project/Scenes/Onboarding.unity";
         private const string SpritesDir = "Assets/_Project/UI/Sprites/";
         private const string GlowSprite = SpritesDir + "glow_radial.png";
+
+        // The warm halo that stands behind a character — drawn art, not the flat radial the pages
+        // improvised one out of before. It carries its own colour and its own falloff, so it is
+        // tinted white and only ever sized.
+        private const string CharacterGlowSprite = SpritesDir + "glow_character.png";
         private const string PillSprite = SpritesDir + "pill_16.png";
         private const string CircleSprite = SpritesDir + "circle_128.png";
 
@@ -82,6 +87,31 @@ namespace PushStars.Editor
         // the other says "this is right". Same shape, opposite verdict, and the colour carries it.
         private static readonly Color PlaceGreen = new Color32(61, 220, 107, 255);
         private static readonly Color PlaceGreenFill = new Color32(8, 26, 16, 235);
+
+        // ── The closing block ───────────────────────────────────────────────────────────────────
+        // Every page ends the same way: a heading, a line explaining it, and the button that
+        // leaves. These are the gaps between the three, and they are the same on all four pages —
+        // the block is what the player reads on every screen, so it cannot read at a different
+        // pace on each one.
+        //
+        // It is placed from the bottom up. Hanging it off the top of the page, which is what it
+        // used to do, ties it to art that is a different height on every page — that is where the
+        // four different rhythms came from, and it is why the camera page's paragraph ended up
+        // sitting on top of its own heading. The button is the fixed point now.
+        private const float BlockWidth = 340f;  // the paragraph's measure
+        private const float TitleWidth = 360f;  // the heading's — wider, since it never wraps
+        private const float TitleSize = 34f;    // one heading size for the four pages
+        private const float CtaWidth = 125f;    // the plate, at the sprite's own 2.6:1
+        private const float CtaHeight = 48f;
+        private const float CtaBottom = 34f;    // plate → safe-area bottom
+        private const float BodyGap = 40f;      // paragraph → plate
+        private const float TitleGap = 16f;     // heading → paragraph
+
+        // The camera page alone carries a link under its button, so its plate stands one link
+        // higher than the other three. The pair still comes down as low as it fits.
+        private const float LinkBottom = 16f;
+        private const float LinkHeight = 30f;
+        private const float LinkCtaBottom = LinkBottom + LinkHeight + 10f;
 
         [MenuItem("Tools/Push Stars/Build Onboarding", priority = 5)]
         public static void Build()
@@ -365,22 +395,10 @@ namespace PushStars.Editor
 
             // ── The claim ───────────────────────────────────────────────────────────────────────
             string yellow = ColorUtility.ToHtmlStringRGB(AppColors.AccentYellow);
-            var title = UiBuilder.Text(page, "Title", AppColors.TextPrimary,
-                                       "МЫ БЕРЕМ\n<color=#" + yellow + ">ТОЛЬКО СКЕЛЕТ.</color>",
-                                       36, FontStyles.Bold);
-            title.enableWordWrapping = false;
-            title.enableAutoSizing = true;
-            title.fontSizeMin = 24f;
-            title.fontSizeMax = 36f;
-            UiBuilder.Place(title.rectTransform, new Vector2(0.5f, 1f), new Vector2(0f, -455f),
-                            new Vector2(360f, 100f));
+            var title = Heading(page, "МЫ БЕРЕМ\n<color=#" + yellow + ">ТОЛЬКО СКЕЛЕТ.</color>");
 
-            var body = UiBuilder.Text(page, "Body", Caption,
-                                      "Видео с камеры никогда не покидает телефон — по сети идут " +
-                                      "только координаты точек тела.", 15, FontStyles.Normal);
-            body.lineSpacing = 8f;
-            UiBuilder.Place(body.rectTransform, new Vector2(0.5f, 1f), new Vector2(0f, -521f),
-                            new Vector2(330f, 90f));
+            var body = Paragraph(page, "Видео с камеры никогда не покидает телефон — по сети идут " +
+                                       "только координаты точек тела.");
 
             // ── The one button ──────────────────────────────────────────────────────────────────
             allow = UiBuilder.Button(page, "Allow", "ALLOW", Color.white, AppColors.TextPrimary, 18,
@@ -388,8 +406,7 @@ namespace PushStars.Editor
             var allowImage = allow.GetComponent<Image>();
             var allowSprite = SpriteImporter.Load(AllowSprite);
             if (allowSprite != null) { allowImage.sprite = allowSprite; allowImage.preserveAspect = true; }
-            UiBuilder.Place((RectTransform)allow.transform, new Vector2(0.5f, 0f), new Vector2(0f, 66f),
-                            new Vector2(135f, 52f));
+            CloseBlock(title, body, (RectTransform)allow.transform, LinkCtaBottom);
 
             // The label is pulled left of centre to leave the camera its place beside it — the two
             // read as one lockup, which is why neither is centred on its own.
@@ -413,7 +430,8 @@ namespace PushStars.Editor
             howItWorks = UiBuilder.Button(page, "HowItWorks", "How its work?",
                                           new Color(0f, 0f, 0f, 0f), LinkBlue, 13, out var linkLabel);
             var linkRect = (RectTransform)howItWorks.transform;
-            UiBuilder.Place(linkRect, new Vector2(0.5f, 0f), new Vector2(0f, 24f), new Vector2(200f, 30f));
+            UiBuilder.Place(linkRect, new Vector2(0.5f, 0f), new Vector2(0f, LinkBottom),
+                            new Vector2(200f, LinkHeight));
 
             // The arrow is a sprite, not a character: Rubik has no U+2192 and neither does anything
             // it falls back to, so a typed one would come out as a missing-glyph box.
@@ -545,31 +563,17 @@ namespace PushStars.Editor
 
             // ── The instruction ─────────────────────────────────────────────────────────────────
             string yellow = ColorUtility.ToHtmlStringRGB(AppColors.AccentYellow);
-            var title = UiBuilder.Text(page, "Title", AppColors.TextPrimary,
-                                       "ВСТАНЬ ТАК,\nЧТОБЫ <color=#" + yellow + ">ВЛЕЗТЬ\nЦЕЛИКОМ</color>",
-                                       34, FontStyles.Bold);
-            title.enableWordWrapping = false;
-            title.enableAutoSizing = true;
-            title.fontSizeMin = 24f;
-            title.fontSizeMax = 34f;
-            UiBuilder.Place(title.rectTransform, new Vector2(0.5f, 1f), new Vector2(0f, -420f),
-                            new Vector2(360f, 140f));
+            var title = Heading(page, "ВСТАНЬ ТАК,\nЧТОБЫ <color=#" + yellow + ">ВЛЕЗТЬ\nЦЕЛИКОМ</color>");
 
-            var body = UiBuilder.Text(page, "Body", Caption,
-                                      "Поставь телефон на уровне груди в ~2 метрах и отойди — " +
-                                      "от макушки до стоп должно быть видно на экране.", 15,
-                                      FontStyles.Normal);
-            body.lineSpacing = 8f;
-            UiBuilder.Place(body.rectTransform, new Vector2(0.5f, 1f), new Vector2(0f, -566f),
-                            new Vector2(340f, 90f));
+            var body = Paragraph(page, "Поставь телефон на уровне груди в ~2 метрах и отойди — " +
+                                       "от макушки до стоп должно быть видно на экране.");
 
             // ── The one button ──────────────────────────────────────────────────────────────────
             ok = UiBuilder.Button(page, "Ok", "OK", Color.white, AppColors.TextPrimary, 18, out var okLabel);
             var okImage = ok.GetComponent<Image>();
             var okSprite = SpriteImporter.Load(AllowSprite);
             if (okSprite != null) { okImage.sprite = okSprite; okImage.preserveAspect = true; }
-            UiBuilder.Place((RectTransform)ok.transform, new Vector2(0.5f, 0f), new Vector2(0f, 60f),
-                            new Vector2(119f, 46f));
+            CloseBlock(title, body, (RectTransform)ok.transform);
             UiBuilder.Place(okLabel.rectTransform, new Vector2(0.5f, 0.5f), new Vector2(0f, 1f),
                             new Vector2(80f, 26f));
 
@@ -617,22 +621,9 @@ namespace PushStars.Editor
 
             // ── The question ────────────────────────────────────────────────────────────────────
             string yellow = ColorUtility.ToHtmlStringRGB(AppColors.AccentYellow);
-            var title = UiBuilder.Text(page, "Title", AppColors.TextPrimary,
-                                       "ВЫБЕРИ\n<color=#" + yellow + ">ЗА КОГО ИГРАТЬ</color>", 34,
-                                       FontStyles.Bold);
-            title.enableWordWrapping = false;
-            title.enableAutoSizing = true;
-            title.fontSizeMin = 24f;
-            title.fontSizeMax = 34f;
-            UiBuilder.Place(title.rectTransform, new Vector2(0.5f, 1f), new Vector2(0f, -490f),
-                            new Vector2(360f, 100f));
+            var title = Heading(page, "ВЫБЕРИ\n<color=#" + yellow + ">ЗА КОГО ИГРАТЬ</color>");
 
-            var body = UiBuilder.Text(page, "Body", Caption,
-                                      "Ты можешь поменять персонажа в любой момент.", 15,
-                                      FontStyles.Normal);
-            body.lineSpacing = 8f;
-            UiBuilder.Place(body.rectTransform, new Vector2(0.5f, 1f), new Vector2(0f, -598f),
-                            new Vector2(330f, 60f));
+            var body = Paragraph(page, "Ты можешь поменять персонажа в любой момент.");
 
             // ── The one button ──────────────────────────────────────────────────────────────────
             next = UiBuilder.Button(page, "NextCta", "NEXT", Color.white, AppColors.TextPrimary, 17,
@@ -640,8 +631,7 @@ namespace PushStars.Editor
             var nextImage = next.GetComponent<Image>();
             var plate = SpriteImporter.Load(AllowSprite);
             if (plate != null) { nextImage.sprite = plate; nextImage.preserveAspect = true; }
-            UiBuilder.Place((RectTransform)next.transform, new Vector2(0.5f, 0f), new Vector2(0f, 62f),
-                            new Vector2(115f, 44f));
+            CloseBlock(title, body, (RectTransform)next.transform);
             UiBuilder.Place(nextLabel.rectTransform, new Vector2(0.5f, 0.5f), new Vector2(0f, 1f),
                             new Vector2(90f, 24f));
 
@@ -668,6 +658,21 @@ namespace PushStars.Editor
             var cardRect = (RectTransform)button.transform;
             UiBuilder.Place(cardRect, new Vector2(0.5f, 1f), new Vector2(x, -CardTop),
                             new Vector2(CardWidth, CardHeight + 60f));
+
+            // Built before the portrait, because sibling order is draw order: this stands behind
+            // the figure. Wider than the card on purpose — a halo that stopped at the card's edge
+            // would read as a panel. The two cards' halos would overlap in the middle of the page
+            // if both were ever lit, which is exactly why only the chosen one is.
+            var glowSprite = SpriteImporter.Load(CharacterGlowSprite);
+            Image glow = null;
+            if (glowSprite != null)
+            {
+                glow = UiBuilder.Image(cardRect, "Glow", Color.white);
+                glow.sprite = glowSprite;
+                glow.raycastTarget = false;
+                UiBuilder.Place(glow.rectTransform, new Vector2(0.5f, 1f), new Vector2(0f, -30f),
+                                new Vector2(240f, 316f));
+            }
 
             // Sized to the render texture's own aspect. Any other rect stretches the figure, and a
             // stretched character is the one thing a "pick your body" screen must not show.
@@ -701,6 +706,7 @@ namespace PushStars.Editor
             UiBuilder.Set(so, "_drained", drained);
             UiBuilder.Set(so, "_dotRing", ring);
             UiBuilder.Set(so, "_dotCore", core);
+            UiBuilder.Set(so, "_glow", glow);
             UiBuilder.Set(so, "_button", button);
             so.FindProperty("_gender").enumValueIndex = (int)gender;
             so.ApplyModifiedPropertiesWithoutUndo();
@@ -880,17 +886,19 @@ namespace PushStars.Editor
 
             BottomGlow(page);
 
-            var glowSprite = SpriteImporter.Load(GlowSprite);
-
             // ── The figure ──────────────────────────────────────────────────────────────────────
             // A still, not a stage. The pose is a push-up hold and the only clips the characters
             // have are Idle and WarriorIdle, so a live figure here would stand up straight in the
             // middle of a page about getting down on the floor. Swapping this for a stage is a
             // clip away — add one to MainCharacterSetup.Clips and it builds like the gender page.
-            if (glowSprite != null)
+            var characterGlow = SpriteImporter.Load(CharacterGlowSprite);
+            if (characterGlow != null)
             {
-                var halo = UiBuilder.Image(page, "FigureGlow", new Color(1f, 0.76f, 0.22f, 0.20f));
-                halo.sprite = glowSprite;
+                // The drawn halo, white: the amber and the falloff are in the art. The rect is
+                // still the wide one the flat radial was tuned to — the pose is wide, and this
+                // sprite is a tall oval that has to be squashed into it to sit behind a push-up.
+                var halo = UiBuilder.Image(page, "FigureGlow", Color.white);
+                halo.sprite = characterGlow;
                 UiBuilder.Place(halo.rectTransform, new Vector2(0.5f, 1f), new Vector2(-62f, -40f),
                                 new Vector2(320f, 300f));
             }
@@ -944,30 +952,10 @@ namespace PushStars.Editor
 
             // ── The invitation ──────────────────────────────────────────────────────────────────
             string yellow = ColorUtility.ToHtmlStringRGB(AppColors.AccentYellow);
-            var title = UiBuilder.Text(page, "Title", AppColors.TextPrimary,
-                                       "ПРОВЕРИМ\n<color=#" + yellow + ">НА ЧТО\nТЫ СПОСОБЕН</color>",
-                                       34, FontStyles.Bold);
-            title.enableWordWrapping = false;
-            title.enableAutoSizing = true;
-            title.fontSizeMin = 24f;
-            title.fontSizeMax = 34f;
-            UiBuilder.Place(title.rectTransform, new Vector2(0.5f, 1f), new Vector2(0f, -424f),
-                            new Vector2(360f, 130f));
+            var title = Heading(page, "ПРОВЕРИМ\n<color=#" + yellow + ">НА ЧТО\nТЫ СПОСОБЕН</color>");
 
-            var body = UiBuilder.Text(page, "Body", Caption,
-                                      "Ты можешь пропустить этот шаг если пока что не готов, " +
-                                      "проверим когда будет возможность.", 15, FontStyles.Normal);
-            body.lineSpacing = 8f;
-            UiBuilder.Place(body.rectTransform, new Vector2(0.5f, 1f), new Vector2(0f, -580f),
-                            new Vector2(340f, 70f));
-
-            // Silent unless something is actually wrong — see RefreshCameraStatus. The permission
-            // was asked for four pages ago; this is the last place a refusal can still be repaired
-            // before it costs the player a set that counts nothing.
-            status = UiBuilder.Text(page, "CameraStatus", AppColors.AccentYellow, "", 12,
-                                    FontStyles.Normal);
-            UiBuilder.Place(status.rectTransform, new Vector2(0.5f, 1f), new Vector2(0f, -652f),
-                            new Vector2(340f, 20f));
+            var body = Paragraph(page, "Ты можешь пропустить этот шаг если пока что не готов, " +
+                                       "проверим когда будет возможность.");
 
             // ── Go, or not yet ──────────────────────────────────────────────────────────────────
             letsGo = UiBuilder.Button(page, "LetsGo", "LETS GO", Color.white, AppColors.TextPrimary, 17,
@@ -975,10 +963,21 @@ namespace PushStars.Editor
             var goImage = letsGo.GetComponent<Image>();
             var plate = SpriteImporter.Load(AllowSprite);
             if (plate != null) { goImage.sprite = plate; goImage.preserveAspect = true; }
-            UiBuilder.Place((RectTransform)letsGo.transform, new Vector2(0.5f, 0f), new Vector2(0f, 55f),
-                            new Vector2(120f, 46f));
+            CloseBlock(title, body, (RectTransform)letsGo.transform);
             UiBuilder.Place(goLabel.rectTransform, new Vector2(0.5f, 0.5f), new Vector2(0f, 1f),
                             new Vector2(104f, 24f));
+
+            // Silent unless something is actually wrong — see RefreshCameraStatus. The permission
+            // was asked for four pages ago; this is the last place a refusal can still be repaired
+            // before it costs the player a set that counts nothing.
+            //
+            // It stands in the gap the block already leaves above the button rather than taking a
+            // line of its own: a page that is silent here is the normal one, and reserving space
+            // for the warning would put a hole in the rhythm on every run where nothing is wrong.
+            status = UiBuilder.Text(page, "CameraStatus", AppColors.AccentYellow, "", 12,
+                                    FontStyles.Normal);
+            UiBuilder.Place(status.rectTransform, new Vector2(0.5f, 0f),
+                            new Vector2(0f, CtaBottom + CtaHeight + 10f), new Vector2(340f, 20f));
 
             // Underlined and plain, beside the plate rather than under it: a skip that looks like a
             // second button competes with the one the page is actually asking for, and a skip
@@ -986,7 +985,8 @@ namespace PushStars.Editor
             skip = UiBuilder.Button(page, "Skip", "SKIP", new Color(0f, 0f, 0f, 0f),
                                     AppColors.TextPrimary, 15, out var skipLabel);
             skipLabel.fontStyle = FontStyles.Bold | FontStyles.Underline;
-            UiBuilder.Place((RectTransform)skip.transform, new Vector2(0.5f, 0f), new Vector2(127f, 55f),
+            UiBuilder.Place((RectTransform)skip.transform, new Vector2(0.5f, 0f),
+                            new Vector2(127f, CtaBottom + (CtaHeight - 40f) * 0.5f),
                             new Vector2(90f, 40f));
 
             return page.gameObject;
@@ -1006,6 +1006,79 @@ namespace PushStars.Editor
         }
 
         // ── Primitives ──────────────────────────────────────────────────────────────────────────
+
+        /// <summary>A page's heading. One size, one measure, one style, on all four pages.</summary>
+        private static TextMeshProUGUI Heading(RectTransform page, string text)
+        {
+            var heading = UiBuilder.Text(page, "Title", AppColors.TextPrimary, text,
+                                         TitleSize, FontStyles.Bold);
+            heading.enableWordWrapping = false; // the line breaks are written into the copy
+            heading.enableAutoSizing = true;    // shrinking only ever keeps the longest one on screen
+            heading.fontSizeMin = 24f;
+            heading.fontSizeMax = TitleSize;
+            return heading;
+        }
+
+        /// <summary>The line of explanation under a heading.</summary>
+        private static TextMeshProUGUI Paragraph(RectTransform page, string text)
+        {
+            var body = UiBuilder.Text(page, "Body", Caption, text, 15, FontStyles.Normal);
+            body.lineSpacing = 8f;
+            return body;
+        }
+
+        /// <summary>
+        /// Stacks a page's heading, paragraph and button off the bottom of the page on the shared
+        /// gaps. Call it once the button exists — it sizes the plate too, so the four pages end on
+        /// the same button rather than on four that are each a few points different.
+        /// </summary>
+        /// <param name="ctaBottom">Where the plate's bottom edge sits above the safe area. Only
+        /// the camera page passes anything but the default: it has a link under its button.</param>
+        private static void CloseBlock(TextMeshProUGUI title, TextMeshProUGUI body, RectTransform cta,
+                                       float ctaBottom = CtaBottom)
+        {
+            float bodyHeight = Measure(body, BlockWidth);
+            float bodyBottom = ctaBottom + CtaHeight + BodyGap;
+            float titleHeight = Measure(title, TitleWidth);
+            float titleBottom = bodyBottom + bodyHeight + TitleGap;
+
+            UiBuilder.Place(cta, new Vector2(0.5f, 0f), new Vector2(0f, ctaBottom),
+                            new Vector2(CtaWidth, CtaHeight));
+            UiBuilder.Place(body.rectTransform, new Vector2(0.5f, 0f), new Vector2(0f, bodyBottom),
+                            new Vector2(BlockWidth, bodyHeight));
+            UiBuilder.Place(title.rectTransform, new Vector2(0.5f, 0f), new Vector2(0f, titleBottom),
+                            new Vector2(TitleWidth, titleHeight));
+        }
+
+        /// <summary>
+        /// The height a label actually draws at inside <paramref name="width"/>, rounded up to the
+        /// even number above it — a box measured to the last decimal is one the autosizer can
+        /// decide it doesn't quite fit in.
+        ///
+        /// <para>Measured rather than typed in, so the block keeps its rhythm when the copy is
+        /// edited. That is the only way a shared rhythm survives an edit: a hand-tuned height is
+        /// right until the sentence it was tuned for changes, and then nothing says so.</para>
+        ///
+        /// <para>A heading does not wrap, but the autosizer can still shrink it to keep its
+        /// longest line on screen, and TMP reports a preferred size at the font size it was handed
+        /// rather than the one it will settle on. Scaling by how far over the measure it came back
+        /// recovers the size it will actually draw at.</para>
+        /// </summary>
+        private static float Measure(TextMeshProUGUI text, float width)
+        {
+            var preferred = text.GetPreferredValues(text.text,
+                                                    text.enableWordWrapping ? width : 0f, 0f);
+            float height = preferred.y;
+
+            if (!text.enableWordWrapping && preferred.x > width)
+                height *= Mathf.Max(width / preferred.x, text.fontSizeMin / text.fontSize);
+
+            // Nothing to measure with means no font asset — rather than collapse the block onto
+            // the button, fall back to the line count the copy is written in.
+            if (height < 1f) height = text.text.Split('\n').Length * text.fontSize * 1.3f;
+
+            return Mathf.Ceil(height * 0.5f) * 2f;
+        }
 
         /// <summary>
         /// The blue wash every page stands on.

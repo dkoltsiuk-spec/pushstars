@@ -1,6 +1,7 @@
 using System.Collections;
 using TMPro;
 using UnityEngine;
+using UnityEngine.Events;
 using UnityEngine.SceneManagement;
 using UnityEngine.UI;
 using PushStars.Core;
@@ -86,14 +87,14 @@ namespace PushStars.UI
 
         private void Start()
         {
-            if (_nextButton != null) _nextButton.onClick.AddListener(Next);
-            if (_backButton != null) _backButton.onClick.AddListener(Back);
-            if (_allowButton != null) _allowButton.onClick.AddListener(AskForCamera);
-            if (_skipButton != null) _skipButton.onClick.AddListener(SkipLevelTest);
+            if (_nextButton != null) _nextButton.onClick.AddListener(Tap(Next));
+            if (_backButton != null) _backButton.onClick.AddListener(Tap(Back));
+            if (_allowButton != null) _allowButton.onClick.AddListener(Tap(AskForCamera));
+            if (_skipButton != null) _skipButton.onClick.AddListener(Tap(SkipLevelTest));
 
             if (_advanceButtons != null)
                 foreach (var button in _advanceButtons)
-                    if (button != null) button.onClick.AddListener(Next);
+                    if (button != null) button.onClick.AddListener(Tap(Next));
 
             if (_genderCards != null)
                 foreach (var card in _genderCards)
@@ -102,7 +103,11 @@ namespace PushStars.UI
                     // Captured per card, not read off the loop variable inside the closure: every
                     // listener would otherwise pick whichever body the loop finished on.
                     var chosen = card.Gender;
-                    card.Button.onClick.AddListener(() => PickGender(chosen));
+                    // The lighter cue, and the one that means what it says: this is a selection
+                    // moving between two things, not a step being taken. Fires on the already
+                    // chosen card too — a tap that answers "yes, that one" still deserves an
+                    // answer, and silence there reads as a missed press.
+                    card.Button.onClick.AddListener(() => { Haptics.Selection(); PickGender(chosen); });
                 }
 
             RefreshGenderFrames();
@@ -124,6 +129,17 @@ namespace PushStars.UI
                 foreach (var card in _genderCards)
                     if (card != null && card.Button != null) card.Button.onClick.RemoveAllListeners();
         }
+
+        /// <summary>
+        /// Wraps a handler so the button that calls it knocks first.
+        ///
+        /// <para>The feedback belongs to the press, not to what the press does — which is why it
+        /// is wired here and not at the top of <see cref="Next"/>. The camera page calls that
+        /// method itself once the system dialog closes, and a buzz on the way out of an OS dialog
+        /// nobody touched would be a lie about what just happened.</para>
+        /// </summary>
+        private UnityAction Tap(UnityAction handler)
+            => () => { Haptics.Light(); handler(); };
 
         // ── Paging ───────────────────────────────────────────────────────────────────────────────
 

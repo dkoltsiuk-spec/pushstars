@@ -7,11 +7,11 @@ namespace PushStars.UI
     /// One of the two figures on the "who are you playing as" page, and everything that has to
     /// change when it is the chosen one.
     ///
-    /// <para><b>Colour is the whole selection state.</b> The chosen figure keeps its own colours;
-    /// the other is drained to grey. Nothing is dimmed, outlined or shrunk — a player glancing at
-    /// this screen reads "that one is live, this one is not" from three metres away without being
-    /// taught what a highlight means here, and the two figures stay the same size so neither looks
-    /// like the better deal.</para>
+    /// <para><b>Colour is the selection state</b>, with a warm halo lit behind the one it lands on.
+    /// The chosen figure keeps its own colours; the other is drained to grey. Nothing is dimmed,
+    /// outlined or shrunk — a player glancing at this screen reads "that one is live, this one is
+    /// not" from three metres away without being taught what a highlight means here, and the two
+    /// figures stay the same size so neither looks like the better deal.</para>
     ///
     /// <para>Drained through a material swap rather than a tint: see the shader for why a tint
     /// cannot do it. Two shared assets rather than a material per card with its own saturation
@@ -30,6 +30,9 @@ namespace PushStars.UI
 
         [Tooltip("Material used while it is not — saturation 0.")]
         [SerializeField] private Material _drained;
+
+        [Tooltip("Warm halo behind this figure. Lit only while it is the chosen one.")]
+        [SerializeField] private Graphic _glow;
 
         [Header("Radio dot")]
         [SerializeField] private Graphic _dotRing;
@@ -62,6 +65,9 @@ namespace PushStars.UI
                 var material = selected ? _saturated : _drained;
                 if (material != null) _portrait.material = material;
             }
+
+            // Switched off rather than faded to nothing: an invisible Graphic still draws.
+            if (_glow != null) _glow.enabled = selected;
 
             if (_dotRing != null) _dotRing.color = selected ? _ringOn : _ringOff;
             if (_dotCore != null) _dotCore.color = selected ? _coreOn : _coreOff;
