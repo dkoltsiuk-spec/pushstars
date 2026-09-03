@@ -45,6 +45,13 @@ namespace PushStars.Fight
         [Tooltip("Pre-duel card. Absent, or in a level test, the set starts straight away.")]
         [SerializeField] private DuelReadyPanel _readyPanel;
         [SerializeField] private UnityEngine.UI.Button _exitButton;
+
+        [Header("Level test controls")]
+        [SerializeField] private UnityEngine.UI.Button _soloExitButton;
+        [SerializeField] private UnityEngine.UI.Button _soloPauseButton;
+        [SerializeField] private UnityEngine.UI.Button _soloResumeButton;
+        [SerializeField] private UnityEngine.UI.Button _soloFinishButton;
+        [SerializeField] private TMPro.TextMeshProUGUI _soloFinishLabel;
         [Tooltip("Label on the exit button. Relabelled to ПРОПУСТИТЬ when a level test cannot start.")]
         [SerializeField] private TMPro.TextMeshProUGUI _exitLabel;
 
@@ -75,6 +82,8 @@ namespace PushStars.Fight
         private float _sceneStartTime;
         private bool _everArmed;
         private bool _skipOffered;
+        private bool _paused;
+        private float _pausedAt;
 
         private const int DebugTapsToReset = 5;
         private const float DebugTapWindowSec = 1.2f;
@@ -93,6 +102,10 @@ namespace PushStars.Fight
 
             if (_session != null) _session.OnRep += HandleRep;
             if (_exitButton != null) _exitButton.onClick.AddListener(ExitToCaller);
+            if (_soloExitButton != null) _soloExitButton.onClick.AddListener(ExitToCaller);
+            if (_soloPauseButton != null) _soloPauseButton.onClick.AddListener(PauseSet);
+            if (_soloResumeButton != null) _soloResumeButton.onClick.AddListener(ResumeSet);
+            if (_soloFinishButton != null) _soloFinishButton.onClick.AddListener(FinishEarly);
             if (_readyPanel != null) _readyPanel.OnReady += BeginSet;
             ShowReadyOrStart();
             if (_debugButton != null) _debugButton.onClick.AddListener(ToggleDebugHud);
@@ -103,6 +116,10 @@ namespace PushStars.Fight
         {
             if (_session != null) _session.OnRep -= HandleRep;
             if (_exitButton != null) _exitButton.onClick.RemoveListener(ExitToCaller);
+            if (_soloExitButton != null) _soloExitButton.onClick.RemoveListener(ExitToCaller);
+            if (_soloPauseButton != null) _soloPauseButton.onClick.RemoveListener(PauseSet);
+            if (_soloResumeButton != null) _soloResumeButton.onClick.RemoveListener(ResumeSet);
+            if (_soloFinishButton != null) _soloFinishButton.onClick.RemoveListener(FinishEarly);
             if (_readyPanel != null) _readyPanel.OnReady -= BeginSet;
             if (_debugButton != null) _debugButton.onClick.RemoveListener(ToggleDebugHud);
         }
@@ -143,7 +160,11 @@ namespace PushStars.Fight
         {
             if (_mode == FightMode.LevelTest)
             {
-                _hud.ConfigureSolo("ЗАМЕР УРОВНЯ");
+                _hud.ConfigureSolo("ЗАМЕР");
+                // The solo layout carries its own way out, top-left, where a screen that is not a
+                // duel expects one. Leaving the duel's pill up as well puts two of them on screen,
+                // one of them over the title.
+                if (_exitButton != null) _exitButton.gameObject.SetActive(false);
                 return;
             }
 
@@ -229,13 +250,67 @@ namespace PushStars.Fight
 
         private void Update()
         {
-            if (_session == null) return;
+            if (_session == null || _paused) return;
             switch (_phase)
             {
                 case Phase.WaitPlank:  TickWaitPlank();  break;
                 case Phase.Countdown:  TickCountdown();  break;
                 case Phase.Live:       TickLive();       break;
             }
+        }
+
+        // ── Paused ───────────────────────────────────────────────────────────────────────────────
+
+        /// <summary>
+        /// Holds the level test: the clock stops and so does the counting.
+        ///
+        /// <para>Both, together, or the pause is a cheat — a stopped clock over a live counter is
+        /// an unlimited set, and a running clock over a dead counter is a punishment for using the
+        /// button. The HUD draws a curtain over the body for the same reason: a paused set that
+        /// still shows the camera view is somewhere to practise the rep the counter is about to
+        /// judge.</para>
+        ///
+        /// <para>Every deadline is a timestamp, so resuming pushes them all forward by exactly what
+        /// was held rather than trying to reconstruct them.</para>
+        /// </summary>
+        private void PauseSet()
+        {
+            if (_paused || _phase == Phase.Finished) return;
+            _paused = true;
+            _pausedAt = Time.time;
+            if (_session != null) _session.enabled = false;
+            _hud.SetPaused(true);
+        }
+
+        private void ResumeSet()
+        {
+            if (!_paused) return;
+            _paused = false;
+
+            float held = Time.time - _pausedAt;
+            _liveStartTime += held;
+            _countdownEndTime += held;
+            _sceneStartTime += held;   // or a long hold reads as a player stuck out of frame
+
+            if (_session != null) _session.enabled = true;
+            _hud.SetPaused(false);
+        }
+
+        /// <summary>FINISH: the set ends here, with what has been counted so far. It is the honest
+        /// end of a measurement someone has nothing left for — the alternative is holding a plank
+        /// for the rest of the minute to make the screen go away.</summary>
+        private void FinishEarly()
+        {
+            if (_phase != Phase.Live)
+            {
+                // Relabelled to ПРОПУСТИТЬ by OfferSkipIfStuck — a set that never started has no
+                // result to bank, so this is the way out, not a zero-rep finish.
+                if (_skipOffered) ExitToCaller();
+                return;
+            }
+
+            if (_paused) ResumeSet();
+            Finish();
         }
 
         // ── WaitPlank ────────────────────────────────────────────────────────────────────────────
@@ -275,6 +350,11 @@ namespace PushStars.Fight
 
             _skipOffered = true;
             if (_exitLabel != null) _exitLabel.text = "ПРОПУСТИТЬ";
+            // The solo layout hides that pill and carries an icon where it used to sit, so the
+            // offer goes on the button this screen actually has at the bottom. FINISH means
+            // nothing before a set has started; on a test that never armed, leaving is the only
+            // thing that button could honestly do.
+            if (_soloFinishLabel != null) _soloFinishLabel.text = "ПРОПУСТИТЬ";
             Debug.LogWarning("[Fight] Level test never armed — offering a skip.");
         }
 
@@ -303,6 +383,7 @@ namespace PushStars.Fight
 
             // Go live. Baseline excludes any reps done while getting set.
             _phase = Phase.Live;
+            _hud.PlayCornerAccents();
             _liveStartTime = Time.time;
             _baselineReps = _session.Reps;
             _repForms.Clear();

@@ -40,6 +40,9 @@ namespace PushStars.Editor
         const string GlowSprite = "Assets/_Project/UI/Sprites/glow_radial.png";
         const string PillSprite = "Assets/_Project/UI/Sprites/pill_capsule.png";
         const string CupSprite = "Assets/_Project/UI/Sprites/cup_.png";
+        const string ClockSprite = "Assets/_Project/UI/Sprites/time.png";
+        const string BoltTopSprite = "Assets/_Project/UI/Sprites/bolt_corner_top.png";
+        const string BoltBottomSprite = "Assets/_Project/UI/Sprites/bolt_corner_bottom.png";
         const string VsCoinSprite = "Assets/_Project/UI/Sprites/VS_for_serching.png";
         /// <summary>The arena backdrop: pink-red top, periwinkle bottom, a jagged seam baked in at
         /// roughly the same height as <see cref="SeamY"/>. Sized 796×1716 — a near-exact match for
@@ -126,6 +129,8 @@ namespace PushStars.Editor
             var fightBgSprite = LoadSprite(FightBgSprite);
             if (fightBgSprite != null) { baseBg.sprite = fightBgSprite; baseBg.color = Color.white; }
 
+            var cornerAccents = BuildCornerAccents(canvasRoot);
+
             var opponentHalf = BuildHalf(canvasRoot, "OpponentHalf", SeamY, 1f, out var opponentAvatarImage);
             var playerHalf = BuildHalf(canvasRoot, "PlayerHalf", 0f, SeamY, out var playerAvatarImage);
 
@@ -140,6 +145,7 @@ namespace PushStars.Editor
             safe.gameObject.AddComponent<SafeAreaFitter>();
 
             var hudRefs = BuildHud(safe, out var exitBtn, out var exitLabel, out var debugBtn);
+            var soloRefs = BuildSoloHud(safe);
 
             // ── Overlays ─────────────────────────────────────────────────────────────────────────
             var readyRefs = BuildReadyOverlay(canvasRoot);
@@ -162,6 +168,15 @@ namespace PushStars.Editor
             UiBuilder.Set(hudSO, "_bannerRoot", hudRefs.BannerRoot);
             UiBuilder.Set(hudSO, "_bannerText", hudRefs.BannerText);
             UiBuilder.Set(hudSO, "_countdown", hudRefs.Countdown);
+            UiBuilder.Set(hudSO, "_soloPanel", soloRefs.Panel);
+            UiBuilder.Set(hudSO, "_soloCaption", soloRefs.Caption);
+            UiBuilder.Set(hudSO, "_soloReps", soloRefs.Reps);
+            UiBuilder.Set(hudSO, "_soloForm", soloRefs.Form);
+            UiBuilder.Set(hudSO, "_soloTempo", soloRefs.Tempo);
+            UiBuilder.Set(hudSO, "_soloTimer", soloRefs.Timer);
+            UiBuilder.Set(hudSO, "_soloPauseOverlay", soloRefs.PauseOverlay);
+            UiBuilder.Set(hudSO, "_playerHalf", playerHalf);
+            UiBuilder.Set(hudSO, "_soloCorners", cornerAccents);
             UiBuilder.Set(hudSO, "_session", session);
             hudSO.ApplyModifiedPropertiesWithoutUndo();
 
@@ -219,10 +234,33 @@ namespace PushStars.Editor
             resultSO.ApplyModifiedPropertiesWithoutUndo();
 
             // ── Avatar drivers + bodies ─────────────────────────────────────────────────────────
+            // Three components share the player's body, and the plank armer decides which one owns
+            // it — each reads PushupSession.Armer.IsArmed for itself, so there is no coordinator to
+            // keep in step. Until the plank arms, the retargeter mirrors the limbs and the anchor
+            // puts the body where the person is standing in frame; on the arm the mirror blends out
+            // over ~0.35s, the anchor freezes where it was, and the depth scrub takes the body. The
+            // same rule covers the ready card, the wait for a plank, and the countdown, in a duel
+            // and in the level test alike — the phases the player spends getting into position.
             var playerDriver = cvGO.AddComponent<PushupAvatarDriver>();
             var playerDriverSO = new SerializedObject(playerDriver);
             UiBuilder.Set(playerDriverSO, "_session", session);
             playerDriverSO.ApplyModifiedPropertiesWithoutUndo(); // the Animator arrives at runtime
+
+            var mirror = cvGO.AddComponent<PoseMirrorRetargeter>();
+            var mirrorSO = new SerializedObject(mirror);
+            UiBuilder.Set(mirrorSO, "_session", session);
+            mirrorSO.ApplyModifiedPropertiesWithoutUndo();
+
+            var anchor = cvGO.AddComponent<AvatarMirrorAnchor>();
+            var anchorSO = new SerializedObject(anchor);
+            UiBuilder.Set(anchorSO, "_session", session);
+            UiBuilder.Set(anchorSO, "_stageCamera", playerCam);
+            // The body arrives at runtime, so the root, the hips and the rig's proportions are
+            // taken in BindAnimator. The plane it stands on is read off the shot this screen
+            // frames for itself rather than the stand's hand-tuned 3.6 m.
+            anchorSO.FindProperty("_planeFromCharacter").boolValue = true;
+            anchorSO.FindProperty("_followWhileArmed").boolValue = false;
+            anchorSO.ApplyModifiedPropertiesWithoutUndo();
 
             var ghostDriver = opponentGO.AddComponent<GhostAvatarDriver>();
             var ghostDriverSO = new SerializedObject(ghostDriver);
@@ -233,7 +271,9 @@ namespace PushStars.Editor
             var male = MainCharacterSetup.LoadCharacterPrefab(CharacterGender.Male);
             var female = MainCharacterSetup.LoadCharacterPrefab(CharacterGender.Female);
 
-            AddAvatar(cvGO, playerDriver, playerCam, playerRoot, male, female, fightController, shadow: false);
+            AddAvatar(cvGO, playerDriver, playerCam, playerRoot, male, female, fightController,
+                      shadow: false, alsoBound: new UnityEngine.Object[] { mirror, anchor },
+                      holdFramingFor: mirror);
             AddAvatar(opponentGO, ghostDriver, ghostCam, ghostRoot, male, female, fightController, shadow: true);
 
             var controllerGO = new GameObject("FightController");
@@ -247,6 +287,11 @@ namespace PushStars.Editor
             UiBuilder.Set(ctrlSO, "_readyPanel", readyPanel);
             UiBuilder.Set(ctrlSO, "_exitButton", exitBtn);
             UiBuilder.Set(ctrlSO, "_exitLabel", exitLabel);
+            UiBuilder.Set(ctrlSO, "_soloExitButton", soloRefs.Exit);
+            UiBuilder.Set(ctrlSO, "_soloPauseButton", soloRefs.Pause);
+            UiBuilder.Set(ctrlSO, "_soloResumeButton", soloRefs.Resume);
+            UiBuilder.Set(ctrlSO, "_soloFinishButton", soloRefs.Finish);
+            UiBuilder.Set(ctrlSO, "_soloFinishLabel", soloRefs.FinishLabel);
             var panels = preview != null
                 ? new Behaviour[] { debugHud, preview }
                 : new Behaviour[] { debugHud };
@@ -342,9 +387,13 @@ namespace PushStars.Editor
             return (Mathf.RoundToInt(height * aspect), height);
         }
 
+        /// <param name="alsoBound">Handed the same body after it is built. The player's mirror and
+        /// anchor; empty for the opponent, whose movement comes off a recording.</param>
         static void AddAvatar(GameObject host, MonoBehaviour driver, Camera cam, Transform root,
                               GameObject male, GameObject female,
-                              UnityEditor.Animations.AnimatorController controller, bool shadow)
+                              UnityEditor.Animations.AnimatorController controller, bool shadow,
+                              UnityEngine.Object[] alsoBound = null,
+                              PoseMirrorRetargeter holdFramingFor = null)
         {
             var avatar = host.AddComponent<FightAvatar>();
             var so = new SerializedObject(avatar);
@@ -354,6 +403,8 @@ namespace PushStars.Editor
             UiBuilder.Set(so, "_malePrefab", male);
             UiBuilder.Set(so, "_femalePrefab", female);
             UiBuilder.Set(so, "_fightController", controller);
+            UiBuilder.SetArray(so, "_alsoBound", alsoBound ?? new UnityEngine.Object[0]);
+            UiBuilder.Set(so, "_holdFramingWhileMirroring", holdFramingFor);
             so.FindProperty("_shadow").boolValue = shadow;
             so.ApplyModifiedPropertiesWithoutUndo();
         }
@@ -466,6 +517,225 @@ namespace PushStars.Editor
             UiBuilder.Place((RectTransform)debugBtn.transform, new Vector2(0f, 0f),
                             new Vector2(14f, 14f), new Vector2(46f, 34f));
             return refs;
+        }
+
+        // ── Level test (solo) ───────────────────────────────────────────────────────────────────
+
+        struct SoloRefs
+        {
+            public GameObject Panel, PauseOverlay;
+            public TextMeshProUGUI Caption, Reps, Form, Tempo, Timer, FinishLabel;
+            public Button Exit, Pause, Finish, Resume;
+        }
+
+        /// <summary>
+        /// The two dark bolts that close in on the corners once the set is live.
+        ///
+        /// <para>Built on the canvas root rather than in the HUD, right above the backdrop: they
+        /// are scenery, and the body has to pass in front of them. Everything in the HUD draws over
+        /// the avatar's render, so a corner piece parked there would cut across the character on
+        /// any screen tall enough for the two to meet.</para>
+        /// </summary>
+        static CornerAccents BuildCornerAccents(RectTransform canvasRoot)
+        {
+            var root = UiBuilder.Rect(canvasRoot, "LevelTestCorners");
+            UiBuilder.Stretch(root);
+
+            var accents = root.gameObject.AddComponent<CornerAccents>();
+            var so = new SerializedObject(accents);
+            var list = so.FindProperty("_accents");
+
+            // Anchored into their own corners, at the art's own aspect, spanning the full width —
+            // which is how they are drawn: two pieces of one shape torn across the screen.
+            var pieces = new (string name, string sprite, Vector2 anchor, Vector2 size)[]
+            {
+                ("BoltTop",    BoltTopSprite,    new Vector2(0f, 1f), new Vector2(390f, 443f)),
+                ("BoltBottom", BoltBottomSprite, new Vector2(1f, 0f), new Vector2(390f, 433f)),
+            };
+
+            list.arraySize = pieces.Length;
+            for (int i = 0; i < pieces.Length; i++)
+            {
+                var (name, spritePath, anchor, size) = pieces[i];
+                var image = UiBuilder.Image(root, name, Color.white);
+                var sprite = LoadSprite(spritePath);
+                if (sprite != null) image.sprite = sprite;
+                image.raycastTarget = false;
+                UiBuilder.Place(image.rectTransform, anchor, Vector2.zero, size);
+
+                var group = image.gameObject.AddComponent<CanvasGroup>();
+                group.alpha = 0f;
+
+                var element = list.GetArrayElementAtIndex(i);
+                element.FindPropertyRelative("target").objectReferenceValue = image.rectTransform;
+                element.FindPropertyRelative("group").objectReferenceValue = group;
+            }
+
+            so.ApplyModifiedPropertiesWithoutUndo();
+            root.gameObject.SetActive(false); // a duel has the backdrop's own bolts; this is the test's
+            return accents;
+        }
+
+        /// <summary>
+        /// The level test's own screen. Not a duel with the top half switched off: there is nobody
+        /// to compare against, so nothing here is a scoreboard. The count is the middle of the
+        /// screen, pace and technique read either side of it at a glance, and the clock sits with
+        /// the button that ends the set.
+        ///
+        /// <para>Built alongside the duel HUD and switched on by <c>FightHud.ConfigureSolo</c> —
+        /// one scene serves all three modes, and which one it is is only known at Start.</para>
+        /// </summary>
+        static SoloRefs BuildSoloHud(RectTransform safe)
+        {
+            var refs = new SoloRefs();
+
+            var root = UiBuilder.Rect(safe, "LevelTestHud");
+            UiBuilder.Stretch(root);
+            refs.Panel = root.gameObject;
+
+            // ── Top bar: leave, what this is, hold ──────────────────────────────────────────────
+            refs.Exit = PlateButton(root, "SoloExit", "X", new Color32(226, 58, 58, 255),
+                                    new Vector2(0f, 1f), new Vector2(14f, -12f),
+                                    new Vector2(48f, 36f), 20, Color.white);
+
+            // A label, not a button: nothing happens when it is pressed, so it is not built as
+            // something that can be.
+            var title = Plate(root, "SoloTitle", "ЗАМЕР", AppColors.AccentYellow,
+                              new Vector2(0.5f, 1f), new Vector2(0f, -10f),
+                              new Vector2(124f, 44f), 20, new Color32(24, 20, 8, 255), out _);
+            refs.Caption = title.GetComponentInChildren<TextMeshProUGUI>();
+
+            refs.Pause = PlateButton(root, "SoloPause", "", AppColors.AccentBlue,
+                                     new Vector2(1f, 1f), new Vector2(-14f, -12f),
+                                     new Vector2(48f, 36f), 20, Color.white);
+            // Two bars rather than a glyph: Rubik has no pause character and a font that falls
+            // back to a box here would be the first thing anyone sees on this screen.
+            var pauseRect = (RectTransform)refs.Pause.transform;
+            for (int i = 0; i < 2; i++)
+            {
+                var bar = UiBuilder.Image(pauseRect, "Bar" + i, Color.white);
+                UiBuilder.Place(bar.rectTransform, new Vector2(0.5f, 0.5f),
+                                new Vector2(i == 0 ? -5f : 5f, 0f), new Vector2(4f, 15f));
+            }
+
+            // ── Pace and technique, either side of the count ────────────────────────────────────
+            refs.Tempo = SoloStat(root, "SoloTempo", "TEMPO", new Vector2(0f, 1f),
+                                  new Vector2(18f, -66f), AppColors.TextPrimary);
+            refs.Form = SoloStat(root, "SoloForm", "TECHNIQUE:", new Vector2(1f, 1f),
+                                 new Vector2(-18f, -66f), AppColors.AccentLime);
+
+            // ── The count. It is the whole result, so it is the whole middle. ───────────────────
+            refs.Reps = UiBuilder.Text(root, "SoloReps", AppColors.AccentYellow, "0", 104,
+                                       FontStyles.Bold);
+            UiBuilder.Place(refs.Reps.rectTransform, new Vector2(0.5f, 1f), new Vector2(0f, -122f),
+                            new Vector2(320f, 140f));
+
+            // ── Clock and the way out of the set ────────────────────────────────────────────────
+            var clock = LoadSprite(ClockSprite);
+            if (clock != null)
+            {
+                var dial = UiBuilder.Image(root, "SoloClock", Color.white);
+                dial.sprite = clock;
+                dial.preserveAspect = true;
+                UiBuilder.Place(dial.rectTransform, new Vector2(0f, 0f), new Vector2(22f, 43f),
+                                new Vector2(26f, 26f));
+            }
+
+            refs.Timer = UiBuilder.Text(root, "SoloTimer", AppColors.TextPrimary, "01:00", 22,
+                                        FontStyles.Bold, TextAlignmentOptions.Left);
+            UiBuilder.Place(refs.Timer.rectTransform, new Vector2(0f, 0f), new Vector2(56f, 42f),
+                            new Vector2(110f, 28f));
+
+            refs.Finish = PlateButton(root, "SoloFinish", "FINISH", AppColors.AccentYellow,
+                                      new Vector2(0.5f, 0f), new Vector2(0f, 34f),
+                                      new Vector2(128f, 44f), 18, new Color32(24, 20, 8, 255));
+            refs.FinishLabel = refs.Finish.GetComponentInChildren<TextMeshProUGUI>();
+
+            // ── Paused ──────────────────────────────────────────────────────────────────────────
+            // The curtain is itself the way back: a paused set has exactly one thing to do next,
+            // and asking the thumb to find a small button again is asking for nothing.
+            refs.Resume = UiBuilder.Button(root, "SoloResume", "", new Color(0f, 0f, 0f, 0.82f),
+                                           AppColors.TextPrimary, 12, out var resumeUnused);
+            resumeUnused.gameObject.SetActive(false);
+            // Past the safe area at both ends: a curtain that stops short of the notch and the
+            // home strip reads as a panel that failed to load, not as a paused screen.
+            UiBuilder.Stretch((RectTransform)refs.Resume.transform, 0f, -140f, 0f, -140f);
+            refs.PauseOverlay = refs.Resume.gameObject;
+
+            var pausedTitle = UiBuilder.Text((RectTransform)refs.Resume.transform, "PausedTitle",
+                                             AppColors.TextPrimary, "ПАУЗА", 40, FontStyles.Bold);
+            UiBuilder.Place(pausedTitle.rectTransform, new Vector2(0.5f, 0.5f), new Vector2(0f, 16f),
+                            new Vector2(320f, 56f));
+            var pausedHint = UiBuilder.Text((RectTransform)refs.Resume.transform, "PausedHint",
+                                            AppColors.TextSecondary, "Нажми, чтобы продолжить", 15,
+                                            FontStyles.Normal);
+            UiBuilder.Place(pausedHint.rectTransform, new Vector2(0.5f, 0.5f), new Vector2(0f, -26f),
+                            new Vector2(320f, 26f));
+            refs.PauseOverlay.SetActive(false);
+
+            root.gameObject.SetActive(false); // a duel is the default; ConfigureSolo turns this on
+            return refs;
+        }
+
+        /// <summary>A flat rounded plate with a lip under it — the button shape the whole app uses.
+        /// Two sliced pills rather than one piece of art, because these come in four colours here
+        /// and a sprite per colour is four assets that have to be kept agreeing.</summary>
+        static RectTransform Plate(RectTransform parent, string name, string label, Color fill,
+                                   Vector2 anchor, Vector2 position, Vector2 size,
+                                   float fontSize, Color labelColor, out Image face)
+        {
+            var root = UiBuilder.Rect(parent, name);
+            UiBuilder.Place(root, anchor, position, size);
+
+            var pill = LoadSprite(PillSprite);
+
+            // The lip: the same shape darker, showing only along the bottom edge.
+            var lip = UiBuilder.Image(root, "Lip", new Color(fill.r * 0.5f, fill.g * 0.5f,
+                                                             fill.b * 0.5f, fill.a));
+            if (pill != null) { lip.sprite = pill; lip.type = Image.Type.Sliced; }
+            UiBuilder.Stretch(lip.rectTransform);
+
+            face = UiBuilder.Image(root, "Face", fill);
+            if (pill != null) { face.sprite = pill; face.type = Image.Type.Sliced; }
+            UiBuilder.Stretch(face.rectTransform, 0f, 4f, 0f, 0f);
+
+            if (!string.IsNullOrEmpty(label))
+            {
+                var text = UiBuilder.Text(face.rectTransform, "Label", labelColor, label, fontSize,
+                                          FontStyles.Bold);
+                UiBuilder.Stretch(text.rectTransform, 6f, 2f, 6f, 2f);
+            }
+            return root;
+        }
+
+        /// <summary>The same plate, pressable. The face is the target graphic rather than the empty
+        /// root, so the press tint lands on something that is actually on screen.</summary>
+        static Button PlateButton(RectTransform parent, string name, string label, Color fill,
+                                  Vector2 anchor, Vector2 position, Vector2 size,
+                                  float fontSize, Color labelColor)
+        {
+            var root = Plate(parent, name, label, fill, anchor, position, size, fontSize,
+                             labelColor, out var face);
+            var button = root.gameObject.AddComponent<Button>();
+            button.targetGraphic = face;
+            return button;
+        }
+
+        /// <summary>A caption over a live number, on the level test's own scale — these are read
+        /// from a plank at arm's length, not from the comfortable distance a duel HUD assumes.</summary>
+        static TextMeshProUGUI SoloStat(RectTransform parent, string name, string caption,
+                                        Vector2 anchor, Vector2 position, Color valueColor)
+        {
+            var align = anchor.x > 0.5f ? TextAlignmentOptions.Right : TextAlignmentOptions.Left;
+
+            var cap = UiBuilder.Text(parent, name + "Caption", AppColors.TextSecondary, caption, 13,
+                                     FontStyles.Bold, align);
+            UiBuilder.Place(cap.rectTransform, anchor, position, new Vector2(180f, 18f));
+
+            var value = UiBuilder.Text(parent, name, valueColor, "—", 30, FontStyles.Bold, align);
+            UiBuilder.Place(value.rectTransform, anchor, position + new Vector2(0f, -22f),
+                            new Vector2(180f, 38f));
+            return value;
         }
 
         /// <summary>Dark pill with the fighter's name — the badge from the comp.</summary>
@@ -801,6 +1071,11 @@ namespace PushStars.Editor
             return preview;
         }
 
-        static Sprite LoadSprite(string path) => AssetDatabase.LoadAssetAtPath<Sprite>(path);
+        /// <summary>Through <see cref="SpriteImporter"/>, not straight at the AssetDatabase: this
+        /// project is in 3D mode, so a PNG dropped into the sprites folder arrives as a Texture and
+        /// asking for a Sprite it was never imported as returns null with nothing to say why — a
+        /// white box in the built scene and no error anywhere. That is exactly what the corner
+        /// bolts did on their first build.</summary>
+        static Sprite LoadSprite(string path) => SpriteImporter.Load(path);
     }
 }

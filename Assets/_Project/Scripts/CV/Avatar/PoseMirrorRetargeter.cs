@@ -25,7 +25,7 @@ namespace PushStars.CV
     /// smoothing (slerp toward target) plus visibility hold keep it from twitching; the
     /// <see cref="AvatarMirrorAnchor"/> keeps owning root position/scale.</para>
     /// </summary>
-    public sealed class PoseMirrorRetargeter : MonoBehaviour
+    public sealed class PoseMirrorRetargeter : MonoBehaviour, IAvatarAnimator
     {
         [SerializeField] private PushupSession _session;
         [SerializeField] private Animator _animator;
@@ -71,6 +71,21 @@ namespace PushStars.CV
 
         private void Start()
         {
+            TryBind();
+        }
+
+        /// <summary>
+        /// Binds to a body that did not exist when the scene was saved.
+        ///
+        /// <para>The stand wires its animator in the Inspector and never calls this. The fight
+        /// screen cannot: which body stands there depends on a saved preference, so it is
+        /// instantiated at load and handed out afterwards — the same reason
+        /// <see cref="IAvatarAnimator"/> exists at all.</para>
+        /// </summary>
+        public void BindAnimator(Animator animator)
+        {
+            _animator = animator;
+            _bound = false;
             TryBind();
         }
 

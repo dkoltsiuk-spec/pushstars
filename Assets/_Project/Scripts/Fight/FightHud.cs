@@ -10,8 +10,10 @@ namespace PushStars.Fight
     /// and each half carries its own rep count, FORM and tempo over its own body. The timer sits on
     /// the seam between them, where both can be read without moving your eyes off either.
     ///
-    /// <para>A level test has no opponent, so <see cref="ConfigureSolo"/> hides that half entirely
-    /// rather than parking a zero there for a minute.</para>
+    /// <para>A level test is not that screen with one half blanked — <see cref="ConfigureSolo"/>
+    /// switches to a layout of its own, where the count is the middle of the screen instead of one
+    /// side of a comparison. Both layouts show the same four live numbers, so the setters write to
+    /// whichever one is up and no caller has to know which screen it is on.</para>
     ///
     /// <para>Audio feedback carries over from the tuning HUD unchanged: the user cannot watch the
     /// screen from a plank, so the 880Hz rep beep and the veto buzz stay the primary channel.</para>
@@ -36,6 +38,27 @@ namespace PushStars.Fight
         [SerializeField] private TextMeshProUGUI _playerReps;
         [SerializeField] private TextMeshProUGUI _playerForm;
         [SerializeField] private TextMeshProUGUI _playerTempo;
+
+        [Header("Level test (solo)")]
+        [Tooltip("The whole solo layout: its own top bar, one centred counter, its own clock.")]
+        [SerializeField] private GameObject _soloPanel;
+        [SerializeField] private TextMeshProUGUI _soloCaption;
+        [SerializeField] private TextMeshProUGUI _soloReps;
+        [SerializeField] private TextMeshProUGUI _soloForm;
+        [SerializeField] private TextMeshProUGUI _soloTempo;
+        [SerializeField] private TextMeshProUGUI _soloTimer;
+        [SerializeField] private GameObject _soloPauseOverlay;
+
+        [Tooltip("The dark bolts that close in on the corners once the set is live.")]
+        [SerializeField] private CornerAccents _soloCorners;
+
+        [Tooltip("The player's band of the screen. A duel gives it the bottom half; a level test " +
+                 "has the screen to itself and stands the body in the middle of it.")]
+        [SerializeField] private RectTransform _playerHalf;
+
+        [Tooltip("Anchors the player's band takes in a level test — the same shape, moved up, so " +
+                 "the render texture's aspect still matches its rect and the body is not stretched.")]
+        [SerializeField] private Vector2 _soloHalfAnchorY = new Vector2(0.17f, 0.65f);
 
         [Header("Shared")]
         [SerializeField] private TextMeshProUGUI _timer;
@@ -62,13 +85,31 @@ namespace PushStars.Fight
         /// its empty half back when the scoreboards are re-shown.</summary>
         private bool _showOpponent = true;
 
+        /// <summary>Whether the solo layout is the one on screen. The two layouts show the same
+        /// four live numbers in different places, so the setters write to whichever set is up
+        /// rather than every caller having to know which screen it is on.</summary>
+        private bool _solo;
+        private TextMeshProUGUI _repsOut, _formOut, _tempoOut, _timerOut;
+
         private void Awake()
         {
             _audio = gameObject.AddComponent<AudioSource>();
             _audio.playOnAwake = false;
             _beep = MakeTone("repBeep", 880f, 0.10f);
             _buzz = MakeTone("vetoBuzz", 220f, 0.25f, thirdHarmonic: true);
-            if (_playerReps != null) _playerRepsBaseScale = _playerReps.rectTransform.localScale;
+
+            // The duel layout until told otherwise — the scene opens on it, and a mode that never
+            // configures anything still gets working labels rather than four silent nulls.
+            UseDuelLabels();
+        }
+
+        private void UseDuelLabels()
+        {
+            _repsOut = _playerReps;
+            _formOut = _playerForm;
+            _tempoOut = _playerTempo;
+            _timerOut = _timer;
+            if (_repsOut != null) _playerRepsBaseScale = _repsOut.rectTransform.localScale;
         }
 
         private void OnEnable()
@@ -102,11 +143,11 @@ namespace PushStars.Fight
         private void Update()
         {
             // Rep-counter pop: quick overshoot that settles in ~0.25s.
-            if (_playerReps != null)
+            if (_repsOut != null)
             {
                 float t = (Time.time - _playerRepsPopTime) / 0.25f;
                 float k = t < 1f ? 1f + 0.35f * (1f - t) * Mathf.Sin(t * Mathf.PI) : 1f;
-                _playerReps.rectTransform.localScale = _playerRepsBaseScale * k;
+                _repsOut.rectTransform.localScale = _playerRepsBaseScale * k;
             }
 
             // "ВПЕРЁД!" flash auto-hides.
@@ -122,55 +163,127 @@ namespace PushStars.Fight
         /// <summary>Two fighters, two counters.</summary>
         public void ConfigureDuel(string opponentName, string playerName)
         {
+            _solo = false;
             _showOpponent = true;
+            UseDuelLabels();
+            if (_soloPanel != null) _soloPanel.SetActive(false);
+            if (_soloCorners != null) _soloCorners.gameObject.SetActive(false);
             if (_opponentPanel != null) _opponentPanel.SetActive(true);
+            if (_playerPanel != null) _playerPanel.SetActive(true);
             SetText(_opponentName, opponentName);
             SetText(_opponentReps, "0");
             SetText(_playerName, playerName);
             SetText(_playerReps, "0");
         }
 
-        /// <summary>Level test: there is no opponent, so the whole upper half goes rather than
-        /// standing empty for a minute. The caption says what the screen is instead.</summary>
+        /// <summary>
+        /// Level test: not a duel with one half blanked, but its own screen.
+        ///
+        /// <para>There is no opponent to compare against, so nothing is a scoreboard — the count is
+        /// the whole point and it goes in the middle, big, with the pace and the technique reading
+        /// either side of it and the clock down by the button that ends the set. The duel layout's
+        /// two bands, its seam clock and its name badges all go; the body moves up out of the
+        /// bottom band into the middle of the screen it now has to itself.</para>
+        /// </summary>
         public void ConfigureSolo(string caption)
         {
+            _solo = true;
             _showOpponent = false;
             if (_opponentPanel != null) _opponentPanel.SetActive(false);
-            SetText(_playerName, caption);
-            SetText(_playerReps, "0");
+            if (_playerPanel != null) _playerPanel.SetActive(false);
+            if (_soloPanel != null) _soloPanel.SetActive(true);
+            // On, but still off-screen at zero alpha: they arrive on the cue below, not with the
+            // page. CornerAccents parks them there in Awake.
+            if (_soloCorners != null) _soloCorners.gameObject.SetActive(true);
+            SetPaused(false);
+
+            _repsOut = _soloReps;
+            _formOut = _soloForm;
+            _tempoOut = _soloTempo;
+            _timerOut = _soloTimer;
+            if (_repsOut != null) _playerRepsBaseScale = _repsOut.rectTransform.localScale;
+
+            SetText(_soloCaption, caption);
+            SetText(_repsOut, "0");
+            SetText(_formOut, "—");
+            SetText(_tempoOut, "—");
+
+            // Same rect shape as the duel band, moved up: the stage's render texture was sized to
+            // that aspect, and RawImage maps texture onto rect per-axis with no aspect option, so
+            // a rect of a different shape here would quietly squash the body.
+            if (_playerHalf != null)
+            {
+                _playerHalf.anchorMin = new Vector2(0f, _soloHalfAnchorY.x);
+                _playerHalf.anchorMax = new Vector2(1f, _soloHalfAnchorY.y);
+                _playerHalf.offsetMin = Vector2.zero;
+                _playerHalf.offsetMax = Vector2.zero;
+            }
         }
 
-        /// <summary>Hides both scoreboards while the ready card is up. The card shows the same
+        /// <summary>Hides the scoreboards while the ready card is up. The card shows the same
         /// fighters from the same angle, and a row of zeros behind it reads as a duel already in
         /// progress and lost.</summary>
         public void SetScoresVisible(bool visible)
         {
+            if (_solo)
+            {
+                if (_soloPanel != null) _soloPanel.SetActive(visible);
+                return;
+            }
+
             if (_opponentPanel != null) _opponentPanel.SetActive(visible && _showOpponent);
             if (_playerPanel != null) _playerPanel.SetActive(visible);
         }
 
+        /// <summary>The cue the corner bolts come in on: the clock has started, and the thing being
+        /// measured is now the thing you are doing. Nothing else on this screen says so.</summary>
+        public void PlayCornerAccents()
+        {
+            if (_soloCorners != null) _soloCorners.Play();
+        }
+
+        /// <summary>Curtain over the level test while it is paused. It covers the body on purpose:
+        /// a pause that leaves the set visible and the clock stopped is somewhere to practise.</summary>
+        public void SetPaused(bool paused)
+        {
+            if (_soloPauseOverlay != null) _soloPauseOverlay.SetActive(paused);
+        }
+
         // ── Live values ──────────────────────────────────────────────────────────────────────────
 
-        public void SetPlayerReps(int reps) => SetText(_playerReps, reps.ToString());
+        public void SetPlayerReps(int reps) => SetText(_repsOut, reps.ToString());
         public void SetOpponentReps(int reps) => SetText(_opponentReps, reps.ToString());
 
-        public void SetPlayerForm(float form) => SetText(_playerForm, $"{form:0}");
+        /// <summary>Technique, 0–100. The level test spells it as a percentage and colours it —
+        /// it is the one number on that screen a player can still act on mid-set.</summary>
+        public void SetPlayerForm(float form)
+        {
+            SetText(_formOut, _solo ? $"{form:0}%" : $"{form:0}");
+            if (_solo && _formOut != null)
+                _formOut.color = form >= 85f ? GoodColor : form >= 70f ? WarnColor : VetoColor;
+        }
+
         public void SetOpponentForm(float form) => SetText(_opponentForm, $"{form:0}");
 
         /// <summary>Seconds per rep, which is how a lifter thinks about pace — reps per minute is a
         /// number you have to divide before it means anything mid-set.</summary>
-        public void SetPlayerTempo(float repsPerMinute) => SetText(_playerTempo, TempoText(repsPerMinute));
+        public void SetPlayerTempo(float repsPerMinute)
+            => SetText(_tempoOut, repsPerMinute > 0.01f
+                                  ? $"{60f / repsPerMinute:0.0}{(_solo ? "s" : "с")}"
+                                  : "—");
+
         public void SetOpponentTempo(float secondsPerRep) =>
             SetText(_opponentTempo, secondsPerRep > 0.01f ? $"{secondsPerRep:0.0}с" : "—");
 
-        private static string TempoText(float repsPerMinute)
-            => repsPerMinute > 0.01f ? $"{60f / repsPerMinute:0.0}с" : "—";
-
         public void SetTimer(int seconds)
         {
-            if (_timer == null) return;
-            _timer.text = $"{seconds / 60}:{seconds % 60:00}";
-            _timer.color = seconds <= 10 ? VetoColor : Color.white;
+            if (_timerOut == null) return;
+            // Padded on the level test, where the clock is the only number moving and a line that
+            // changes width every ten seconds reads as a glitch; bare in a duel, where it sits on
+            // the seam and every character costs room.
+            _timerOut.text = _solo ? $"{seconds / 60:00}:{seconds % 60:00}"
+                                   : $"{seconds / 60}:{seconds % 60:00}";
+            _timerOut.color = seconds <= 10 ? VetoColor : Color.white;
         }
 
         // ── Guidance banner ──────────────────────────────────────────────────────────────────────

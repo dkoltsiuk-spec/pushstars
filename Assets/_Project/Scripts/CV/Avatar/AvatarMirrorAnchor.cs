@@ -19,7 +19,7 @@ namespace PushStars.CV
     ///
     /// Test-stand component, same family as <see cref="PushupAvatarDriver"/>.
     /// </summary>
-    public sealed class AvatarMirrorAnchor : MonoBehaviour
+    public sealed class AvatarMirrorAnchor : MonoBehaviour, IAvatarAnimator
     {
         public enum AnchorState { Unlocked = 0, Locking = 1, Locked = 2, Frozen = 3 }
 
@@ -59,6 +59,12 @@ namespace PushStars.CV
         [SerializeField] private bool _mirrorX = false;
         [Tooltip("Character plane distance from the stage camera, meters.")]
         [SerializeField] private float _characterDistance = 3.6f;
+
+        [Tooltip("Read that distance off where the body already stands, the first time the anchor " +
+                 "locks, instead of trusting the number above. The stand's camera is static and " +
+                 "that number was tuned around it; the fight screen frames its own shot, so a " +
+                 "constant there puts the body on the wrong plane and at the wrong size.")]
+        [SerializeField] private bool _planeFromCharacter = false;
         [Tooltip("Shoulder-mid to hip-mid on the rig, meters (Mixamo Ch36 ≈ 0.47).")]
         [SerializeField] private float _rigTorsoMeters = 0.47f;
         [Tooltip("Hip height above the character's root while standing, meters.")]
@@ -76,6 +82,7 @@ namespace PushStars.CV
         private readonly float[] _mt = new float[3];
         private int _medCount, _medHead;
 
+        private bool _planeCaptured;
         private float _lastSampleTime = -1f;
         private float _stableSince = -1f;
         private float _lostSince = -1f;
@@ -126,6 +133,45 @@ namespace PushStars.CV
             ApplyPlacement();
         }
 
+        /// <summary>
+        /// Binds to a body built at runtime, and takes the rig's proportions off it.
+        ///
+        /// <para>Measured, not typed in: the fight screen instantiates a male or a female body
+        /// depending on a saved preference, and the two rigs do not share a torso length. The
+        /// stand wires all of this in the Inspector and never calls this.</para>
+        /// </summary>
+        public void BindAnimator(Animator animator)
+        {
+            if (animator == null) return;
+
+            _characterRoot = animator.transform;
+            _hipsBone = animator.GetBoneTransform(HumanBodyBones.Hips);
+
+            var leftArm = animator.GetBoneTransform(HumanBodyBones.LeftUpperArm);
+            var rightArm = animator.GetBoneTransform(HumanBodyBones.RightUpperArm);
+            if (_hipsBone == null || leftArm == null || rightArm == null) return;
+
+            Vector3 shoulderMid = (leftArm.position + rightArm.position) * 0.5f;
+            _rigTorsoMeters = Vector3.Distance(shoulderMid, _hipsBone.position);
+            _rigHipHeightMeters = _hipsBone.position.y - animator.transform.position.y;
+        }
+
+        /// <summary>The plane the character is placed on, taken once from where it already stands.
+        /// Once only: after the first lock the anchor is what put the body there, and reading the
+        /// distance back would be reading its own output.</summary>
+        private void CapturePlane()
+        {
+            if (!_planeFromCharacter || _planeCaptured) return;
+            if (_characterRoot == null || _stageCamera == null) return;
+
+            var cam = _stageCamera.transform;
+            float depth = Vector3.Dot(_characterRoot.position - cam.position, cam.forward);
+            if (depth <= 0.2f) return;
+
+            _characterDistance = depth;
+            _planeCaptured = true;
+        }
+
         private void TickStateMachine(bool valid, float now)
         {
             switch (State)
@@ -136,6 +182,7 @@ namespace PushStars.CV
                         State = AnchorState.Locking;
                         _stableSince = now;
                         ResetFilters();
+                        CapturePlane();
                     }
                     break;
 

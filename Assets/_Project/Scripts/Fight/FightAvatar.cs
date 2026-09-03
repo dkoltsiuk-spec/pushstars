@@ -38,6 +38,17 @@ namespace PushStars.Fight
         [Header("Bindings")]
         [Tooltip("Component driving this body. Must implement IAvatarAnimator.")]
         [SerializeField] private MonoBehaviour _driverBehaviour;
+
+        [Tooltip("Handed the same body as the driver: the live mirror and the anchor that owns " +
+                 "where it stands, which run until the plank arms. Each must implement " +
+                 "IAvatarAnimator. Empty on the opponent — a ghost has nobody to mirror.")]
+        [SerializeField] private MonoBehaviour[] _alsoBound;
+
+        [Tooltip("While this mirror owns the body, the shot holds where it first framed. The whole " +
+                 "point of the mirror is that the character stands where you do in frame, and a " +
+                 "camera that re-centres it every frame cancels exactly that. Framing resumes on " +
+                 "the arm, which is what rides the lens down into the plank.")]
+        [SerializeField] private PoseMirrorRetargeter _holdFramingWhileMirroring;
         [SerializeField] private Camera _stageCamera;
         [Tooltip("Transform the instantiated body is parented to.")]
         [SerializeField] private Transform _avatarRoot;
@@ -103,6 +114,12 @@ namespace PushStars.Fight
         private void LateUpdate()
         {
             if (_animator == null || _stageCamera == null) return;
+
+            // Framed once regardless, so the shot starts on the body rather than wherever the
+            // scene's camera was authored — then held for as long as the mirror owns it.
+            if (_framed && _holdFramingWhileMirroring != null
+                        && _holdFramingWhileMirroring.MirrorWeight > 0.5f) return;
+
             FrameCharacter();
         }
 
@@ -154,6 +171,14 @@ namespace PushStars.Fight
             if (_driverBehaviour is IAvatarAnimator driver) driver.BindAnimator(_animator);
             else if (_driverBehaviour != null)
                 Debug.LogError($"[FightAvatar] {_driverBehaviour.GetType().Name} does not implement IAvatarAnimator.");
+
+            if (_alsoBound == null) return;
+            foreach (var extra in _alsoBound)
+            {
+                if (extra is IAvatarAnimator bound) bound.BindAnimator(_animator);
+                else if (extra != null)
+                    Debug.LogError($"[FightAvatar] {extra.GetType().Name} does not implement IAvatarAnimator.");
+            }
         }
 
         /// <summary>Darkens this body's materials on the instance only. <c>renderer.materials</c>
