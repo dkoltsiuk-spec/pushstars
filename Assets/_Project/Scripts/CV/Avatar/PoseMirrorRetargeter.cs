@@ -93,6 +93,7 @@ namespace PushStars.CV
             public Quaternion RestRotInRoot;
             public Vector3 RestDirInRoot;
             public Vector3 NeutralDir;
+            public Quaternion NeutralRotInRoot;
             public Vector3 SmoothedDir;
             public bool HasDir;
         }
@@ -111,6 +112,7 @@ namespace PushStars.CV
         private bool _limbsReady;
         private bool _calibrated;
         private Quaternion _neutralHips = Quaternion.identity;
+        private Quaternion _neutralHipsRotInRoot = Quaternion.identity;
 
         private Segment[] _segments;
         private Transform _root;
@@ -270,7 +272,7 @@ namespace PushStars.CV
                     {
                         Quaternion torso = Quaternion.LookRotation(fwd, _hipsSmoothedUp);
                         Quaternion target = _calibrated
-                            ? Deviate(torso * Quaternion.Inverse(_neutralHips), _hips.rotation, rootRot)
+                            ? rootRot * (torso * Quaternion.Inverse(_neutralHips)) * _neutralHipsRotInRoot
                             : rootRot * torso * _hipsRestRotInRoot;
                         _hips.rotation = Quaternion.Slerp(_hips.rotation, target, w);
                     }
@@ -292,8 +294,8 @@ namespace PushStars.CV
                 seg.HasDir = true;
 
                 Quaternion target = _calibrated
-                    ? Deviate(Quaternion.FromToRotation(seg.NeutralDir, seg.SmoothedDir),
-                              seg.Bone.rotation, rootRot)
+                    ? rootRot * Quaternion.FromToRotation(seg.NeutralDir, seg.SmoothedDir)
+                              * seg.NeutralRotInRoot
                     : rootRot * Quaternion.FromToRotation(seg.RestDirInRoot, seg.SmoothedDir)
                               * seg.RestRotInRoot;
                 seg.Bone.rotation = Quaternion.Slerp(seg.Bone.rotation, target, w);
@@ -321,8 +323,14 @@ namespace PushStars.CV
         /// obvious one: the rig rests with its thighs apart, a person standing normally has them
         /// close to vertical, and swinging one onto the other pulls the knees together — which is
         /// exactly what the level test showed. Captured here, standing normally maps onto the
-        /// character playing its own idle, and only what the person actually does moves it off
-        /// that — see <see cref="Deviate"/>.</para>
+        /// character standing in its own idle stance, and only what the person actually does moves
+        /// it off that.</para>
+        ///
+        /// <para><b>A frozen frame of the idle, not the idle.</b> Both halves of the zero are taken
+        /// in one instant and never read again. Laying the deviation on a clip that keeps playing
+        /// was the previous attempt, and it crossed the animation with the person — the body did a
+        /// bit of both at once. Once the mirror has the body, the movement on screen is the
+        /// person's; the clip only ever said where they were standing when it started.</para>
         ///
         /// <para>Taken at the moment the whole skeleton first holds still, which is the one moment
         /// this screen can be sure the person is in frame and settled. Re-taken every time the gate
@@ -330,12 +338,18 @@ namespace PushStars.CV
         /// </summary>
         private void Calibrate(in PoseFrame frame)
         {
+            // Both halves of the zero, taken in the same instant and never read again: the
+            // person's stance, and the character's. Nothing has written to the bones yet this
+            // frame, so what is read here is the idle clip and only the idle clip.
+            Quaternion invRoot = Quaternion.Inverse(_root.rotation);
+
             for (int i = 0; i < _segments.Length; i++)
             {
                 ref var seg = ref _segments[i];
                 Vector3 dir = MapDir(World(frame, seg.LmB) - World(frame, seg.LmA));
                 if (dir.sqrMagnitude < 1e-6f) return; // nothing usable — keep the rig's rest pose
                 seg.NeutralDir = dir.normalized;
+                seg.NeutralRotInRoot = invRoot * seg.Bone.rotation;
             }
 
             Vector3 up = MapDir(World(frame, PoseLandmark.LeftShoulder)
@@ -350,6 +364,7 @@ namespace PushStars.CV
             if (fwd.sqrMagnitude < 1e-6f) return;
 
             _neutralHips = Quaternion.LookRotation(fwd, up.normalized);
+            _neutralHipsRotInRoot = invRoot * _hips.rotation;
             _calibrated = true;
         }
 
@@ -373,23 +388,6 @@ namespace PushStars.CV
             }
             return true;
         }
-
-        /// <summary>
-        /// Lays a root-space deviation on top of the pose the Animator wrote this frame.
-        ///
-        /// <para>This is what "calibrated" means, and the first attempt got it wrong: it zeroed
-        /// onto <c>RestRotInRoot</c>, which is the humanoid muscle-zero pose — arms out, legs
-        /// apart — so a person standing normally mapped onto a character standing in a T. The zero
-        /// has to be the character's own stance, and the only thing that knows that stance is the
-        /// idle clip playing underneath. At the captured neutral the deviation is identity and the
-        /// body simply plays its idle; move, and the limb swings off that idle by exactly as much
-        /// as yours moved.</para>
-        ///
-        /// <para>Read parent-first, so a bone reads a parent that has already been corrected and
-        /// keeps its own local pose under it.</para>
-        /// </summary>
-        private static Quaternion Deviate(Quaternion deltaInRoot, Quaternion animated, Quaternion rootRot)
-            => rootRot * deltaInRoot * Quaternion.Inverse(rootRot) * animated;
 
         private static Vector3 World(in PoseFrame f, PoseLandmark id)
         {
