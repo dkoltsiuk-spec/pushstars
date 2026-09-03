@@ -36,6 +36,35 @@ namespace PushStars.Editor
         private static readonly string[] SkipPrefixes =
             { "pill_", "circle_", "dashed_", "card_" };
 
+        /// <summary>
+        /// Sprites that are nothing but a glow: a wide, low-contrast ramp fading into the page.
+        ///
+        /// <para>These are the one thing block compression cannot store. ASTC and ETC2 keep two
+        /// endpoint colours per 4–6 px block and blend between them per texel — ample for an icon,
+        /// useless for a haze that moves by one or two levels across a whole block. Every block
+        /// rounds to a single flat colour and the glow comes out as a grid of squares, which is
+        /// exactly what the onboarding row looked like on device. They import uncompressed
+        /// instead: about 4 MB of texture memory for the set, some 2 MB more than the compressed
+        /// versions cost.</para>
+        ///
+        /// <para>Names are the lowercased file stem, matched exactly — a prefix rule would drag in
+        /// the sharp art that shares these prefixes (onb_cam_view is a photograph, and most bg_*
+        /// are panels), and every one of those compresses fine.</para>
+        /// </summary>
+        private static readonly string[] SoftGradients =
+            { "glow_radial", "glow_character", "ground_shadow", "onb_cam_points", "onb_cam_avatar",
+              "icon_lightning_bg", "bg_fight" };
+
+        /// <summary>True for the glow sprites above. Also read by <see cref="UISpriteAtlasSetup"/>:
+        /// a packed sprite is drawn from the atlas texture and takes the atlas's format, so one
+        /// swept into it would be block-compressed again no matter what is set here.</summary>
+        public static bool IsSoftGradient(string name)
+        {
+            foreach (var n in SoftGradients)
+                if (name == n) return true;
+            return false;
+        }
+
         [MenuItem("Tools/Push Stars/Configure Figma Sprites", priority = 203)]
         public static void ConfigureAll()
         {
@@ -226,22 +255,35 @@ namespace PushStars.Editor
 
             // Platform overrides — ASTC on iOS, ETC2 on Android.
             // Both are GPU-native compressed formats: look identical to PNG at runtime
-            // but take 4-8x less memory and load faster.
+            // but take 4-8x less memory and load faster. The exception is a glow, which they
+            // shatter into squares — see SoftGradients, those import uncompressed.
             // maxTextureSize: bg images cap at 2048, icons at 512 (enough for 3x Retina).
             // Full-screen art is matched at either end of the name: the convention is bg_*, but
             // a Figma export arrives named for its screen first (loading_bg), and capping that at
             // the icon size resamples a whole background down to 512 px.
-            bool isBg = name.StartsWith("bg_") || name.EndsWith("_bg") || name == "bg";
+            bool isBg   = name.StartsWith("bg_") || name.EndsWith("_bg") || name == "bg";
+            bool isSoft = IsSoftGradient(name);
+            // bolt_* are the corner pieces the level test throws in: not backgrounds, but drawn
+            // the full width of the screen, and a hard-edged silhouette resampled to the icon cap
+            // comes back with a soft staircase down its long diagonal.
             int  maxSize = isBg ? 2048
-                         : name.StartsWith("bar_") || name.StartsWith("onb_") ? 1024
+                         : name.StartsWith("bar_") || name.StartsWith("onb_")
+                           || name.StartsWith("bolt_") ? 1024
                          : 512;
+
+            // The one place the cap has to bite: a full-screen ramp held uncompressed at 2048 is
+            // 5.5 MB of RGBA. Halved it is under 2 MB, and halving a pure gradient costs nothing
+            // to look at — the bilinear upscale that brings it back is the same interpolation the
+            // ramp is made of, and it smooths the 8-bit steps rather than adding any.
+            if (isSoft && isBg) maxSize = 1024;
 
             importer.SetPlatformTextureSettings(new TextureImporterPlatformSettings
             {
                 name            = "iPhone",
                 overridden      = true,
                 maxTextureSize  = maxSize,
-                format          = TextureImporterFormat.ASTC_6x6,
+                format          = isSoft ? TextureImporterFormat.RGBA32
+                                         : TextureImporterFormat.ASTC_6x6,
                 compressionQuality = 100,
             });
             importer.SetPlatformTextureSettings(new TextureImporterPlatformSettings
@@ -249,7 +291,8 @@ namespace PushStars.Editor
                 name            = "Android",
                 overridden      = true,
                 maxTextureSize  = maxSize,
-                format          = TextureImporterFormat.ETC2_RGBA8,
+                format          = isSoft ? TextureImporterFormat.RGBA32
+                                         : TextureImporterFormat.ETC2_RGBA8,
                 compressionQuality = 100,
             });
 
