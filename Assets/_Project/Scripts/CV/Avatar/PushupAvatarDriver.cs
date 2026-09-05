@@ -21,6 +21,7 @@ namespace PushStars.CV
     /// Throwaway debug component like <see cref="PushupDebugHud"/> — the production character
     /// will get a proper controller; this proves the sync concept.
     /// </summary>
+    [DefaultExecutionOrder(150)]
     public sealed class PushupAvatarDriver : MonoBehaviour, IAvatarAnimator
     {
         public enum AvatarMode { Idle = 0, Pushup = 1, Rest = 2 }

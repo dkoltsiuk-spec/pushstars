@@ -8,19 +8,20 @@ namespace PushStars.CV
     /// RawImage (phase 08 UI).
     ///
     /// Camera AND skeleton are drawn through the SAME transform matrix (built from rotation + flips +
-    /// cover-scale), so they stay pixel-locked regardless of orientation. iOS reports the camera's
-    /// rotation/mirror per-device and it varies, so the on-screen buttons let you fix orientation live
-    /// (no rebuild). Once a combo looks right we can bake it into the defaults.
+    /// cover-scale), using the source's captured orientation. The skeleton first returns from its
+    /// upright pose coordinates to raw sensor coordinates, so corrections are never applied twice.
     /// </summary>
     public sealed class WebCamPreview : MonoBehaviour
     {
         [SerializeField] private MediaPipePoseSource _source;
+        [Tooltip("Share the avatar's selfie reflection, including while this preview is re-enabled.")]
+        [SerializeField] private AvatarMirrorAnchor _anchor;
         // Defaults verified on-device (iPhone front camera): CAM rot=90 H=off V=off, SKEL H=off V=off.
         [Tooltip("Flip the feed vertically.")]
         [SerializeField] private bool _flipVertical = false;
-        [Tooltip("Mirror horizontally (natural for a front/selfie preview).")]
+        [Tooltip("Standalone debug fallback. The avatar anchor owns reflection when connected.")]
         [SerializeField] private bool _flipHorizontal = false;
-        [Tooltip("Rotation in degrees (CW). -1 = auto: use WebCamTexture.videoRotationAngle.")]
+        [Tooltip("Legacy preview setting. The connected pose source now owns upright rotation.")]
         [SerializeField] private int _rotationOverride = 90;
         [Tooltip("Show the on-screen orientation debug controls (off for players).")]
         [SerializeField] private bool _showControls = false;
@@ -47,12 +48,16 @@ namespace PushStars.CV
 
         private bool _initialized;
         private int  _rotation;
-        private bool _autoRotation;
         private bool _flipH, _flipV;
         private bool _skelH, _skelV;
+        public bool MirrorHorizontally => _anchor != null ? _anchor.MirrorHorizontally : _flipH;
 
         private PoseFrame _frame;
+        private CameraFrameOrientation _frameOrientation;
         private bool _hasFrame;
+        private float _lastFrameReceivedAt = float.NegativeInfinity;
+        private bool HasFreshFrame => _hasFrame && _source != null && _source.IsRunning
+            && Time.realtimeSinceStartup - _lastFrameReceivedAt <= 0.35f;
 
         // ── Visual skeleton smoothing (display only — detection reads the raw frame) ──────────
         // The raw landmarks jitter and joints flicker across the visibility threshold, so the raw
@@ -74,25 +79,46 @@ namespace PushStars.CV
 
         private void OnEnable()
         {
+            ResolveAnchor();
+            _hasFrame = false;
+            _smootherSeeded = false;
+            _lastFrameReceivedAt = float.NegativeInfinity;
+            for (int i = 0; i < PoseLandmarks.Count; i++)
+            {
+                _jointShown[i] = false;
+                _visEma[i] = _lastShownTime[i] = 0f;
+            }
             if (_source != null) _source.OnFrame += OnFrame;
         }
 
         private void OnDisable()
         {
             if (_source != null) _source.OnFrame -= OnFrame;
+            _hasFrame = false;
+            _smootherSeeded = false;
         }
 
         private void OnFrame(PoseFrame frame)
         {
+            bool changed = !_hasFrame || frame.TimestampSec != _frame.TimestampSec;
+            CameraFrameOrientation orientation = default;
+            bool hasOrientation = _source != null
+                && _source.TryGetPoseOrientation(frame.TimestampSec, out orientation);
+            if (!hasOrientation)
+            {
+                _hasFrame = false;
+                return;
+            }
+            if (!_frameOrientation.Matches(orientation)) _smootherSeeded = false;
+            _frameOrientation = orientation;
             _frame = frame;
-            _hasFrame = frame.IsValid;
+            _hasFrame = frame.IsValid && Finite(frame.TimestampSec);
+            if (_hasFrame && changed) _lastFrameReceivedAt = Time.realtimeSinceStartup;
         }
 
         private void Update()
         {
-            if (!_hasFrame) return;
-
-            if (_source != null && _source.Quality == TrackingQuality.Lost)
+            if (!HasFreshFrame)
             {
                 // Full tracking loss: forget the smoothing state so re-acquisition SNAPS into
                 // place instead of gliding a ghost skeleton across the screen.
@@ -106,6 +132,12 @@ namespace PushStars.CV
             for (int i = 0; i < PoseLandmarks.Count; i++)
             {
                 var lm = _frame.Get((PoseLandmark)i);
+                if (!Finite(lm.X) || !Finite(lm.Y) || !Finite(lm.Visibility))
+                {
+                    _jointShown[i] = false;
+                    _visEma[i] = _lastShownTime[i] = 0f;
+                    continue;
+                }
 
                 // Visibility with EMA + hysteresis (legs stricter — they flap frontally).
                 _visEma[i] += VisEmaAlpha * (lm.Visibility - _visEma[i]);
@@ -133,16 +165,7 @@ namespace PushStars.CV
         private void EnsureInit(WebCamTexture tex)
         {
             if (_initialized) return;
-            _autoRotation = _rotationOverride < 0;
-            _rotation     = _autoRotation ? tex.videoRotationAngle : _rotationOverride;
-            // Desktop/editor: laptop webcams are already upright — ignore the phone-baked 90°
-            // override and trust the auto angle (0 on Windows), otherwise the preview shows the
-            // camera sideways when testing in the editor.
-            if (!Application.isMobilePlatform)
-            {
-                _autoRotation = true;
-                _rotation = tex.videoRotationAngle;
-            }
+            _rotation = _rotationOverride >= 0 ? _rotationOverride : 0;
             _flipH        = _flipHorizontal;
             _flipV        = _flipVertical;
             _skelH        = _skeletonFlipH;
@@ -153,10 +176,12 @@ namespace PushStars.CV
         private void OnGUI()
         {
             var tex = _source != null ? _source.CameraTexture : null;
-            if (tex == null || tex.width <= 16) return;
+            if (tex == null || !tex.isPlaying || tex.width <= 16 || tex.height <= 16) return;
+            if (!_source.TryGetCameraOrientation(out CameraFrameOrientation orientation)) return;
 
+            ResolveAnchor();
             EnsureInit(tex);
-            if (_autoRotation) _rotation = tex.videoRotationAngle;
+            _rotation = orientation.RotationDegrees;
 
             float sw = Screen.width, sh = Screen.height;
             float texW = tex.width, texH = tex.height;
@@ -171,9 +196,11 @@ namespace PushStars.CV
 
             Matrix4x4 M =
                 Matrix4x4.Translate(new Vector3(sw * 0.5f, sh * 0.5f, 0f)) *
-                Matrix4x4.Scale(new Vector3(_flipH ? -1f : 1f, _flipV ? -1f : 1f, 1f)) *
+                Matrix4x4.Scale(new Vector3(MirrorHorizontally ? -1f : 1f,
+                    _anchor == null && _flipV ? -1f : 1f, 1f)) *
                 Matrix4x4.Rotate(Quaternion.Euler(0f, 0f, angle)) *
-                Matrix4x4.Scale(new Vector3(cover, cover, 1f)) *
+                Matrix4x4.Scale(new Vector3(orientation.RawFlipHorizontally ? -cover : cover,
+                    orientation.RawFlipVertically ? -cover : cover, 1f)) *
                 Matrix4x4.Translate(new Vector3(-texW * 0.5f, -texH * 0.5f, 0f));
 
             // Everything this component draws (camera, skeleton, controls) sits at a high GUI.depth so
@@ -188,7 +215,7 @@ namespace PushStars.CV
             GUI.matrix = prev;
 
             // ── Skeleton overlay (screen space; positions pushed through the same matrix M) ──
-            if (_showSkeleton && _hasFrame && _source.Quality != TrackingQuality.Lost)
+            if (_showSkeleton && HasFreshFrame && _frameOrientation.Matches(orientation))
                 DrawSkeleton(M, texW, texH, sw);
 
             if (_showControls)
@@ -200,35 +227,28 @@ namespace PushStars.CV
             float lineW = Mathf.Max(3f, sw * 0.006f);
             float dotR  = Mathf.Max(4f, sw * 0.009f);
 
-            // Landmarks arrive UPRIGHT from MediaPipePoseSource (rotated into screen space so the
-            // anti-cheat's below/above checks are honest). This overlay renders through the RAW
-            // texture matrix M, so invert the source rotation first to get texture coordinates.
-            int srcRot = _source != null ? ((_source.LandmarkRotationDeg % 360) + 360) % 360 : 0;
-
             Vector2 ToScreen(int idx)
             {
                 // Positions come from the visual smoother (see Update), not the raw frame — the
                 // drawn skeleton follows the person fluidly instead of jittering.
                 Vector2 sp = _smootherSeeded ? _smoothPos[idx] : _frame.Get((PoseLandmark)idx).Pos2D;
-                float ux = sp.x, uy = sp.y;
-                float nx, ny;
-                switch (srcRot) // inverse of the source's upright mapping
-                {
-                    case 90:  nx = uy;      ny = 1f - ux; break; // upright was (1−y, x)
-                    case 180: nx = 1f - ux; ny = 1f - uy; break;
-                    case 270: nx = 1f - uy; ny = ux;      break; // upright was (y, 1−x)
-                    default:  nx = ux;      ny = uy;      break;
-                }
-                if (_skelH) nx = 1f - nx;
-                if (_skelV) ny = 1f - ny;
+                Vector2 raw = _frameOrientation.UprightToRaw(sp);
+                float nx = raw.x, ny = raw.y;
+                // With a tracked avatar, the shared screen-space matrix is the sole reflection.
+                if (_anchor == null && _skelH) nx = 1f - nx;
+                if (_anchor == null && _skelV) ny = 1f - ny;
                 var p = M.MultiplyPoint3x4(new Vector3(nx * texW, ny * texH, 0f));
                 return new Vector2(p.x, p.y);
             }
 
             // Hysteresis + hold (see Update): a shown joint survives brief dropouts at its last
             // smoothed position — bones don't pop in/out while the user moves into the stance.
-            bool Visible(int idx) => _jointShown[idx]
-                || (_lastShownTime[idx] > 0f && Time.time - _lastShownTime[idx] < JointHoldSec);
+            bool Visible(int idx)
+            {
+                var point = _frame.Get((PoseLandmark)idx);
+                return Finite(point.X) && Finite(point.Y) && (_jointShown[idx]
+                    || (_lastShownTime[idx] > 0f && Time.time - _lastShownTime[idx] < JointHoldSec));
+            }
 
             // Bones (green).
             GUI.color = new Color(0.2f, 1f, 0.4f, 0.9f);
@@ -281,7 +301,8 @@ namespace PushStars.CV
             // this line, and these values become the baked-in defaults (then the buttons go away).
             _statusStyle ??= new GUIStyle(GUI.skin.label) { fontStyle = FontStyle.Bold, alignment = TextAnchor.MiddleLeft };
             _statusStyle.fontSize = Mathf.RoundToInt(Mathf.Clamp(sh * 0.022f, 16f, 30f));
-            string status = $"CAM rot={angle} H={B(_flipH)} V={B(_flipV)}   SKEL H={B(_skelH)} V={B(_skelV)}";
+            string status = $"CAM rot={angle} H={B(MirrorHorizontally)} V={B(_anchor == null && _flipV)}   SKEL H={B(_anchor == null && _skelH)} V={B(_anchor == null && _skelV)}";
+            if (_anchor != null) status += "  H=avatar";
             var statusRect = new Rect(pad, statusY, sw - pad * 2f, statusH);
             GUI.color = new Color(0f, 0f, 0f, 0.55f);
             GUI.DrawTexture(statusRect, Texture2D.whiteTexture);
@@ -295,19 +316,28 @@ namespace PushStars.CV
 
             // Row 2 — skeleton.
             if (GUI.Button(new Rect(pad, row2Y, bw, bh), "Skel " + (_showSkeleton ? "Off" : "On"))) _showSkeleton = !_showSkeleton;
+            bool controlsEnabled = GUI.enabled;
+            GUI.enabled = controlsEnabled && _anchor == null;
             if (GUI.Button(new Rect(pad * 2 + bw, row2Y, bw, bh), "Skel H")) _skelH = !_skelH;
+            GUI.enabled = controlsEnabled && _anchor == null;
             if (GUI.Button(new Rect(pad * 3 + bw * 2, row2Y, bw, bh), "Skel V")) _skelV = !_skelV;
 
             // Row 1 — camera.
-            if (GUI.Button(new Rect(pad, row1Y, bw, bh), "Rotate 90"))
-            {
-                _autoRotation = false;
-                _rotation = ((_rotation + 90) % 360 + 360) % 360;
-            }
-            if (GUI.Button(new Rect(pad * 2 + bw, row1Y, bw, bh), "Flip H")) _flipH = !_flipH;
+            GUI.enabled = false;
+            GUI.Button(new Rect(pad, row1Y, bw, bh), "Rotation: source");
+            GUI.enabled = controlsEnabled && _anchor == null;
+            if (GUI.Button(new Rect(pad * 2 + bw, row1Y, bw, bh), _anchor != null ? "H: avatar" : "Flip H")) _flipH = !_flipH;
+            GUI.enabled = controlsEnabled && _anchor == null;
             if (GUI.Button(new Rect(pad * 3 + bw * 2, row1Y, bw, bh), "Flip V")) _flipV = !_flipV;
+            GUI.enabled = controlsEnabled;
+        }
+
+        private void ResolveAnchor()
+        {
+            if (_anchor == null && _source != null) _anchor = _source.GetComponent<AvatarMirrorAnchor>();
         }
 
         static string B(bool v) => v ? "on" : "off";
+        private static bool Finite(float value) => !float.IsNaN(value) && !float.IsInfinity(value);
     }
 }

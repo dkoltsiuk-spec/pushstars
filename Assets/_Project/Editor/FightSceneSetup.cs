@@ -201,15 +201,13 @@ namespace PushStars.Editor
             UiBuilder.Set(readySO, "_opponentTrophies", readyRefs.OpponentTrophies);
             UiBuilder.Set(readySO, "_opponentBest", readyRefs.OpponentBest);
             UiBuilder.Set(readySO, "_opponentWinRate", readyRefs.OpponentWinRate);
+            UiBuilder.Set(readySO, "_opponentAvatarSource", opponentAvatarImage);
             // The card's own crops mirror the exact bodies already rendering behind it — one stage
             // each, shown twice, rather than a second camera per fighter to keep in sync.
-            UiBuilder.Set(readySO, "_opponentAvatarImage", readyRefs.OpponentAvatarImage);
-            UiBuilder.Set(readySO, "_opponentAvatarSource", opponentAvatarImage);
             UiBuilder.Set(readySO, "_playerName", readyRefs.PlayerName);
             UiBuilder.Set(readySO, "_playerTrophies", readyRefs.PlayerTrophies);
             UiBuilder.Set(readySO, "_playerBest", readyRefs.PlayerBest);
             UiBuilder.Set(readySO, "_playerWinRate", readyRefs.PlayerWinRate);
-            UiBuilder.Set(readySO, "_playerAvatarImage", readyRefs.PlayerAvatarImage);
             UiBuilder.Set(readySO, "_playerAvatarSource", playerAvatarImage);
             UiBuilder.Set(readySO, "_readyButton", readyRefs.ReadyButton);
             readySO.ApplyModifiedPropertiesWithoutUndo();
@@ -263,6 +261,7 @@ namespace PushStars.Editor
             var mirror = cvGO.AddComponent<PoseMirrorRetargeter>();
             var mirrorSO = new SerializedObject(mirror);
             UiBuilder.Set(mirrorSO, "_session", session);
+            UiBuilder.Set(mirrorSO, "_stageCamera", playerCam);
             mirrorSO.ApplyModifiedPropertiesWithoutUndo();
 
             var anchor = cvGO.AddComponent<AvatarMirrorAnchor>();
@@ -274,7 +273,14 @@ namespace PushStars.Editor
             // frames for itself rather than the stand's hand-tuned 3.6 m.
             anchorSO.FindProperty("_planeFromCharacter").boolValue = true;
             anchorSO.FindProperty("_followWhileArmed").boolValue = false;
+            anchorSO.FindProperty("_mirrorX").boolValue = true;
             anchorSO.ApplyModifiedPropertiesWithoutUndo();
+            if (preview != null)
+            {
+                var previewSO = new SerializedObject(preview);
+                UiBuilder.Set(previewSO, "_anchor", anchor);
+                previewSO.ApplyModifiedPropertiesWithoutUndo();
+            }
 
             var ghostDriver = opponentGO.AddComponent<GhostAvatarDriver>();
             var ghostDriverSO = new SerializedObject(ghostDriver);
@@ -806,17 +812,12 @@ namespace PushStars.Editor
             public GameObject Root;
             public TextMeshProUGUI OpponentName, OpponentTrophies, OpponentBest, OpponentWinRate;
             public TextMeshProUGUI PlayerName, PlayerTrophies, PlayerBest, PlayerWinRate;
-            public RawImage OpponentAvatarImage, PlayerAvatarImage;
             public Button ReadyButton;
         }
 
-        /// <summary>The pre-duel card: each fighter's portrait in their own corner, stats stacked
-        /// beside them, a VS medal on the seam between. Its own background is just a transparent
-        /// tap-blocker — the arena art (<c>bg_fight.png</c>) already sits behind it on the canvas,
-        /// so Ready, the live duel and the result share one backdrop instead of three improvised
-        /// ones. The two portraits are crops of the SAME render targets the duel HUD shows
-        /// full-size (<c>DuelReadyPanel</c> points a RawImage at one already rendering elsewhere),
-        /// so nothing here costs a second camera per fighter.</summary>
+        /// <summary>Serialized bindings for the pre-duel card. DuelReadyPanel composes these
+        /// controls into its reference layout at runtime, with its own opaque gradient background
+        /// and exactly two portrait surfaces sharing the existing stage textures.</summary>
         static ReadyRefs BuildReadyOverlay(RectTransform canvasRoot)
         {
             var refs = new ReadyRefs();
@@ -840,16 +841,6 @@ namespace PushStars.Editor
             var safe = UiBuilder.Rect(root, "SafeArea");
             UiBuilder.Stretch(safe);
             safe.gameObject.AddComponent<SafeAreaFitter>();
-
-            // ── Portraits — full-bleed on root, not safe: this is backdrop art, not content, and
-            // it is meant to run to the edges the way the comp's does. ──
-            refs.OpponentAvatarImage = UiBuilder.RawImage(root, "OpponentPortrait", Color.white);
-            UiBuilder.Place(refs.OpponentAvatarImage.rectTransform, new Vector2(1f, 1f),
-                            new Vector2(-2f, -60f), new Vector2(196f, 300f));
-
-            refs.PlayerAvatarImage = UiBuilder.RawImage(root, "PlayerPortrait", Color.white);
-            UiBuilder.Place(refs.PlayerAvatarImage.rectTransform, new Vector2(0f, 0f),
-                            new Vector2(2f, 4f), new Vector2(196f, 300f));
 
             // ── Opponent block, top-left — kept clear of the portrait by stopping at x≈190 ──
             refs.OpponentName = UiBuilder.Text(safe, "OpponentName", AppColors.AccentYellow,

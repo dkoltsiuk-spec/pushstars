@@ -6953,9 +6953,10 @@ MonoBehaviour:
   m_Name: 
   m_EditorClassIdentifier: 
   _source: {fileID: 956811030}
+  _anchor: {fileID: 956811034}
   _flipVertical: 0
   _flipHorizontal: 0
-  _rotationOverride: 90
+  _rotationOverride: -1
   _showControls: 1
   _showSkeleton: 1
   _skeletonFlipH: 0
@@ -7066,14 +7067,16 @@ MonoBehaviour:
   _followWhileArmed: 0
   _hipsBone: {fileID: 0}
   _minTorsoVisibility: 0.6
-  _lockAfterStableSec: 0.5
+  _lockAfterStableSec: 0.2
   _unlockAfterLostSec: 1.5
-  _filterMinCutoffHz: 0.4
-  _filterBeta: 0.05
+  _maxFrameAgeSec: 0.35
+  _filterMinCutoffHz: 1.5
+  _filterBeta: 0.6
   _filterDerivCutoffHz: 1
-  _maxViewportSpeedPerSec: 0.5
-  _maxScaleSpeedPerSec: 0.8
-  _mirrorX: 0
+  _maxViewportSpeedPerSec: 1.2
+  _maxScaleSpeedPerSec: 1.2
+  _renderResponse: 18
+  _mirrorX: 1
   _characterDistance: 3.6
   _planeFromCharacter: 1
   _rigTorsoMeters: 0.47
@@ -7093,14 +7096,17 @@ MonoBehaviour:
   m_EditorClassIdentifier: 
   _session: {fileID: 956811032}
   _animator: {fileID: 0}
-  _flipX: 1
-  _flipZ: 1
+  _stageCamera: {fileID: 2005287023}
+  _mirrorHorizontally: 1
   _followRate: 16
   _minJointVis: 0.35
-  _minSkeletonVis: 0.5
-  _skeletonStableSec: 0.4
-  _skeletonBlendSec: 0.35
-  _calibrateToStance: 1
+  _mirrorLimbs: 1
+  _staleFrameSec: 0.35
+  _occlusionHoldSec: 0.4
+  _occlusionRelaxSec: 1.2
+  _skeletonStableSec: 0.15
+  _skeletonBlendSec: 0.25
+  _maxJointSpeed: 360
   _armedBlendSec: 0.35
 --- !u!114 &956811036
 MonoBehaviour:

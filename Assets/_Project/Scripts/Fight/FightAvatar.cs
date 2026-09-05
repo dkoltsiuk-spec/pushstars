@@ -38,6 +38,7 @@ namespace PushStars.Fight
     /// moving under a body that is holding still, and as hands the clip has planted coming unstuck.
     /// So the shot pulls in when the plank arms, settles, and holds for the set.</para>
     /// </summary>
+    [DefaultExecutionOrder(300)]
     public sealed class FightAvatar : MonoBehaviour
     {
         [Header("Bindings")]
@@ -117,6 +118,17 @@ namespace PushStars.Fight
         private bool _framed;
         private bool _wasMirroring;
         private float _settleUntil;
+        private bool _preparation;
+        private readonly System.Collections.Generic.List<(Material material, string property, Color original)> _shadowColors
+            = new System.Collections.Generic.List<(Material, string, Color)>();
+
+        public void SetPreparationPresentation(bool preparation)
+        {
+            _preparation = preparation;
+            foreach (var entry in _shadowColors)
+                if (entry.material != null)
+                    entry.material.SetColor(entry.property, preparation ? entry.original : _shadowTint);
+        }
 
         /// <summary>The instantiated body, for anything that wants to decorate it later.</summary>
         public GameObject Character { get; private set; }
@@ -229,8 +241,12 @@ namespace PushStars.Fight
                 foreach (var mat in mats)
                 {
                     if (mat == null) continue;
-                    if (mat.HasProperty("_Color")) mat.SetColor("_Color", _shadowTint);
-                    if (mat.HasProperty("_BaseColor")) mat.SetColor("_BaseColor", _shadowTint);
+                    foreach (string property in new[] { "_Color", "_BaseColor" })
+                    {
+                        if (!mat.HasProperty(property)) continue;
+                        _shadowColors.Add((mat, property, mat.GetColor(property)));
+                        if (!_preparation) mat.SetColor(property, _shadowTint);
+                    }
                 }
                 renderer.materials = mats;
             }

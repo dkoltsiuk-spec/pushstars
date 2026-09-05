@@ -1869,64 +1869,70 @@ namespace PushStars.Editor
             BuildHudPill(parent, "AuraPill",   _theme.IconAura, "660", _theme.AuraViolet);
         }
 
-        // Black tag with the cup overhanging its left edge and an "i" badge on its right — the
-        // same overhang trick the currency tags use, so the whole bar reads as one family. Two
-        // rows inside it: the trophy count on top, league progress underneath.
-        // Replaces the old "2 УРОВЕНЬ" pill: the mock-up shows trophies here, and the level
-        // already has its own home on the profile tab.
+        // Reference-space contours keep the skew, asymmetric corners and overhang together.
         static void BuildTrophyPill(RectTransform panel, Vector2 anchoredPos)
         {
-            const float plateW = 90f, plateH = 30f, iconSize = 36f, overhang = 14f;
-            const float barW = 48f, barH = 9f, barFill = 0.55f;
-
+            const float scale = 104f / 756f;
             var root = MakeRect(panel, "TrophyPill");
-            Anchor(root, new Vector2(0f, 1f), new Vector2(0f, 1f), new Vector2(0f, 1f));
+            Anchor(root, new Vector2(0, 1), new Vector2(0, 1), new Vector2(0, 1));
             root.anchoredPosition = anchoredPos;
-            root.sizeDelta        = new Vector2(plateW + overhang, iconSize);
+            root.sizeDelta = new Vector2(104f, 278f * scale);
+            var artwork = root.gameObject.AddComponent<TrophyBadgeGraphic>();
+            artwork.raycastTarget = false;
+            artwork.Progress = 0.79f;
 
-            var plate = MakeImage(root, "Plate", new Color32(20, 20, 28, 235), ProcSprite("pill_24"));
-            plate.type          = Image.Type.Sliced;
-            plate.raycastTarget = false;
-            var prt = plate.rectTransform;
-            Anchor(prt, new Vector2(0f, 0.5f), new Vector2(0f, 0.5f), new Vector2(0f, 0.5f));
-            prt.sizeDelta        = new Vector2(plateW, plateH);
-            prt.anchoredPosition = new Vector2(overhang, 0f);
+            // The exported cup already includes its black keyline and transparent padding.
+            AddCup("Cup", Color.white, Vector2.zero);
 
-            // Upper row — the count. Left padding clears the cup that overlaps the plate.
-            var num = MakeTMP(prt, "Number", _theme.TrophyGold, "955", 14, FontStyles.Bold);
-            num.alignment     = TextAlignmentOptions.MidlineLeft;
-            num.raycastTarget = false;
-            var nrt = num.rectTransform;
-            Anchor(nrt, new Vector2(0f, 1f), new Vector2(1f, 1f), new Vector2(0.5f, 1f));
-            nrt.sizeDelta        = new Vector2(-30f, 18f);
-            nrt.anchoredPosition = new Vector2(9f, -1f);
+            var number = MakeTMP(root, "Number", Color.white, "955", 18.25f, FontStyles.Normal);
+            number.font = AssetDatabase.LoadAssetAtPath<TMP_FontAsset>(FontSetup.MediumAsset);
+            number.fontSharedMaterial = TrophyNumberMaterial(number.font);
+            number.enableVertexGradient = true;
+            number.colorGradient = new VertexGradient(new Color32(255, 224, 0, 255),
+                new Color32(255, 147, 0, 255), new Color32(255, 224, 0, 255),
+                new Color32(255, 147, 0, 255));
+            number.alignment = TextAlignmentOptions.Center;
+            number.enableWordWrapping = false;
+            number.enableAutoSizing = true;
+            number.fontSizeMin = 11f;
+            number.fontSizeMax = 18.25f;
+            number.raycastTarget = false;
+            number.gameObject.AddComponent<TrophyCountGradient>();
+            var nrt = number.rectTransform;
+            Anchor(nrt, new Vector2(0, 1), new Vector2(0, 1), new Vector2(0.5f, 0.5f));
+            nrt.anchoredPosition = new Vector2(421f * scale, -84f * scale);
+            nrt.sizeDelta = new Vector2(280f * scale, 150f * scale);
+            nrt.localRotation = Quaternion.Euler(0, 0, 4f);
 
-            // Lower row — progress toward the next league, on its own dark track.
-            var track = MakeImage(prt, "ProgressTrack", new Color32(48, 48, 62, 255), ProcSprite("pill_12"));
-            track.type          = Image.Type.Sliced;
-            track.raycastTarget = false;
-            var trt = track.rectTransform;
-            Anchor(trt, new Vector2(0f, 0f), new Vector2(0f, 0f), new Vector2(0f, 0f));
-            trt.sizeDelta        = new Vector2(barW, barH);
-            trt.anchoredPosition = new Vector2(30f, 4f);
+            void AddCup(string name, Color tint, Vector2 offset)
+            {
+                var cup = MakeImage(root, name, tint, _theme.IconCup);
+                cup.raycastTarget = false;
+                cup.preserveAspect = false;
+                var rt = cup.rectTransform;
+                Anchor(rt, new Vector2(0, 1), new Vector2(0, 1), new Vector2(0, 1));
+                rt.anchoredPosition = new Vector2(-27f * scale, 29f * scale) + offset;
+                rt.sizeDelta = new Vector2(370f * scale, 352f * scale);
+            }
+        }
 
-            var fill = MakeImage(trt, "Fill", new Color32(240, 138, 30, 255), ProcSprite("pill_12"));
-            fill.type          = Image.Type.Sliced;
-            fill.raycastTarget = false;
-            var frt = fill.rectTransform;
-            Anchor(frt, new Vector2(0f, 0f), new Vector2(0f, 1f), new Vector2(0f, 0.5f));
-            frt.sizeDelta        = new Vector2(barW * barFill, 0f);
-            frt.anchoredPosition = new Vector2(0f, 0f);
-
-            var cup = MakeImage(root, "Cup", Color.white, _theme.IconCup);
-            cup.preserveAspect = true;
-            cup.raycastTarget  = false;
-            var crt = cup.rectTransform;
-            Anchor(crt, new Vector2(0f, 0.5f), new Vector2(0f, 0.5f), new Vector2(0.5f, 0.5f));
-            crt.sizeDelta        = new Vector2(iconSize, iconSize);
-            crt.anchoredPosition = new Vector2(iconSize * 0.5f, 0f);
-
-            AddInfoBadge(root, new Vector2(-2f, -2f));
+        static Material TrophyNumberMaterial(TMP_FontAsset font)
+        {
+            const string path = MaterialsDir + "/TrophyNumber.mat";
+            var material = AssetDatabase.LoadAssetAtPath<Material>(path);
+            if (material == null)
+            {
+                Directory.CreateDirectory(MaterialsDir);
+                material = new Material(font.material) { name = "TrophyNumber" };
+                AssetDatabase.CreateAsset(material, path);
+            }
+            material.SetColor("_OutlineColor", Color.black);
+            material.SetFloat("_OutlineWidth", 0.5f);
+            material.SetFloat("_FaceDilate", 0.5f);
+            material.DisableKeyword("UNDERLAY_ON");
+            ShaderUtilities.UpdateShaderRatios(material);
+            EditorUtility.SetDirty(material);
+            return material;
         }
 
         // Backing is drawn at the sprite's OWN aspect ratio (not stretched). Smaller overall.

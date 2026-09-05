@@ -1,5 +1,6 @@
 using System;
 using System.Collections;
+using System.Collections.Generic;
 using System.Diagnostics;
 using Mediapipe;
 using Mediapipe.Unity;
@@ -28,7 +29,7 @@ namespace PushStars.CV
     /// a buffer; <see cref="Update"/> raises <see cref="OnFrame"/> / <see cref="OnQualityChanged"/> on
     /// the main thread.
     /// </summary>
-    public sealed class MediaPipePoseSource : MonoBehaviour, IPoseSource, ICameraFeed
+    public sealed class MediaPipePoseSource : MonoBehaviour, IPoseSource, ICameraFeed, ICameraFrameOrientationProvider
     {
         [Header("Model")]
         [Tooltip("pose_landmarker_lite.bytes / _full.bytes / _heavy.bytes. FULL is the default: " +
@@ -56,8 +57,8 @@ namespace PushStars.CV
         [Tooltip("Rotate landmarks into UPRIGHT screen space (0/90/180/270, CW). The phone webcam " +
                  "frame is sensor-native landscape and the display rotates it 90° — landmarks must " +
                  "get the same rotation or every 'below/above' anti-cheat check compares the wrong " +
-                 "axis. -1 = AUTO: 90 on mobile (verified iPhone front camera), 0 on desktop/editor " +
-                 "(laptop webcams are already upright).")]
+                 "axis. -1 = AUTO: read the camera rotation after its first updated frame. " +
+                 "An explicit override remains available for device-specific correction.")]
         [SerializeField] private int _landmarkRotationDeg = -1;
 
         private int _resolvedRotationDeg; // resolved on the main thread in StartTracking
@@ -88,7 +89,8 @@ namespace PushStars.CV
         /// <summary>The horizontal/vertical flips applied when the camera frame is handed to MediaPipe.
         /// A skeleton overlay must apply the same flips to align landmarks with the raw camera texture.</summary>
         public bool SourceFlipHorizontally => _flipHorizontally;
-        public bool SourceFlipVertically   => _flipVertically;
+        public bool SourceFlipVertically => _hasCameraOrientation
+            ? _cameraOrientation.ReadbackFlipVertically : _flipVertically;
 
         /// <summary>The upright rotation applied to landmarks before they leave this source. The
         /// skeleton overlay must INVERT this to get back to raw texture coordinates (it draws
@@ -105,6 +107,7 @@ namespace PushStars.CV
         private WebCamTexture     _webCam;
         private PoseLandmarker    _poseLandmarker;
         private TextureFramePool  _framePool;
+        private int _framePoolWidth, _framePoolHeight;
         private Coroutine         _loop;
         private readonly Stopwatch _clock = new Stopwatch();
         private long _lastTimestamp = -1;
@@ -117,6 +120,33 @@ namespace PushStars.CV
         private Landmark[] _pendingWorld; // optional, null when not provided this frame
         private float _pendingTime;
         private bool _hasPending;
+        private CameraFrameOrientation _pendingOrientation, _cameraOrientation, _publishedPoseOrientation;
+        private bool _hasCameraOrientation, _hasPublishedPoseOrientation;
+        private float _publishedPoseTimestamp;
+        private int _trackingGeneration;
+        private long _lastResultTimestamp = -1;
+        private const int MaxPendingCaptures = 96;
+        private readonly Dictionary<long, CameraFrameOrientation> _captureOrientations
+            = new Dictionary<long, CameraFrameOrientation>();
+        private readonly Queue<long> _captureOrder = new Queue<long>();
+
+        public bool TryGetCameraOrientation(out CameraFrameOrientation orientation)
+        {
+            lock (_gate)
+            {
+                orientation = _cameraOrientation;
+                return _hasCameraOrientation;
+            }
+        }
+
+        public bool TryGetPoseOrientation(float timestampSec, out CameraFrameOrientation orientation)
+        {
+            lock (_gate)
+            {
+                orientation = _publishedPoseOrientation;
+                return _hasPublishedPoseOrientation && timestampSec == _publishedPoseTimestamp;
+            }
+        }
 
         private void OnEnable()  => StartTracking();
         private void OnDisable() => StopTracking();
@@ -125,10 +155,7 @@ namespace PushStars.CV
         {
             if (IsRunning) return;
             IsRunning = true;
-            // Resolve platform-dependent defaults on the main thread (OnPoseResult runs off it).
-            _resolvedRotationDeg = _landmarkRotationDeg >= 0
-                ? ((_landmarkRotationDeg % 360) + 360) % 360
-                : (Application.isMobilePlatform ? 90 : 0);
+            ResetFrameDelivery();
             // The user is mid-push-up and cannot touch the screen — never sleep while tracking.
             // Also covers the testCV build, which boots straight into this scene without
             // AppBootstrap (where the app-wide NeverSleep is set).
@@ -138,22 +165,62 @@ namespace PushStars.CV
 
         public void StopTracking()
         {
-            if (!IsRunning) return;
             IsRunning = false;
+            // Invalidate callbacks before closing native resources; Close can finish old work.
+            ResetFrameDelivery();
 
             if (_loop != null) { StopCoroutine(_loop); _loop = null; }
 
             try { _poseLandmarker?.Close(); } catch (Exception e) { Debug.LogWarning($"[MediaPipe] Close: {e.Message}"); }
             _poseLandmarker = null;
 
-            if (_webCam != null) { _webCam.Stop(); _webCam = null; }
+            if (_webCam != null)
+            {
+                _webCam.Stop();
+                Destroy(_webCam);
+                _webCam = null;
+            }
 
             _framePool?.Dispose();
             _framePool = null;
+            _framePoolWidth = _framePoolHeight = 0;
 
             SetQuality(TrackingQuality.None);
             _clock.Reset();
             _lastTimestamp = -1;
+        }
+
+        private void ResetFrameDelivery()
+        {
+            lock (_gate)
+            {
+                _trackingGeneration++;
+                _captureOrientations.Clear();
+                _captureOrder.Clear();
+                _pending = _pendingWorld = null;
+                _pendingOrientation = _cameraOrientation = _publishedPoseOrientation = default;
+                _hasPending = _hasCameraOrientation = _hasPublishedPoseOrientation = false;
+                _pendingTime = _publishedPoseTimestamp = 0f;
+                _lastResultTimestamp = -1;
+            }
+            _resolvedRotationDeg = 0;
+        }
+
+        private bool TryRefreshCameraOrientation(out CameraFrameOrientation orientation)
+        {
+            orientation = default;
+            if (_webCam == null || !_webCam.isPlaying || _webCam.width <= 16 || _webCam.height <= 16
+                || !_webCam.didUpdateThisFrame) return false;
+            int rotation = _landmarkRotationDeg >= 0 ? _landmarkRotationDeg : _webCam.videoRotationAngle;
+            orientation = new CameraFrameOrientation(rotation, _flipHorizontally, _flipVertically,
+                _webCam.videoVerticallyMirrored, _webCam.width, _webCam.height);
+            lock (_gate)
+            {
+                _cameraOrientation = orientation;
+                _hasCameraOrientation = true;
+            }
+            _resolvedRotationDeg = orientation.RotationDegrees;
+            return true;
         }
 
         private IEnumerator RunAsync()
@@ -179,12 +246,13 @@ namespace PushStars.CV
                 : new WebCamTexture(device, _requestedWidth, _requestedHeight, _requestedFps);
             _webCam.Play();
             float camStart = Time.realtimeSinceStartup;
-            yield return new WaitUntil(() => _webCam.width > 16 || Time.realtimeSinceStartup - camStart > 6f);
+            yield return new WaitUntil(() => (_webCam.width > 16 && _webCam.height > 16
+                && _webCam.didUpdateThisFrame) || Time.realtimeSinceStartup - camStart > 6f);
             if (_webCam.width <= 16) { SetStatus("CAMERA NOT STARTING"); }
             else SetStatus($"camera {_webCam.width}x{_webCam.height}");
+            TryRefreshCameraOrientation(out _);
 
-            int w = Mathf.Max(_webCam.width, 16), h = Mathf.Max(_webCam.height, 16);
-            _framePool = new TextureFramePool(w, h, TextureFormat.RGBA32, 10);
+            // Allocate from the first valid captured dimensions, not a startup placeholder.
 
             // ── 3) Make the model available, then build the Pose Landmarker. Any failure here leaves
             //       the camera preview running but disables detection (status shows why). ──
@@ -278,7 +346,7 @@ namespace PushStars.CV
             var waitForEndOfFrame = new WaitForEndOfFrame();
             while (IsRunning)
             {
-                if (_poseLandmarker == null || _webCam == null || _webCam.width <= 16)
+                if (!TryRefreshCameraOrientation(out CameraFrameOrientation orientation))
                 {
                     yield return waitForEndOfFrame; // camera-preview-only / not ready
                     continue;
@@ -287,10 +355,28 @@ namespace PushStars.CV
                 // the unthrottled editor (800+ render fps) hammered DetectAsync with hundreds of
                 // duplicate frames per second — texture readbacks alone froze the editor. On device
                 // it saves battery (render 60 vs camera 30).
-                if (!_webCam.didUpdateThisFrame)
+                if (_poseLandmarker == null)
                 {
                     yield return waitForEndOfFrame;
                     continue;
+                }
+                if (_framePool == null)
+                {
+                    _framePoolWidth = orientation.SourceWidth;
+                    _framePoolHeight = orientation.SourceHeight;
+                    _framePool = new TextureFramePool(_framePoolWidth, _framePoolHeight, TextureFormat.RGBA32, 10);
+                }
+                if (_framePoolWidth != orientation.SourceWidth || _framePoolHeight != orientation.SourceHeight)
+                {
+                    // BuildCPUImage wraps Texture2D pixel memory. Drain native inference before
+                    // disposing that memory: swapping only the pool can free an in-flight image.
+                    // We are between readbacks here. Restart the owned source automatically so
+                    // a sensor resolution change never leaves detection suspended indefinitely.
+                    SetStatus("camera resolution changed; restarting tracking");
+                    _loop = null; // do not StopCoroutine on this currently executing iterator
+                    StopTracking();
+                    if (this != null && isActiveAndEnabled) StartTracking();
+                    yield break;
                 }
                 if (!_framePool.TryGetTextureFrame(out var textureFrame))
                 {
@@ -298,7 +384,12 @@ namespace PushStars.CV
                     continue;
                 }
 
-                var req = textureFrame.ReadTextureAsync(_webCam, _flipHorizontally, _flipVertically);
+                // Snapshot metadata at capture, not when the asynchronous inference finishes.
+                long ts = _clock.ElapsedMilliseconds;
+                if (ts <= _lastTimestamp) ts = _lastTimestamp + 1;
+                _lastTimestamp = ts;
+                var req = textureFrame.ReadTextureAsync(_webCam,
+                    orientation.ReadbackFlipHorizontally, orientation.ReadbackFlipVertically);
                 yield return new WaitUntil(() => req.done);
 
                 if (req.hasError)
@@ -311,9 +402,13 @@ namespace PushStars.CV
                 var image = textureFrame.BuildCPUImage();
                 textureFrame.Release();
 
-                long ts = _clock.ElapsedMilliseconds;
-                if (ts <= _lastTimestamp) ts = _lastTimestamp + 1; // timestamps must strictly increase
-                _lastTimestamp = ts;
+                lock (_gate)
+                {
+                    _captureOrientations[ts] = orientation;
+                    _captureOrder.Enqueue(ts);
+                    while (_captureOrder.Count > MaxPendingCaptures)
+                        _captureOrientations.Remove(_captureOrder.Dequeue());
+                }
 
                 _poseLandmarker.DetectAsync(image, ts, _imageProcessingOptions);
 
@@ -322,12 +417,17 @@ namespace PushStars.CV
         }
 
         // Runs on a MediaPipe thread — only copy primitive data out, no Unity API calls here.
-        private void OnPoseResult(PoseLandmarkerResult result, Image image, long timestamp)
+        private void OnPoseResult(PoseLandmarkerResult result, Image image, long timestamp, int generation)
         {
+            CameraFrameOrientation orientation;
+            lock (_gate)
+            {
+                if (generation != _trackingGeneration
+                    || !_captureOrientations.TryGetValue(timestamp, out orientation)) return;
+                _captureOrientations.Remove(timestamp);
+            }
             Landmark[] arr = null;
             Landmark[] world = null;
-
-            int rot = _resolvedRotationDeg;
 
             var poses = result.poseLandmarks;
             if (poses != null && poses.Count > 0)
@@ -342,15 +442,8 @@ namespace PushStars.CV
                         float vis = lm.visibility ?? lm.presence ?? 1f;
                         // Rotate into upright screen space: after this, +y = down toward the floor
                         // (for the propped-up phone) and every downstream signed check is honest.
-                        float x, y;
-                        switch (rot)
-                        {
-                            case 90:  x = 1f - lm.y; y = lm.x;      break; // CW
-                            case 180: x = 1f - lm.x; y = 1f - lm.y; break;
-                            case 270: x = lm.y;      y = 1f - lm.x; break;
-                            default:  x = lm.x;      y = lm.y;      break;
-                        }
-                        arr[i] = new Landmark(x, y, lm.z, vis);
+                        Vector2 upright = orientation.RotateImage(new Vector2(lm.x, lm.y));
+                        arr[i] = new Landmark(upright.x, upright.y, lm.z, vis);
                     }
                 }
             }
@@ -373,24 +466,20 @@ namespace PushStars.CV
                         // landmarks share the same per-keypoint presence/visibility scores.
                         float vis = arr[i].Visibility;
                         // Same upright rotation for the world x/y (hip-centered — no +1 offset).
-                        float wx, wy;
-                        switch (rot)
-                        {
-                            case 90:  wx = -wlm.y; wy = wlm.x;  break;
-                            case 180: wx = -wlm.x; wy = -wlm.y; break;
-                            case 270: wx = wlm.y;  wy = -wlm.x; break;
-                            default:  wx = wlm.x;  wy = wlm.y;  break;
-                        }
-                        world[i] = new Landmark(wx, wy, wlm.z, vis);
+                        Vector3 upright = orientation.RotateWorld(new Vector3(wlm.x, wlm.y, wlm.z));
+                        world[i] = new Landmark(upright.x, upright.y, upright.z, vis);
                     }
                 }
             }
 
             lock (_gate)
             {
+                if (generation != _trackingGeneration || timestamp <= _lastResultTimestamp) return;
+                _lastResultTimestamp = timestamp;
                 _pending = arr;
                 _pendingWorld = world;
                 _pendingTime = timestamp / 1000f;
+                _pendingOrientation = orientation;
                 _hasPending = true;
             }
         }
@@ -401,13 +490,20 @@ namespace PushStars.CV
             Landmark[] world;
             float t;
             bool has;
+            CameraFrameOrientation orientation;
+            int generation;
             lock (_gate)
             {
                 has = _hasPending;
                 arr = _pending;
                 world = _pendingWorld;
                 t = _pendingTime;
+                orientation = _pendingOrientation;
+                generation = _trackingGeneration;
                 _hasPending = false;
+                // The background already uses the current orientation. Do not publish a late
+                // pose in the previous screen axes to avatar or scoring consumers.
+                if (_hasCameraOrientation && !orientation.Matches(_cameraOrientation)) has = false;
             }
             if (!has) return;
 
@@ -430,17 +526,15 @@ namespace PushStars.CV
             // World landmarks are optional — `world` may be null and consumers must guard via
             // PoseFrame.HasWorldLandmarks. Aspect follows the UPRIGHT (rotated) landmark space:
             // for 90/270 the effective image is height×width.
-            float aspect = 1f;
-            if (_webCam != null && _webCam.height > 16)
+            var frame = new PoseFrame(arr, world, t, orientation.UprightAspect);
+            lock (_gate)
             {
-                bool quarter = _resolvedRotationDeg == 90 || _resolvedRotationDeg == 270;
-                aspect = quarter
-                    ? (float)_webCam.height / _webCam.width
-                    : (float)_webCam.width / _webCam.height;
+                _publishedPoseOrientation = orientation;
+                _publishedPoseTimestamp = t;
+                _hasPublishedPoseOrientation = true;
             }
-            var frame = new PoseFrame(arr, world, t, aspect);
             OnFrame?.Invoke(frame);
-            SetQuality(PoseQuality.Classify(frame));
+            if (generation == _trackingGeneration && IsRunning) SetQuality(PoseQuality.Classify(frame));
         }
 
         private void SetQuality(TrackingQuality q)
@@ -455,6 +549,7 @@ namespace PushStars.CV
         {
             try
             {
+                int generation = _trackingGeneration;
                 var baseOptions = new Mediapipe.Tasks.Core.BaseOptions(delegateKind, modelAssetPath: assetPath);
                 var options = new PoseLandmarkerOptions(
                     baseOptions,
@@ -464,7 +559,7 @@ namespace PushStars.CV
                     minPosePresenceConfidence: _minPosePresenceConfidence,
                     minTrackingConfidence: _minTrackingConfidence,
                     outputSegmentationMasks: false,
-                    resultCallback: OnPoseResult);
+                    resultCallback: (result, image, timestamp) => OnPoseResult(result, image, timestamp, generation));
                 error = null;
                 return PoseLandmarker.CreateFromOptions(options, GpuManager.GpuResources);
             }

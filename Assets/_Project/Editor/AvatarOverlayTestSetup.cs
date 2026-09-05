@@ -76,8 +76,7 @@ namespace PushStars.Editor
 
             var stageCamera = BuildStage(controller, out Animator animator);
 
-            // Mirror phase wants the character facing the camera dead-on — the 3/4 yaw that looks
-            // nice in the pure-animation stand skews every mirrored limb direction by 20°.
+            // Use a frontal presentation; retarget directions themselves are camera-relative.
             animator.transform.localRotation = Quaternion.identity;
 
             var session = cvTest.GetComponent<PushupSession>();
@@ -94,6 +93,7 @@ namespace PushStars.Editor
             var rSo = new SerializedObject(retargeter);
             rSo.FindProperty("_session").objectReferenceValue = session;
             rSo.FindProperty("_animator").objectReferenceValue = animator;
+            rSo.FindProperty("_stageCamera").objectReferenceValue = stageCamera;
             rSo.ApplyModifiedPropertiesWithoutUndo();
 
             var anchor = cvTest.AddComponent<AvatarMirrorAnchor>();
@@ -103,10 +103,12 @@ namespace PushStars.Editor
             aSo.FindProperty("_characterRoot").objectReferenceValue = animator.transform;
             // Armed = the animation owns the body; the anchor freezes at the locked spot.
             aSo.FindProperty("_followWhileArmed").boolValue = false;
+            aSo.FindProperty("_mirrorX").boolValue = true;
             aSo.FindProperty("_hipsBone").objectReferenceValue =
                 animator.GetBoneTransform(HumanBodyBones.Hips);
             ApplyRigProportions(aSo, animator);
             aSo.ApplyModifiedPropertiesWithoutUndo();
+            WirePreviewMirror(cvTest, anchor);
 
             var preview = cvTest.AddComponent<AvatarStagePreview>();
             var pSo = new SerializedObject(preview);
@@ -122,6 +124,17 @@ namespace PushStars.Editor
             Debug.Log("[AvatarHybridTest] Built hybrid stand. Play: live mirror while you get into " +
                       "position → plank arms → soft blend into the depth-scrubbed push-up clip → " +
                       "reps run on the animation; disarm blends back to the mirror.");
+        }
+
+        private static void WirePreviewMirror(GameObject cvTest, AvatarMirrorAnchor anchor)
+        {
+            foreach (var component in cvTest.GetComponents<MonoBehaviour>())
+            {
+                if (component == null || component.GetType().Name != "WebCamPreview") continue;
+                var so = new SerializedObject(component);
+                so.FindProperty("_anchor").objectReferenceValue = anchor;
+                so.ApplyModifiedPropertiesWithoutUndo();
+            }
         }
 
         [MenuItem("Tools/Push Stars/CV/Build Avatar Overlay Test (camera)", priority = 311)]
@@ -181,6 +194,7 @@ namespace PushStars.Editor
             aSo.FindProperty("_characterRoot").objectReferenceValue = animator.transform;
             ApplyRigProportions(aSo, animator);
             aSo.ApplyModifiedPropertiesWithoutUndo();
+            WirePreviewMirror(cvTest, anchor);
 
             var preview = cvTest.AddComponent<AvatarStagePreview>();
             var pSo = new SerializedObject(preview);
@@ -240,10 +254,9 @@ namespace PushStars.Editor
             }
         }
 
-        /// <summary>The CVTest defaults are tuned for the iPhone (landmark rotation 90, portrait
-        /// display). A PC webcam is already upright — zero the rotations and turn the live
-        /// orientation buttons on so any leftover flip can be fixed without a recompile. Components
-        /// are found by type name: the MediaPipe assembly is define-gated and not referenced here.</summary>
+        /// <summary>Use the sensor metadata on both desktop and mobile, rather than baking a
+        /// platform guess into a stand that may later run on another camera. Components are found
+        /// by type name because the MediaPipe assembly is define-gated.</summary>
         private static void ApplyEditorWebcamDefaults(GameObject cvTest)
         {
             foreach (var component in cvTest.GetComponents<Component>())
@@ -252,13 +265,13 @@ namespace PushStars.Editor
                 if (type == "MediaPipePoseSource")
                 {
                     var so = new SerializedObject(component);
-                    so.FindProperty("_landmarkRotationDeg").intValue = 0;
+                    so.FindProperty("_landmarkRotationDeg").intValue = -1;
                     so.ApplyModifiedPropertiesWithoutUndo();
                 }
                 else if (type == "WebCamPreview")
                 {
                     var so = new SerializedObject(component);
-                    so.FindProperty("_rotationOverride").intValue = 0;
+                    so.FindProperty("_rotationOverride").intValue = -1;
                     so.FindProperty("_showControls").boolValue = true;
                     so.ApplyModifiedPropertiesWithoutUndo();
                 }

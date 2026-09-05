@@ -17,7 +17,7 @@ namespace PushStars.Fight
     /// <para>A level test skips it: there is no opponent to size up, and the result screen is where
     /// its numbers first mean something.</para>
     /// </summary>
-    public sealed class DuelReadyPanel : MonoBehaviour
+    public sealed partial class DuelReadyPanel : MonoBehaviour
     {
         /// <summary>One fighter's card. <see cref="Unknown"/> marks a number the app cannot honestly
         /// fill in yet — a ghost has no win rate of its own, and rendering a 0 there would be a
@@ -47,11 +47,8 @@ namespace PushStars.Fight
         [SerializeField] private TextMeshProUGUI _opponentTrophies;
         [SerializeField] private TextMeshProUGUI _opponentBest;
         [SerializeField] private TextMeshProUGUI _opponentWinRate;
-        [Tooltip("The ready card's own cropped portrait. Starts blank — MirrorTexture points it at " +
-                 "the source below once the stage has something rendered to show.")]
-        [SerializeField] private RawImage _opponentAvatarImage;
-        [Tooltip("The full-size body already rendering behind this card (the duel screen's own " +
-                 "avatar image). Never modified — only read from, once, in Show().")]
+        // Legacy scene references: hide miniature duplicates in already-saved scenes.
+        [SerializeField, HideInInspector] private RawImage _opponentAvatarImage;
         [SerializeField] private RawImage _opponentAvatarSource;
 
         [Header("Player (bottom-left)")]
@@ -59,7 +56,7 @@ namespace PushStars.Fight
         [SerializeField] private TextMeshProUGUI _playerTrophies;
         [SerializeField] private TextMeshProUGUI _playerBest;
         [SerializeField] private TextMeshProUGUI _playerWinRate;
-        [SerializeField] private RawImage _playerAvatarImage;
+        [SerializeField, HideInInspector] private RawImage _playerAvatarImage;
         [SerializeField] private RawImage _playerAvatarSource;
 
         [Header("Action")]
@@ -67,15 +64,18 @@ namespace PushStars.Fight
 
         /// <summary>Raised when ГОТОВ is pressed. The controller starts looking for the plank.</summary>
         public event Action OnReady;
+        private FightAvatar[] _preparationAvatars;
 
         private void Awake()
         {
+            HideLegacyPortraits();
             if (_root != null) _root.SetActive(false);
             if (_readyButton != null) _readyButton.onClick.AddListener(Ready);
         }
 
         private void OnDestroy()
         {
+            RestoreAvatarPresentation();
             if (_readyButton != null) _readyButton.onClick.RemoveListener(Ready);
         }
 
@@ -83,20 +83,45 @@ namespace PushStars.Fight
         {
             if (_root == null) return;
             _root.SetActive(true);
+            BuildReferenceLayout();
+            _preparationAvatars = FindObjectsByType<FightAvatar>(FindObjectsSortMode.None);
+            foreach (var avatar in _preparationAvatars) avatar.SetPreparationPresentation(true);
 
             Fill(opponent, _opponentName, _opponentTrophies, _opponentBest, _opponentWinRate);
             Fill(player, _playerName, _playerTrophies, _playerBest, _playerWinRate);
 
-            // Both stages have already run their own Awake by the time anything's Start() calls
-            // into here (Unity guarantees every Awake before any Start), so the source images'
-            // render textures are already the real thing, not a placeholder swapped in later.
-            MirrorTexture(_opponentAvatarImage, _opponentAvatarSource);
-            MirrorTexture(_playerAvatarImage, _playerAvatarSource);
+            RefreshPortraits();
+            LoadPlayerName();
+        }
+
+        private async void LoadPlayerName()
+        {
+            try
+            {
+                var profile = await new PushStars.Services.UserProfileRepository().GetAsync();
+                if (this != null && _playerName != null && profile.Exists && !string.IsNullOrWhiteSpace(profile.DisplayName))
+                    _playerName.text = profile.DisplayName;
+            }
+            catch (Exception exception)
+            {
+                Debug.LogWarning($"[ReadyPanel] Profile name unavailable: {exception.Message}");
+            }
         }
 
         public void Hide()
         {
+            RestoreAvatarPresentation();
             if (_root != null) _root.SetActive(false);
+        }
+
+        private void OnDisable() => RestoreAvatarPresentation();
+
+        private void RestoreAvatarPresentation()
+        {
+            if (_preparationAvatars == null) return;
+            foreach (var avatar in _preparationAvatars)
+                if (avatar != null) avatar.SetPreparationPresentation(false);
+            _preparationAvatars = null;
         }
 
         private static void Fill(in Side side, TextMeshProUGUI name, TextMeshProUGUI trophies,
@@ -110,13 +135,11 @@ namespace PushStars.Fight
                 : $"{side.WinRatePercent}%";
         }
 
-        /// <summary>Points the card's own crop at the same texture the full-size body already
-        /// renders to. A reference copy, not a render of its own — one stage, shown twice at two
-        /// sizes, rather than a second camera to keep in sync.</summary>
-        private static void MirrorTexture(RawImage target, RawImage source)
+        private void HideLegacyPortraits()
         {
-            if (target == null || source == null) return;
-            target.texture = source.texture;
+            // Hide until the composition has placed and bound these surfaces.
+            if (_opponentAvatarImage != null) _opponentAvatarImage.gameObject.SetActive(false);
+            if (_playerAvatarImage != null) _playerAvatarImage.gameObject.SetActive(false);
         }
 
         private static string Number(int value) => value == Side.Unknown ? "—" : value.ToString();

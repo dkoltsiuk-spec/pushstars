@@ -38,6 +38,7 @@ namespace PushStars.CV
 
         private RenderTexture _rt;
         private GUIStyle _statusStyle;
+        private PoseMirrorRetargeter _mirror;
 
         private void OnDestroy()
         {
@@ -88,6 +89,10 @@ namespace PushStars.CV
                 _statusStyle.normal.textColor = new Color(0.4f, 1f, 0.6f);
 
                 string status = $"AVATAR {_driver.Mode}  depth {_driver.SmoothedDepth:0.00}";
+                if (_mirror == null && _anchor != null) _mirror = _anchor.GetComponent<PoseMirrorRetargeter>();
+                if (_mirror != null && _mirror.MirrorPhase)
+                    status = $"3D {(_mirror.HasFreshPose ? "TRACKING" : "WAITING")}  limbs {_mirror.TrackedSegments}/8"
+                        + $"  {(_mirror.MirrorHorizontally ? "SELFIE" : "CAMERA")}";
                 if (_anchor != null) status += $"  anchor {_anchor.State}";
                 // Full-screen mode: tuck the line above the veto strip (0.72 sh) on the left.
                 var line = _fullScreenOverlay

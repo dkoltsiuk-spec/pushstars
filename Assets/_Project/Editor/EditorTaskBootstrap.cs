@@ -31,6 +31,7 @@ namespace PushStars.Editor
         private const string TaskBuildMainVs      = "build-main-vs";
         private const string TaskRebuildFlow      = "rebuild-flow-scenes";
         private const string TaskConfigureSprites = "configure-sprites";
+        private const string TaskRetargetRegression = "retarget-regression";
 
         private static double _nextPoll;
 
@@ -123,6 +124,11 @@ namespace PushStars.Editor
                     case TaskConfigureSprites:
                         Debug.Log("[EditorTask] Configuring new Figma sprites …");
                         SpriteImporter.ConfigureAll();
+                        break;
+
+                    case TaskRetargetRegression:
+                        Debug.Log("[EditorTask] Validating avatar retargeting in isolated preview scenes …");
+                        RetargetRegression.Run();
                         break;
 
                     default:
