@@ -37,6 +37,7 @@ namespace PushStars.Editor
         [MenuItem("Tools/Push Stars/Setup Main Scene", priority = 2)]
         public static void SetupMainScene()
         {
+            if (AuthoredScenes.PreserveExisting(AuthoredScenes.MainPath)) return;
             var scene = OpenOrCreateScene("Assets/_Project/Scenes/Main.unity");
             ClearScene();
 

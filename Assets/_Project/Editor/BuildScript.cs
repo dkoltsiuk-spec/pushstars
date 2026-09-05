@@ -42,16 +42,14 @@ namespace PushStars.Editor
             "Assets/testCV.unity",
         };
 
-        /// <summary>Rebuilds the three scenes that are generated entirely from code — Boot,
-        /// Onboarding, Fight — and refreshes Build Settings. Main.unity is deliberately left
-        /// alone: it is authored through <see cref="MainVsScreenSetup"/> and carries the character
-        /// stage, so regenerating it here would quietly throw that away.
+        /// <summary>Creates missing flow scenes and refreshes Build Settings.
+        /// Existing scenes own all authored UI and are never regenerated.
         ///
         /// <para>Also the batch entry point used to verify the flow compiles and builds without
         /// opening the editor:
         /// <c>Unity -batchmode -quit -projectPath . -executeMethod PushStars.Editor.BuildScript.RebuildFlowScenes</c></para>
         /// </summary>
-        [MenuItem("Tools/Push Stars/Rebuild Flow Scenes (Boot + Onboarding + Fight)", priority = 6)]
+        [MenuItem("Tools/Push Stars/Create Missing Flow Scenes", priority = 6)]
         public static void RebuildFlowScenes()
         {
             BootSceneSetup.BuildScene();
@@ -63,7 +61,7 @@ namespace PushStars.Editor
                          .Select(p => new EditorBuildSettingsScene(p, true))
                          .ToArray();
 
-            Debug.Log($"[Build] Flow scenes rebuilt (fight pose source: {(mediapipe ? "MediaPipe" : "Mock")}). " +
+            Debug.Log($"[Build] Flow scenes ready (fight pose source: {(mediapipe ? "MediaPipe" : "Mock or missing")}). " +
                       $"Build Settings: {string.Join(", ", EditorBuildSettings.scenes.Select(s => Path.GetFileNameWithoutExtension(s.path)))}");
         }
 
@@ -140,24 +138,20 @@ namespace PushStars.Editor
             const string scenePath = "Assets/testCV.unity";
             EditorSceneManager.SaveScene(scene, scenePath);
 
-            // Regenerate the duel scene the same way. BuildFightScene returns false when it had to
-            // fall back to the mock pose source — on CI that means the MediaPipe assembly didn't
-            // compile, and shipping a fight screen that cannot see the player would be a broken
-            // product: abort like the CVTest guard above.
+            // Preserve the authored fight scene and validate its saved session binding.
+            // A missing plugin or mock source fails the build instead of replacing the user's UI.
             if (!FightSceneSetup.BuildFightScene())
             {
-                Debug.LogError("[Build] Fight scene fell back to MockPoseSource — MediaPipe missing. ABORTING.");
+                Debug.LogError("[Build] Saved Fight scene has no session bound to MediaPipePoseSource. Fix its CV binding; authored UI was preserved. ABORTING.");
                 EditorApplication.Exit(1);
                 return;
             }
-            Debug.Log("[Build] Fight scene regenerated and wired.");
+            Debug.Log("[Build] Authored Fight scene validated.");
 
-            // Boot and Onboarding are pure UI — no plugin dependency, so no abort guard. They are
-            // still regenerated rather than trusted: both are built entirely from code, and a
-            // serialized copy that drifted from it is exactly the failure this pass exists to stop.
+            // Only bootstrap missing scenes. Ctrl+S edits ship unchanged.
             BootSceneSetup.BuildScene();
             OnboardingSceneSetup.BuildScene();
-            Debug.Log("[Build] Boot + Onboarding regenerated.");
+            Debug.Log("[Build] Boot + Onboarding ready; existing scenes preserved.");
 
             // Ship the real app: Boot (index 0) initializes Firebase and routes by onboarding
             // state; testCV stays in the list as a debug scene reachable via SceneManager.LoadScene.

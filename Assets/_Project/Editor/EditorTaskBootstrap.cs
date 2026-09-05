@@ -110,12 +110,12 @@ namespace PushStars.Editor
                     case TaskRebuildFlow:
                         // Same hazard as the Main rebuild below, for the same reason: these scenes
                         // are regenerated from scratch and take any unsaved edits with them.
-                        Debug.Log("[EditorTask] Rebuilding Boot + Onboarding + Fight …");
+                        Debug.Log("[EditorTask] Ensuring Boot + Onboarding + Fight exist; preserving authored scenes …");
                         BuildScript.RebuildFlowScenes();
                         break;
 
                     case TaskBuildMainVs:
-                        Debug.Log("[EditorTask] Rebuilding the Main VS screen …");
+                        Debug.Log("[EditorTask] Ensuring Main exists; preserving the authored screen …");
                         // RunHeadless, not Run: Run's success dialog has no one to click it here,
                         // and blocks any task queued after it in the same sentinel pass forever.
                         MainVsScreenSetup.RunHeadless(out _);

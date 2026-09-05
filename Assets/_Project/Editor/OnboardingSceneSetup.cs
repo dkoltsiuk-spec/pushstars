@@ -116,6 +116,7 @@ namespace PushStars.Editor
         [MenuItem("Tools/Push Stars/Build Onboarding", priority = 5)]
         public static void Build()
         {
+            if (System.IO.File.Exists(ScenePath)) { AuthoredScenes.Open(ScenePath); return; }
             BuildScene();
             EditorUtility.DisplayDialog("Push Stars — Onboarding",
                 "Onboarding.unity built: 4 pages ending in the 60-second level test.\n\n" +
@@ -124,6 +125,7 @@ namespace PushStars.Editor
 
         public static void BuildScene()
         {
+            if (AuthoredScenes.PreserveExisting(ScenePath)) return;
             var scene = EditorSceneManager.NewScene(NewSceneSetup.EmptyScene, NewSceneMode.Single);
 
             UiBuilder.ClearCamera();

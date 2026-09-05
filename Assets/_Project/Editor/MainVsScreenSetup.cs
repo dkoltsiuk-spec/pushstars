@@ -40,6 +40,7 @@ namespace PushStars.Editor
         const string PrefabsDir    = "Assets/_Project/UI/Prefabs";
         const string MaterialsDir  = "Assets/_Project/UI/Materials";
         const string RenderingDir  = "Assets/_Project/UI/Rendering";
+        const string CharacterStandSprite = "Assets/_Project/UI/Sprites/character_stand.png";
         const string PreviewRtPath = RenderingDir + "/CharacterStageRT.renderTexture";
         const string CharacterLayer = "Character";
 
@@ -54,6 +55,11 @@ namespace PushStars.Editor
         [MenuItem("Tools/Push Stars/Build Main VS Screen", priority = 20)]
         public static void Run()
         {
+            if (File.Exists(MainScenePath))
+            {
+                AuthoredScenes.OpenMain();
+                return;
+            }
             if (!RunHeadless(out string error))
             {
                 EditorUtility.DisplayDialog("Push Stars", error, "OK");
@@ -70,7 +76,7 @@ namespace PushStars.Editor
                 "The models come from MainMan.prefab / MainWoman.prefab, and the\n" +
                 "М/Ж button beside the character swaps between them on Play.\n" +
                 "Not imported yet? Run Tools ▸ Push Stars ▸ Character ▸ Import\n" +
-                "Main Characters, then rebuild — until then a blockman stands in.",
+                "Main Characters, then assign the imported prefabs in the scene.",
                 "OK");
         }
 
@@ -84,6 +90,7 @@ namespace PushStars.Editor
         public static bool RunHeadless(out string error)
         {
             error = null;
+            if (AuthoredScenes.PreserveExisting(MainScenePath)) return true;
             try
             {
                 EditorUtility.DisplayProgressBar("Push Stars", "Loading theme …", 0.05f);
@@ -134,11 +141,8 @@ namespace PushStars.Editor
         /// <summary>
         /// Prints the positioned elements of the open Main scene as name → anchoredPosition / size.
         ///
-        /// This screen is generated: <see cref="BuildScene"/> starts from an empty scene and
-        /// overwrites Main.unity, so anything nudged by hand is gone the next time it runs — the
-        /// code here is the source of truth, not the scene file. Dragging in the Scene view is
-        /// still the quickest way to FIND a number; this dumps whatever you arrived at so it can
-        /// be written back into the builder and survive.
+        /// Main.unity owns the authored interface. Save any scene edits normally with Ctrl+S.
+        /// This dump is a read-only aid for inspecting the saved layout.
         ///
         /// Menu: Tools → Push Stars → Dump Main Screen Layout
         /// </summary>
@@ -318,11 +322,6 @@ namespace PushStars.Editor
             // gear captured in BuildProfilePanel, closed by its own back button.
             BuildSettingsOverlay(canvasGO.transform, mirror, safe, mainGroup);
 
-            // ── Hand-tuned overrides (nav plate, action-row icons, …) ───────────────────
-            // Applied last, after every object exists with its code-driven default, so anything
-            // captured by MainVsLayoutOverrides always has something to find and overwrite.
-            MainVsLayoutOverrides.Apply(canvasGO.transform);
-
             EditorSceneManager.MarkSceneDirty(scene);
             EditorSceneManager.SaveScene(scene, MainScenePath);
             Debug.Log($"[MainVsScreen] ✓ Saved {MainScenePath}");
@@ -493,14 +492,15 @@ namespace PushStars.Editor
         // Kept together so the layout can be nudged without hunting through the builder.
         const float CharAreaY       = 40f;    // character render surface, from the screen centre
         const float FeetY           = -178f;  // where his soles land inside that surface
-        const float ActionRowBottom = 149f;   // baseline of the PVP / BATTLE / PUSHUP plates
-        const float NavBarBottom    = 52f;    // centre of the bottom-nav plate
+        const float ActionRowBottom = 119f;   // baseline of the PVP / BATTLE / PUSHUP plates
+        const float NavBarBottom    = 22f;    // bottom edge of the bottom-nav container
 
         static RawImage BuildDuelPanel(RectTransform panel)
         {
             // Sibling order is draw order: the glow sits behind everything, then the contact
             // shadow, the character, his wardrobe decor, the HUD, and the action plates on top.
             BuildStageGlow(panel);
+            BuildCharacterStand(panel);
             BuildGroundShadow(panel);
 
             // ── Character render surface (centre) ──────────────────────────────────────
@@ -579,6 +579,22 @@ namespace PushStars.Editor
             Anchor(rt, new Vector2(0.5f, 0.5f), new Vector2(0.5f, 0.5f), new Vector2(0.5f, 0.5f));
             rt.anchoredPosition = new Vector2(0f, CharAreaY + FeetY);
             rt.sizeDelta        = new Vector2(168f, 40f);
+        }
+
+        // A shallow arena pedestal gives the standing pose a physical contact plane. It stays a
+        // normal Image in the scene, so its position and scale can be edited and saved in Unity.
+        static void BuildCharacterStand(RectTransform panel)
+        {
+            var sprite = AssetDatabase.LoadAssetAtPath<Sprite>(CharacterStandSprite);
+            if (sprite == null) return;
+
+            var img = MakeImage(panel, "CharacterStand", Color.white, sprite);
+            img.raycastTarget = false;
+            img.preserveAspect = true;
+            var rt = img.rectTransform;
+            Anchor(rt, new Vector2(0.5f, 0.5f), new Vector2(0.5f, 0.5f), new Vector2(0.5f, 0.5f));
+            rt.anchoredPosition = new Vector2(0f, -151f);
+            rt.sizeDelta = new Vector2(225f, 73f);
         }
 
         // SHOP tile and the spare slot beneath it, hugging the right edge under the currency tags.

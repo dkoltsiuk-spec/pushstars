@@ -30,7 +30,7 @@ namespace PushStars.Editor
     /// corner button — an on-device CV failure is otherwise invisible with no feed to look at.</para>
     ///
     /// Menu: Tools ▸ Push Stars ▸ Build Fight Screen. CI: <see cref="BuildScript.PrepareForUBA"/>
-    /// regenerates the scene fresh before every cloud build.
+    /// validates the saved scene before every cloud build, preserving manual edits.
     /// </summary>
     public static class FightSceneSetup
     {
@@ -41,6 +41,7 @@ namespace PushStars.Editor
         const string PillSprite = "Assets/_Project/UI/Sprites/pill_capsule.png";
         const string CupSprite = "Assets/_Project/UI/Sprites/cup_.png";
         const string ClockSprite = "Assets/_Project/UI/Sprites/time.png";
+        const string FightFloorSprite = "Assets/_Project/UI/Sprites/fight_floor_mat.png";
 
         // ── The level test's own controls ───────────────────────────────────────────────────────
         // Finished art, drawn with their glyphs and their lip already on them, so nothing here
@@ -71,6 +72,7 @@ namespace PushStars.Editor
         [MenuItem("Tools/Push Stars/Build Fight Screen", priority = 21)]
         public static void Build()
         {
+            if (System.IO.File.Exists(ScenePath)) { AuthoredScenes.Open(ScenePath); return; }
             bool mediapipe = BuildFightScene();
             EditorUtility.DisplayDialog("Push Stars — Fight Screen",
                 "Fight.unity built and wired.\n\n" +
@@ -81,10 +83,12 @@ namespace PushStars.Editor
                 "OK");
         }
 
-        /// <summary>Regenerates the scene from scratch and saves it. Returns true when the REAL
-        /// MediaPipe pose source was wired (CI requires it; the mock is an editor convenience).</summary>
+        /// <summary>Creates the scene only when missing. Returns true when the saved scene's
+        /// session is wired to the real MediaPipe source (required by cloud builds).</summary>
         public static bool BuildFightScene()
         {
+            if (AuthoredScenes.PreserveExisting(ScenePath))
+                return AuthoredScenes.HasRealFightPoseSource();
             var scene = EditorSceneManager.NewScene(NewSceneSetup.EmptyScene, NewSceneMode.Single);
 
             // Two layers, not one: each stage camera must see its own body and only its own.
@@ -444,6 +448,18 @@ namespace PushStars.Editor
             half.anchorMax = new Vector2(1f, toY);
             half.offsetMin = Vector2.zero;
             half.offsetMax = Vector2.zero;
+
+            var floorSprite = LoadSprite(FightFloorSprite);
+            if (floorSprite != null)
+            {
+                var floor = UiBuilder.Image(half, name == "PlayerHalf" ? "PlayerFloor" : "OpponentFloor",
+                                            Color.white);
+                floor.sprite = floorSprite;
+                floor.preserveAspect = true;
+                floor.raycastTarget = false;
+                UiBuilder.Place(floor.rectTransform, new Vector2(0.5f, 0.5f),
+                                new Vector2(0f, -55f), new Vector2(370f, 100f));
+            }
 
             // Faint tint in edit mode (nothing rendered into it yet); CharacterStage sets it to
             // white once the stage camera actually has a texture to show, at Play.
