@@ -4,6 +4,7 @@ using UnityEngine.SceneManagement;
 using PushStars.Core;
 using PushStars.CV;
 using PushStars.CV.AntiCheat;
+using PushStars.OTA;
 
 namespace PushStars.Fight
 {
@@ -223,7 +224,7 @@ namespace PushStars.Fight
                 OnboardingState.Reset();
                 LocalProfile.Reset();
                 Debug.Log("[Fight] First-run state wiped — restarting from Boot.");
-                SceneManager.LoadScene(FightConfig.BootSceneName);
+                OtaSceneLoader.LoadScene(FightConfig.BootSceneName);
                 return;
             }
 
@@ -507,7 +508,7 @@ namespace PushStars.Fight
             if (_skipOffered && _mode == FightMode.LevelTest)
                 OnboardingState.CompleteLevelTest(0);
 
-            SceneManager.LoadScene(FightRequest.ReturnScene);
+            OtaSceneLoader.LoadScene(FightRequest.ReturnScene);
         }
 
         /// <summary>Same wording the on-device debug HUD converged on (phase 08.1).</summary>

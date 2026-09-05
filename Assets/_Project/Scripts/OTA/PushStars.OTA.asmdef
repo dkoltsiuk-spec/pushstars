@@ -1,12 +1,10 @@
 {
-    "name": "PushStars.App",
-    "rootNamespace": "PushStars.App",
+    "name": "PushStars.OTA",
+    "rootNamespace": "PushStars.OTA",
     "references": [
-        "PushStars.Core",
-        "PushStars.UI",
-        "PushStars.OTA",
-        "PushStars.Firebase",
-        "UniTask"
+        "UniTask",
+        "Unity.Addressables",
+        "Unity.ResourceManager"
     ],
     "includePlatforms": [],
     "excludePlatforms": [],

@@ -5,6 +5,7 @@ using UnityEngine.Events;
 using UnityEngine.SceneManagement;
 using UnityEngine.UI;
 using PushStars.Core;
+using PushStars.OTA;
 
 namespace PushStars.UI
 {
@@ -269,7 +270,7 @@ namespace PushStars.UI
 
             OnboardingState.IntroSeen = true;
             OnboardingState.LevelTestSkipped = true;
-            SceneManager.LoadScene(FightConfig.MainSceneName);
+            OtaSceneLoader.LoadScene(FightConfig.MainSceneName);
         }
 
         /// <summary>Asks for the camera, then hands over to the level test. The request is made here
@@ -289,7 +290,7 @@ namespace PushStars.UI
 
             OnboardingState.IntroSeen = true;
             FightRequest.LevelTest(FightConfig.MainSceneName);
-            SceneManager.LoadScene(FightConfig.FightSceneName);
+            OtaSceneLoader.LoadScene(FightConfig.FightSceneName);
         }
     }
 }

@@ -4,6 +4,7 @@ using UnityEngine;
 using UnityEngine.SceneManagement;
 using UnityEngine.UI;
 using PushStars.Core;
+using PushStars.OTA;
 
 namespace PushStars.UI
 {
@@ -124,7 +125,7 @@ namespace PushStars.UI
                 yield return new WaitForSeconds(FightConfig.FoundPauseSec);
                 _searchRoutine = null;
                 FightRequest.LevelTest();
-                SceneManager.LoadScene(FightConfig.FightSceneName);
+                OtaSceneLoader.LoadScene(FightConfig.FightSceneName);
                 yield break;
             }
 
@@ -133,7 +134,7 @@ namespace PushStars.UI
 
             _searchRoutine = null;
             FightRequest.Ghost();
-            SceneManager.LoadScene(FightConfig.FightSceneName);
+            OtaSceneLoader.LoadScene(FightConfig.FightSceneName);
         }
 
         private void ShowFoundCard(string bossName)

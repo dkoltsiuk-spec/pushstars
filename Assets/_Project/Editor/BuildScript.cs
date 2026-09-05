@@ -70,6 +70,7 @@ namespace PushStars.Editor
             EnableMediaPipeDefine(NamedBuildTarget.iOS);
             CopyModelToStreamingAssets();
             ConfigureIOS();
+            OtaSetup.BuildFullContent();
 
             string outDir = GetArg("-buildOutput") ?? "ios_build";
             Directory.CreateDirectory(outDir);
@@ -152,6 +153,10 @@ namespace PushStars.Editor
             BootSceneSetup.BuildScene();
             OnboardingSceneSetup.BuildScene();
             Debug.Log("[Build] Boot + Onboarding ready; existing scenes preserved.");
+
+            // Teach this transition player about the remote catalog. Main/Fight also remain in
+            // Build Settings, so the app is still usable before the first OTA download or offline.
+            OtaSetup.BuildFullContent();
 
             // Ship the real app: Boot (index 0) initializes Firebase and routes by onboarding
             // state; testCV stays in the list as a debug scene reachable via SceneManager.LoadScene.

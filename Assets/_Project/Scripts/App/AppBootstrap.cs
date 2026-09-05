@@ -3,6 +3,7 @@ using Cysharp.Threading.Tasks;
 using PushStars.Core;
 using PushStars.Services;
 using PushStars.UI;
+using PushStars.OTA;
 using UnityEngine;
 using UnityEngine.SceneManagement;
 
@@ -180,22 +181,9 @@ namespace PushStars.App
 
         private async UniTask LoadNextSceneAsync(string sceneName)
         {
-            if (!Application.CanStreamedLevelBeLoaded(sceneName))
-            {
-                // A scene missing from Build Settings is a build mistake, not a runtime condition:
-                // say so loudly and fall back to Main rather than hanging on the loading screen.
-                Debug.LogError($"[AppBootstrap] Scene '{sceneName}' is not in the build — opening {_mainSceneName} instead.");
-                sceneName = _mainSceneName;
-            }
-
-            var op = SceneManager.LoadSceneAsync(sceneName, LoadSceneMode.Single);
-            op.allowSceneActivation = false;
-
-            while (op.progress < 0.9f)
-            {
-                Report(0.65f + 0.3f * (op.progress / 0.9f));
-                await UniTask.Yield();
-            }
+            // Download a newer remote scene when one exists. A failed or slow network is harmless:
+            // OtaSceneLoader falls back to the copy embedded in this player build.
+            await OtaSceneLoader.PrepareAsync(sceneName, p => Report(0.65f + 0.3f * p));
 
             Report(1f, "Поехали");
 
@@ -204,8 +192,7 @@ namespace PushStars.App
                    (_loading != null && !_loading.Finished))
                 await UniTask.Yield();
 
-            op.allowSceneActivation = true;
-            await UniTask.WaitUntil(() => op.isDone);
+            await OtaSceneLoader.LoadSceneAsync(sceneName);
         }
 
         /// <summary>Runs the app at the display's own refresh rate, bounded.

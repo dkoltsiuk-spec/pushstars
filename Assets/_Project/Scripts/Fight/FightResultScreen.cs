@@ -3,6 +3,7 @@ using UnityEngine.SceneManagement;
 using UnityEngine.UI;
 using TMPro;
 using PushStars.Core;
+using PushStars.OTA;
 
 namespace PushStars.Fight
 {
@@ -189,12 +190,12 @@ namespace PushStars.Fight
 
         // ── Actions ──────────────────────────────────────────────────────────────────────────────
 
-        private void Continue() => SceneManager.LoadScene(FightRequest.ReturnScene);
+        private void Continue() => OtaSceneLoader.LoadScene(FightRequest.ReturnScene);
 
         private void Retry()
         {
             FightRequest.LevelTest(FightRequest.ReturnScene);
-            SceneManager.LoadScene(FightConfig.FightSceneName);
+            OtaSceneLoader.LoadScene(FightConfig.FightSceneName);
         }
 
         /// <summary>Accepts a zero so the player is not stuck in the test forever. They keep no
