@@ -22,6 +22,7 @@ namespace PushStars.OTA
         {
             "Main" => "ota/Main",
             "Fight" => "ota/Fight",
+            "Onboarding" => "ota/Onboarding",
             _ => null,
         };
 

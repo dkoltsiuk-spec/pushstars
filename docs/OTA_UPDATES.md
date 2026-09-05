@@ -1,11 +1,11 @@
 # OTA-обновления интерфейса
 
-После установки переходной версии приложения сцены **Main** и **Fight** могут
+После установки переходной версии приложения сцены **Main**, **Fight** и **Onboarding** могут
 обновляться через интернет без нового IPA и без TestFlight.
 
 ## Как выпустить обновление
 
-1. Открой обычную сцену `Assets/_Project/Scenes/Main.unity` или `Fight.unity`.
+1. Открой обычную сцену `Assets/_Project/Scenes/Main.unity`, `Fight.unity` или `Onboarding.unity`.
 2. Передвинь элементы, поменяй картинки, материалы или другие объекты сцены.
 3. Нажми **Ctrl+S**.
 4. Выбери **Tools → Push Stars → OTA → Build & Publish Content Update**.

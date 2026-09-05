@@ -27,6 +27,7 @@ namespace PushStars.Editor
         {
             ("Assets/_Project/Scenes/Main.unity", GeneratedDir + "/MainRemote.unity", "ota/Main"),
             ("Assets/_Project/Scenes/Fight.unity", GeneratedDir + "/FightRemote.unity", "ota/Fight"),
+            ("Assets/_Project/Scenes/Onboarding.unity", GeneratedDir + "/OnboardingRemote.unity", "ota/Onboarding"),
         };
 
         [MenuItem("Tools/Push Stars/OTA/Configure", priority = 40)]
