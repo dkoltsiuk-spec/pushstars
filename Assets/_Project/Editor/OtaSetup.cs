@@ -54,6 +54,12 @@ namespace PushStars.Editor
             var update = group.GetSchema<ContentUpdateGroupSchema>();
             update.StaticContent = false;
 
+            // Generated scenes are intentionally not stored in Git, so Unity can assign fresh
+            // GUIDs on a clean checkout. Remove the two previous generated entries before adding
+            // the current copies; this prevents stale GUIDs from remaining in cloud builds.
+            foreach (var previous in group.entries.ToArray())
+                settings.RemoveAssetEntry(previous.guid, false);
+
             foreach (var scene in Scenes)
             {
                 string guid = AssetDatabase.AssetPathToGUID(scene.generated);
