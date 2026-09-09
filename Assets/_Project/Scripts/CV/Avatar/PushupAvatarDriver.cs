@@ -18,8 +18,8 @@ namespace PushStars.CV
     /// descent and ascent replay the same pose trajectory in both directions. Tune the two values
     /// in Play mode if the trimmed clip doesn't start exactly at the top.</para>
     ///
-    /// Throwaway debug component like <see cref="PushupDebugHud"/> — the production character
-    /// will get a proper controller; this proves the sync concept.
+    /// <para><see cref="PushupPoseCorrection"/> evaluates the final planted, symmetric pose
+    /// from the same smoothed depth before the live mirror's handoff blend.</para>
     /// </summary>
     [DefaultExecutionOrder(150)]
     public sealed class PushupAvatarDriver : MonoBehaviour, IAvatarAnimator
@@ -31,8 +31,14 @@ namespace PushStars.CV
 
         [Header("Animator state names (must exist in the controller)")]
         [SerializeField] private string _pushupStateName = "PushUp";
-        [SerializeField] private string _idleStateName = "WarriorIdle";
+        [SerializeField] private string _idleStateName = "StandIdle";
         [SerializeField] private string _restStateName = "SittingIdle";
+
+        /// <summary>The idle this asked for before the controller carried the menu's standing
+        /// idle: a fighter's guard, which was the idle only because it was the one looping clip
+        /// the test stand had imported.</summary>
+        private const string LegacyIdleState = "WarriorIdle";
+        private const string StandIdleState = "StandIdle";
 
         [Header("Push-up clip phase mapping (normalizedTime)")]
         [Tooltip("Clip time of the plank top (arms extended). Depends on where the Mixamo trim " +
@@ -60,6 +66,7 @@ namespace PushStars.CV
         private float _targetDepth;
         private float _depthVel;
         private bool _started;
+        private PushupPoseCorrection _poseCorrection;
 
         private void Awake() => RehashStates();
 
@@ -69,8 +76,10 @@ namespace PushStars.CV
         /// serialized there the way the editor test stand serializes them.</summary>
         public void Configure(PushupSession session, Animator animator)
         {
+            ReleaseCorrection();
             _session = session;
             _animator = animator;
+            _poseCorrection = PushupPoseCorrection.Bind(animator);
             _started = false;
             Mode = AvatarMode.Idle;
             RehashStates();
@@ -80,22 +89,49 @@ namespace PushStars.CV
         /// The session is serialized (it is a scene object); only the Animator arrives late.</summary>
         public void BindAnimator(Animator animator)
         {
+            ReleaseCorrection();
             _animator = animator;
+            _poseCorrection = PushupPoseCorrection.Bind(animator);
             _started = false;
             Mode = AvatarMode.Idle;
             RehashStates();
         }
 
+        private void OnDisable() => ReleaseCorrection();
+
+        private void ReleaseCorrection()
+        {
+            if (_poseCorrection != null) _poseCorrection.SetDepth(0f, false, 0f);
+        }
+
         private void RehashStates()
         {
             _pushupHash = Animator.StringToHash(_pushupStateName);
-            _idleHash = Animator.StringToHash(_idleStateName);
+            _idleHash = IdleStateHash();
             _restHash = Animator.StringToHash(_restStateName);
+        }
+
+        /// <summary>The idle state to actually play, reconciled against the controller in front of
+        /// us. Two directions, because the scenes and the controller move independently. Fight.unity
+        /// is preserved rather than regenerated, so a copy of it still asks for
+        /// <see cref="LegacyIdleState"/> and the swap has to happen here. Going the other way, a
+        /// controller that has not been rebuilt has no standing idle yet — and an Animator answers
+        /// a request for a state it does not have by doing nothing at all, leaving the body in its
+        /// bind pose, which reads as a broken rig rather than as a missing clip.</summary>
+        private int IdleStateHash()
+        {
+            int wanted = Animator.StringToHash(
+                _idleStateName == LegacyIdleState ? StandIdleState : _idleStateName);
+            if (_animator == null || _animator.runtimeAnimatorController == null) return wanted;
+            if (_animator.HasState(0, wanted)) return wanted;
+            int authored = Animator.StringToHash(_idleStateName);
+            return _animator.HasState(0, authored) ? authored : wanted;
         }
 
         private void Update()
         {
             if (_session == null || _animator == null || !_animator.isActiveAndEnabled) return;
+            if (_poseCorrection == null) _poseCorrection = PushupPoseCorrection.Bind(_animator);
 
             AvatarMode target = ResolveMode();
             if (!_started || target != Mode)
@@ -105,6 +141,8 @@ namespace PushStars.CV
             }
 
             if (Mode == AvatarMode.Pushup) ScrubPushup();
+            if (_poseCorrection != null)
+                _poseCorrection.SetDepth(SmoothedDepth, Mode == AvatarMode.Pushup, _crossFadeSec);
         }
 
         private AvatarMode ResolveMode()

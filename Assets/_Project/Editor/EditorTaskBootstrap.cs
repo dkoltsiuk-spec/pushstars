@@ -30,8 +30,11 @@ namespace PushStars.Editor
         private const string TaskFilmstrip       = "filmstrip";
         private const string TaskBuildMainVs      = "build-main-vs";
         private const string TaskRebuildFlow      = "rebuild-flow-scenes";
+        private const string TaskConfigureOta     = "configure-ota";
         private const string TaskConfigureSprites = "configure-sprites";
         private const string TaskRetargetRegression = "retarget-regression";
+        private const string TaskFightController  = "rebuild-fight-controller";
+        private const string TaskPushupPreview = "pushup-preview";
 
         private static double _nextPoll;
 
@@ -114,6 +117,11 @@ namespace PushStars.Editor
                         BuildScript.RebuildFlowScenes();
                         break;
 
+                    case TaskConfigureOta:
+                        Debug.Log("[EditorTask] Configuring OTA scenes from the authored copies …");
+                        OtaSetup.Configure();
+                        break;
+
                     case TaskBuildMainVs:
                         Debug.Log("[EditorTask] Ensuring Main exists; preserving the authored screen …");
                         // RunHeadless, not Run: Run's success dialog has no one to click it here,
@@ -126,9 +134,18 @@ namespace PushStars.Editor
                         SpriteImporter.ConfigureAll();
                         break;
 
+                    case TaskFightController:
+                        Debug.Log("[EditorTask] Rebuilding the shared fight animator controller …");
+                        AvatarOverlayTestSetup.RebuildController();
+                        break;
+
                     case TaskRetargetRegression:
                         Debug.Log("[EditorTask] Validating avatar retargeting in isolated preview scenes …");
                         RetargetRegression.Run();
+                        break;
+
+                    case TaskPushupPreview:
+                        PushupPosePreview.Run();
                         break;
 
                     default:

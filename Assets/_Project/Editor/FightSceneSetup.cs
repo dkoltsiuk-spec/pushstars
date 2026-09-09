@@ -41,7 +41,6 @@ namespace PushStars.Editor
         const string PillSprite = "Assets/_Project/UI/Sprites/pill_capsule.png";
         const string CupSprite = "Assets/_Project/UI/Sprites/cup_.png";
         const string ClockSprite = "Assets/_Project/UI/Sprites/time.png";
-        const string FightFloorSprite = "Assets/_Project/UI/Sprites/fight_floor_mat.png";
 
         // ── The level test's own controls ───────────────────────────────────────────────────────
         // Finished art, drawn with their glyphs and their lip already on them, so nothing here
@@ -50,9 +49,8 @@ namespace PushStars.Editor
         const string ClosePlateSprite = "Assets/_Project/UI/Sprites/btn_close.png";
         const string PausePlateSprite = "Assets/_Project/UI/Sprites/btn_pause.png";
         const string YellowPlateSprite = "Assets/_Project/UI/Sprites/onb_btn_allow.png";
-        /// <summary>The app's own ground — the dark blue with the glow up its middle that the main
-        /// screen stands on. The level test uses it rather than the arena: same app, one room.</summary>
-        const string MainBgSprite = "Assets/_Project/UI/Sprites/BG.png";
+        /// <summary>The supplied blue backdrop for the post-onboarding level test.</summary>
+        const string MainBgSprite = "Assets/_Project/UI/Sprites/bg_zamer.png";
         const string BoltTopSprite = "Assets/_Project/UI/Sprites/bolt_corner_top.png";
         const string BoltBottomSprite = "Assets/_Project/UI/Sprites/bolt_corner_bottom.png";
         const string VsCoinSprite = "Assets/_Project/UI/Sprites/VS_for_serching.png";
@@ -449,18 +447,6 @@ namespace PushStars.Editor
             half.offsetMin = Vector2.zero;
             half.offsetMax = Vector2.zero;
 
-            var floorSprite = LoadSprite(FightFloorSprite);
-            if (floorSprite != null)
-            {
-                var floor = UiBuilder.Image(half, name == "PlayerHalf" ? "PlayerFloor" : "OpponentFloor",
-                                            Color.white);
-                floor.sprite = floorSprite;
-                floor.preserveAspect = true;
-                floor.raycastTarget = false;
-                UiBuilder.Place(floor.rectTransform, new Vector2(0.5f, 0.5f),
-                                new Vector2(0f, -55f), new Vector2(370f, 100f));
-            }
-
             // Faint tint in edit mode (nothing rendered into it yet); CharacterStage sets it to
             // white once the stage camera actually has a texture to show, at Play.
             avatarImage = UiBuilder.RawImage(half, "AvatarImage", new Color(1f, 1f, 1f, 0.06f));
@@ -571,8 +557,7 @@ namespace PushStars.Editor
         ///
         /// <para><b>Its own ground, because a measurement is not a duel.</b> bg_fight is an arena
         /// split red against blue down a jagged seam — two fighters' halves. There is only one
-        /// person here and no side to be on, so the test stands on BG.png, the dark blue with the
-        /// glow up its middle that the main screen stands on.</para>
+        /// person here and no side to be on, so the test uses its supplied blue backdrop.</para>
         ///
         /// <para>Built on the canvas root rather than in the HUD: this is scenery, and the body has
         /// to pass in front of it. Everything in the HUD draws over the avatar's render, so a piece
@@ -583,12 +568,20 @@ namespace PushStars.Editor
             var root = UiBuilder.Rect(canvasRoot, "LevelTestScenery");
             UiBuilder.Stretch(root);
 
+            // The supplied image has translucent rounded corners; cover the duel underneath.
+            var underlay = UiBuilder.Image(root, "BackdropBase", AppColors.BgDark);
+            UiBuilder.Stretch(underlay.rectTransform);
+            underlay.raycastTarget = false;
+
             var mainBg = LoadSprite(MainBgSprite);
             var ground = UiBuilder.Image(root, "Backdrop",
                                          mainBg != null ? Color.white : AppColors.BgDark);
             if (mainBg != null) ground.sprite = mainBg;
             UiBuilder.Stretch(ground.rectTransform);
             ground.raycastTarget = false;
+
+            var bolt = LoadSprite("Assets/_Project/UI/Sprites/icon_lightning_BG.png");
+            if (bolt != null) MainVsScreenSetup.BuildLightningPattern(root, bolt);
 
             var accents = root.gameObject.AddComponent<CornerAccents>();
             var so = new SerializedObject(accents);
@@ -779,13 +772,13 @@ namespace PushStars.Editor
         {
             var align = anchor.x > 0.5f ? TextAlignmentOptions.Right : TextAlignmentOptions.Left;
 
-            var cap = UiBuilder.Text(parent, name + "Caption", AppColors.TextSecondary, caption, 13,
+            var cap = UiBuilder.Text(parent, name + "Caption", AppColors.TextPrimary, caption, 18,
                                      FontStyles.Bold, align);
-            UiBuilder.Place(cap.rectTransform, anchor, position, new Vector2(180f, 18f));
+            UiBuilder.Place(cap.rectTransform, anchor, position, new Vector2(160f, 24f));
 
-            var value = UiBuilder.Text(parent, name, valueColor, "—", 30, FontStyles.Bold, align);
-            UiBuilder.Place(value.rectTransform, anchor, position + new Vector2(0f, -22f),
-                            new Vector2(180f, 38f));
+            var value = UiBuilder.Text(parent, name, valueColor, "—", 36, FontStyles.Bold, align);
+            UiBuilder.Place(value.rectTransform, anchor, position + new Vector2(0f, -26f),
+                            new Vector2(160f, 44f));
             return value;
         }
 
@@ -1115,3 +1108,4 @@ namespace PushStars.Editor
         static Sprite LoadSprite(string path) => SpriteImporter.Load(path);
     }
 }
+

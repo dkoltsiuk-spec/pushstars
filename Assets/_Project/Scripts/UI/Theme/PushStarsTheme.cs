@@ -94,6 +94,12 @@ namespace PushStars.UI
         /// <summary>Settings gear (profile header → settings overlay, phase 07). Figma: gear.png</summary>
         public Sprite IconSettings;
 
+        [Header("Sprites — country flags (mockup until profile carries a country)")]
+        /// <summary>Germany flag chip — pre-duel card. Figma: german_flag.png</summary>
+        public Sprite FlagGermany;
+        /// <summary>Moldova flag chip — pre-duel card. Figma: moldova_flag.png</summary>
+        public Sprite FlagMoldova;
+
         [Header("Sprites — main-screen plates (pre-coloured Figma, use Color.white)")]
         /// <summary>Orange slanted plate — PVP action button. Figma: type.png</summary>
         public Sprite PlatePvp;

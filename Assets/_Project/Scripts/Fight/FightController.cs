@@ -5,6 +5,7 @@ using PushStars.Core;
 using PushStars.CV;
 using PushStars.CV.AntiCheat;
 using PushStars.OTA;
+using PushStars.UI;
 
 namespace PushStars.Fight
 {
@@ -68,6 +69,18 @@ namespace PushStars.Fight
         private const string PlayerLabel = "ТЫ";
         private FightMode _mode;
         private IOpponentFeed _opponent;   // null in the level test
+
+        // A ghost duel wears a mock opponent identity (name + flag + ladder) so the pre-duel card,
+        // the fight HUD and the result screen read like a real match. Picked once, here, and the
+        // ghost recording still drives the actual duel. See MockupProfile.
+        private bool _mockOpponent;
+        private MockupProfile.Opponent _mockOpponentIdentity;
+        private PushStarsTheme _theme;
+
+        /// <summary>Opponent name for every duel screen: the mock identity in a ghost duel, the
+        /// real feed name (a boss) otherwise.</summary>
+        private string OpponentLabel =>
+            _mockOpponent ? _mockOpponentIdentity.Name : _opponent?.DisplayName ?? "";
         private float _countdownEndTime;
         private int _lastCountdownShown = int.MinValue;
         private float _liveStartTime;
@@ -96,6 +109,9 @@ namespace PushStars.Fight
         {
             _sceneStartTime = Time.time;
             _mode = ResolveMode();
+            _theme = Resources.Load<PushStarsTheme>("PushStarsTheme"); // flag sprites for the card
+            _mockOpponent = _mode == FightMode.Ghost;
+            if (_mockOpponent) _mockOpponentIdentity = MockupProfile.PickOpponent();
             ConfigureHudForMode();
 
             _hud.SetPlayerReps(0);
@@ -169,7 +185,7 @@ namespace PushStars.Fight
                 return;
             }
 
-            _hud.ConfigureDuel(_opponent.DisplayName, PlayerLabel);
+            _hud.ConfigureDuel(OpponentLabel, PlayerLabel);
             _hud.SetOpponentForm(_opponent.FormPercent);
             _hud.SetOpponentTempo(_opponent.SecondsPerRep);
         }
@@ -188,15 +204,35 @@ namespace PushStars.Fight
             _hud.HideBanner();
             _hud.SetScoresVisible(false);
 
-            var me = new DuelReadyPanel.Side(PlayerLabel, LocalProfile.Trophies, LocalProfile.BestReps,
-                LocalProfile.Games > 0 ? LocalProfile.WinRatePercent : DuelReadyPanel.Side.Unknown);
+            // Real record once the player has one; mock placeholders on a still-empty profile so a
+            // first-run card is not a wall of zeros.
+            bool hasHistory = LocalProfile.Trophies > 0 || LocalProfile.Games > 0 || LocalProfile.BestReps > 0;
+            var me = hasHistory
+                ? new DuelReadyPanel.Side(PlayerLabel, LocalProfile.Trophies, LocalProfile.BestReps,
+                    LocalProfile.Games > 0 ? LocalProfile.WinRatePercent : DuelReadyPanel.Side.Unknown)
+                : new DuelReadyPanel.Side(PlayerLabel, MockupProfile.PlayerTrophies,
+                    MockupProfile.PlayerBestReps, MockupProfile.PlayerWinRate);
+            var myFlag = MockupProfile.FlagSprite(MockupProfile.PlayerFlag, _theme);
 
-            // A ghost carries no ladder of its own: the trophies and win rate on that card would be
-            // the player's own numbers wearing someone else's name. Its record IS its reputation.
-            var them = new DuelReadyPanel.Side(_opponent.DisplayName, DuelReadyPanel.Side.Unknown,
-                _opponent.ExpectedReps, DuelReadyPanel.Side.Unknown);
+            DuelReadyPanel.Side them;
+            Sprite theirFlag;
+            if (_mockOpponent)
+            {
+                var identity = _mockOpponentIdentity;
+                them = new DuelReadyPanel.Side(identity.Name, identity.Trophies, identity.BestReps,
+                    identity.WinRate);
+                theirFlag = MockupProfile.FlagSprite(identity.Flag, _theme);
+            }
+            else
+            {
+                // A boss carries no ladder of its own — leave those cells blank rather than
+                // borrowing the player's numbers under its name.
+                them = new DuelReadyPanel.Side(OpponentLabel, DuelReadyPanel.Side.Unknown,
+                    _opponent.ExpectedReps, DuelReadyPanel.Side.Unknown);
+                theirFlag = null;
+            }
 
-            _readyPanel.Show(me, them);
+            _readyPanel.Show(me, them, myFlag, theirFlag);
         }
 
         private void BeginSet()
@@ -481,7 +517,7 @@ namespace PushStars.Fight
             _result.ShowDuel(win, draw, myReps, oppReps,
                              AverageForm(), _opponent.FormPercent,
                              _session.TempoRpm, _opponent.SecondsPerRep,
-                             xp, trophies, _opponent.DisplayName, PlayerLabel, newRecord);
+                             xp, trophies, OpponentLabel, PlayerLabel, newRecord);
         }
 
         /// <summary>Mean FORM across the reps that actually counted — the same list the ghost

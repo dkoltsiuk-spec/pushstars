@@ -36,6 +36,16 @@ namespace PushStars.Editor
         private const string IdleState   = "WarriorIdle";
         private const string RestState   = "SittingIdle";
 
+        /// <summary>The state a body rests in when it is doing nothing — waiting for a plank, or
+        /// standing on the pre-duel card while the player reads the opponent's numbers.
+        ///
+        /// <para>It plays <see cref="MainCharacterSetup.IdleFbxPath"/>, the same relaxed stand the
+        /// menu character uses, and that is the whole point of it: <see cref="IdleState"/> is a
+        /// fighter's guard, which the stand borrowed because it was the only looping clip it had
+        /// imported. On the VS card that read as a different character from the one on the home
+        /// screen. The guard stays in the controller — a fight screen may yet want it.</para></summary>
+        public const string StandIdleState = "StandIdle";
+
         /// <summary>The owner's target flow (HYBRID): the character live-mirrors the user's limbs
         /// while they get into position, then — the moment the plank ARMS — softly blends into the
         /// canned push-up animation (depth-scrubbed by <see cref="PushupAvatarDriver"/>) and does
@@ -333,6 +343,13 @@ namespace PushStars.Editor
                 return null;
             }
 
+            // The menu character's own standing idle. Optional: a checkout without the character
+            // animations still gets a working controller, it just rests in the fighter's guard.
+            var standClip = LoadClip(MainCharacterSetup.IdleFbxPath);
+            if (standClip == null)
+                Debug.LogWarning($"[AvatarOverlayTest] Standing idle not found at " +
+                                 $"{MainCharacterSetup.IdleFbxPath} — bodies will rest in {IdleState}.");
+
             // Rewritten in place, never deleted and recreated: a fresh asset means a fresh GUID,
             // and every reference already pointing at the old one goes Missing.
             var controller = AssetDatabase.LoadAssetAtPath<AnimatorController>(ControllerPath);
@@ -349,8 +366,26 @@ namespace PushStars.Editor
             var push = sm.AddState(PushupState);
             push.motion = pushClip;
 
-            sm.defaultState = idle; // no transitions — the driver plays states by name
+            var stand = standClip != null ? sm.AddState(StandIdleState) : null;
+            if (stand != null) stand.motion = standClip;
+
+            // No transitions — the drivers play states by name.
+            sm.defaultState = stand ?? idle;
+            EditorUtility.SetDirty(controller);
             return controller;
+        }
+
+        /// <summary>Rebuilds the shared fight controller on its own — the clip set changed and the
+        /// scenes already point at the asset, so nothing else needs re-running.</summary>
+        [MenuItem("Tools/Push Stars/CV/Rebuild Fight Animator Controller", priority = 313)]
+        public static void RebuildController()
+        {
+            var controller = EnsurePushupController();
+            if (controller == null) return;
+            AssetDatabase.SaveAssets();
+            Debug.Log("[AvatarOverlayTest] Fight controller rebuilt: " +
+                      string.Join(", ", controller.layers[0].stateMachine.states
+                                                  .Select(s => s.state.name)));
         }
 
         /// <summary>Character + camera + light + ground, parked away from the scene origin. The

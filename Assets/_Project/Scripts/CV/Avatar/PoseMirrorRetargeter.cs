@@ -9,7 +9,7 @@ namespace PushStars.CV
     /// All filtering is visual only and never changes the session's scoring landmarks.
     /// </summary>
     [DefaultExecutionOrder(100)]
-    public sealed class PoseMirrorRetargeter : MonoBehaviour, IAvatarAnimator
+    public sealed class PoseMirrorRetargeter : MonoBehaviour, IAvatarAnimator, IMirrorSuppressible
     {
         [SerializeField] private PushupSession _session;
         [SerializeField] private Animator _animator;
@@ -30,6 +30,11 @@ namespace PushStars.CV
         public bool Mirroring { get; private set; }
         public float MirrorWeight { get; private set; }
         public bool MirrorPhase { get; private set; } = true;
+
+        /// <summary>Held up on the pre-duel card: the body stands in its idle clip instead of
+        /// following the camera. Treated exactly like an armed plank — the animation owns the
+        /// bones — so this reuses the tested hand-off path rather than toggling <c>enabled</c>.</summary>
+        public bool Suppressed { get; set; }
         public int TrackedSegments { get; private set; }
         public bool HasFreshPose { get; private set; }
         public bool MirrorHorizontally => _anchor != null ? _anchor.MirrorHorizontally : _mirrorHorizontally;
@@ -166,11 +171,14 @@ namespace PushStars.CV
                 NeutralDirection = neutral, TargetDirection = neutral, ShownDirection = neutral };
         }
 
+        private bool ArmedOrSuppressed =>
+            Suppressed || (_session.Armer != null && _session.Armer.IsArmed);
+
         private void Update()
         {
             if (!_bound || _session == null) return;
             // Source/session Update runs first; the clip driver runs at 150, after this owner switch.
-            SetPhase(_session.Armer != null && _session.Armer.IsArmed, Time.unscaledTime);
+            SetPhase(ArmedOrSuppressed, Time.unscaledTime);
         }
 
         private void SetPhase(bool armed, float now)
@@ -194,8 +202,7 @@ namespace PushStars.CV
         {
             if (!_bound || _session == null) return;
             // Rep-scoring quality requires both arms; it must not switch off a valid profile.
-            Step(_session.LastFrame, true,
-                _session.Armer != null && _session.Armer.IsArmed, Time.unscaledTime, Time.unscaledDeltaTime);
+            Step(_session.LastFrame, true, ArmedOrSuppressed, Time.unscaledTime, Time.unscaledDeltaTime);
         }
 
         // Deterministic seam used by the editor regression runner with synthetic frames and real rigs.

@@ -7,7 +7,7 @@ namespace PushStars.CV
     /// of body rotation. Runs after bone retargeting, so this frame's hip offset is used.
     /// </summary>
     [DefaultExecutionOrder(200)]
-    public sealed class AvatarMirrorAnchor : MonoBehaviour, IAvatarAnimator
+    public sealed class AvatarMirrorAnchor : MonoBehaviour, IAvatarAnimator, IMirrorSuppressible
     {
         public enum AnchorState { Unlocked = 0, Locking = 1, Locked = 2, Frozen = 3 }
 
@@ -38,19 +38,24 @@ namespace PushStars.CV
         [Header("Placement")]
         [Tooltip("Selfie reflection, shared by the anchor and the bone retargeter.")]
         [SerializeField] private bool _mirrorX = true;
-        [SerializeField] private float _characterDistance = 3.6f;
+        [SerializeField] private float _characterDistance = 4.0f;
         [Tooltip("Capture the camera plane from the authored character position, once per rig.")]
         [SerializeField] private bool _planeFromCharacter;
         [Tooltip("Fallback torso length when the rig cannot be measured at bind.")]
         [SerializeField] private float _rigTorsoMeters = 0.47f;
         [SerializeField] private float _rigHipHeightMeters = 0.93f;
-        [SerializeField] private Vector2 _scaleClamp = new Vector2(0.5f, 2.2f);
+        [SerializeField] private Vector2 _scaleClamp = new Vector2(0.5f, 3.0f);
 
         public AnchorState State { get; private set; } = AnchorState.Unlocked;
         public bool MirrorHorizontally => _mirrorX;
         public Camera StageCamera => _stageCamera;
         public bool HasFreshPose { get; private set; }
         public float AppliedScale => _shownScale;
+
+        /// <summary>Held up on the pre-duel card: the body stops chasing where the person stands in
+        /// frame and stays where the stage put it. Treated like an armed plank (the existing freeze
+        /// path), so releasing it runs the same re-acquire as coming out of a set.</summary>
+        public bool Suppressed { get; set; }
 
         private OneEuroFilter _fx, _fy, _ft;
         private readonly float[] _mx = new float[3];
@@ -128,7 +133,8 @@ namespace PushStars.CV
             float now = Time.realtimeSinceStartup;
             var frame = _session.LastFrame;
             bool newFrame = ObserveFrame(in frame, now);
-            bool armed = !_followWhileArmed && _session.Armer != null && _session.Armer.IsArmed;
+            bool armed = Suppressed
+                || (!_followWhileArmed && _session.Armer != null && _session.Armer.IsArmed);
             if (armed)
             {
                 _pausedForArm = true;

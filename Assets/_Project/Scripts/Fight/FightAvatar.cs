@@ -76,7 +76,7 @@ namespace PushStars.Fight
 
         [Header("Framing")]
         [Tooltip("Headroom around the character. 1 = the bones exactly touch the frame edges.")]
-        [SerializeField, Range(1f, 2.5f)] private float _padding = 1.2f;
+        [SerializeField, Range(1f, 2.5f)] private float _padding = 1.05f;
         [Tooltip("Seconds for the camera to reach a new framing. 0 snaps.")]
         [SerializeField, Range(0f, 2f)] private float _easeTime = 0.55f;
         [Tooltip("How long the shot keeps pulling in after the plank arms, before it locks for the " +
@@ -89,12 +89,21 @@ namespace PushStars.Fight
 
         [Tooltip("How far the camera's aim rises from the body's centre toward the head. 0 frames " +
                  "the whole figure evenly, 1 stares at the face.")]
-        [SerializeField, Range(0f, 1f)] private float _faceBias = 0.5f;
+        [SerializeField, Range(0f, 1f)] private float _faceBias = 0.55f;
         [Tooltip("Floor on how close the shot may get. Lowered alongside padding — the old 1.6m " +
                  "floor was clamping the shot back out at the bottom of a rep, exactly the moment " +
                  "the padding cut was meant to bring the body closer.")]
-        [SerializeField, Range(1f, 12f)] private float _minDistance = 1.25f;
+        [SerializeField, Range(1f, 12f)] private float _minDistance = 1.0f;
         [SerializeField, Range(2f, 30f)] private float _maxDistance = 9f;
+
+        /// <summary>Fallback for how far the body reaches past the bones, used only when the
+        /// posed mesh cannot be measured (see <see cref="TryMeshBounds"/>). The rig report puts
+        /// this character's ankles at 0.089 m under a skin 1.86 m tall, i.e. a sole roughly 0.06
+        /// and a crown roughly 0.15 of the ankle-to-head span — as shares of that span so they
+        /// hold for a rig of any height, and so they cost almost nothing in a plank, where the
+        /// span is small and the silhouette is bounded by the hands and feet instead.</summary>
+        private const float CrownAboveHeadBone = 0.15f;
+        private const float SoleBelowFootBone = 0.06f;
 
         private static readonly HumanBodyBones[] FrameBones =
         {
@@ -109,6 +118,7 @@ namespace PushStars.Fight
         };
 
         private Animator _animator;
+        private Renderer[] _renderers;
         private Transform[] _bones;
         private Transform _head;
         private Vector3 _focus;
@@ -119,19 +129,115 @@ namespace PushStars.Fight
         private bool _wasMirroring;
         private float _settleUntil;
         private bool _preparation;
+        private Vector3 _bodyRestPos;
+        private Quaternion _bodyRestRot;
+        private Vector3 _bodyRestScale = Vector3.one;
+        private bool _bodyRestCaptured;
         private readonly System.Collections.Generic.List<(Material material, string property, Color original)> _shadowColors
             = new System.Collections.Generic.List<(Material, string, Color)>();
 
+        /// <summary>
+        /// The pre-duel card's presentation for this body: shadow tint off (both fighters read as
+        /// themselves on the card), and — for the player — the live mirror and the anchor stood
+        /// down so the character simply stands in its idle clip instead of tracking whatever the
+        /// person is doing in front of the camera. Reversed the moment ГОТОВ is pressed.
+        ///
+        /// <para>May be called before <see cref="Build"/> has run (the controller opens the card
+        /// from its own Start, this component builds at execution order 300), so it stays a no-op
+        /// on the parts that need the instantiated body and <see cref="Build"/> re-applies it.</para>
+        /// </summary>
         public void SetPreparationPresentation(bool preparation)
         {
             _preparation = preparation;
+            // Each phase frames itself once, from where the body is now — the card cannot inherit
+            // a shot aimed at a plank, and the duel cannot inherit one locked on a standing figure.
+            _framed = false;
+            _settleUntil = Time.time + _settleSeconds;
+
             foreach (var entry in _shadowColors)
                 if (entry.material != null)
                     entry.material.SetColor(entry.property, preparation ? entry.original : _shadowTint);
+
+            if (_holdFramingWhileMirroring != null) _holdFramingWhileMirroring.Suppressed = preparation;
+            if (_alsoBound != null)
+                foreach (var bound in _alsoBound)
+                    if (bound is PushStars.CV.IMirrorSuppressible suppressible)
+                        suppressible.Suppressed = preparation;
+
+            if (preparation && _animator != null)
+            {
+                // Undo any placement the anchor applied before it was told to hold, and hand the
+                // clip driver a live Animator so the idle clip starts this frame rather than after
+                // the mirror's blend-out.
+                if (_bodyRestCaptured)
+                {
+                    var body = _animator.transform;
+                    body.localPosition = _bodyRestPos;
+                    body.localRotation = _bodyRestRot;
+                    body.localScale = _bodyRestScale;
+                }
+                _animator.enabled = true;
+            }
         }
 
         /// <summary>The instantiated body, for anything that wants to decorate it later.</summary>
         public GameObject Character { get; private set; }
+
+        /// <summary>The camera whose render texture this body appears in. Lets a surface showing
+        /// that texture — the ready card's portraits — tell which of the two stages it is looking
+        /// at without a second serialized reference.</summary>
+        public Camera StageCamera => _stageCamera;
+
+        /// <summary>Where this body lands inside its own stage render, in viewport coordinates
+        /// (0 = left/bottom, 1 = right/top). Anything cropping that render can use it to keep the
+        /// whole figure — and anything standing the figure on something can use its floor.
+        ///
+        /// <para>Measured off the posed mesh (<see cref="TryMeshBounds"/>) rather than the bones,
+        /// because the bones stop at the ankle and the skull base and a plate placed under those
+        /// is a plate the shoes hang above.</para>
+        ///
+        /// <para>Projected down the body's own depth rather than as the eight corners of its box:
+        /// under perspective the near-bottom corner lands lower in frame than the soles actually
+        /// are, and a floor a few units low is exactly the gap that reads as a figure hovering
+        /// over its own shadow.</para></summary>
+        public bool TryGetBodyViewport(out Rect viewport)
+        {
+            viewport = default;
+            if (_bones == null || _stageCamera == null) return false;
+
+            Vector3 min = Vector3.positiveInfinity;
+            Vector3 max = Vector3.negativeInfinity;
+            int found = 0;
+            foreach (var bone in _bones)
+            {
+                if (bone == null) continue;
+                min = Vector3.Min(min, bone.position);
+                max = Vector3.Max(max, bone.position);
+                found++;
+            }
+            if (found == 0) return false;
+
+            Vector3 lo = min, hi = max;
+            if (TryMeshBounds(min, max, out var mesh)) { lo = mesh.min; hi = mesh.max; }
+            else
+            {
+                float span = max.y - min.y;
+                lo.y -= span * SoleBelowFootBone;
+                hi.y += span * CrownAboveHeadBone;
+            }
+
+            float depth = (lo.z + hi.z) * 0.5f;
+            float middle = (lo.y + hi.y) * 0.5f;
+            Vector3 sole = _stageCamera.WorldToViewportPoint(new Vector3((lo.x + hi.x) * 0.5f, lo.y, depth));
+            Vector3 crown = _stageCamera.WorldToViewportPoint(new Vector3((lo.x + hi.x) * 0.5f, hi.y, depth));
+            Vector3 left = _stageCamera.WorldToViewportPoint(new Vector3(lo.x, middle, depth));
+            Vector3 right = _stageCamera.WorldToViewportPoint(new Vector3(hi.x, middle, depth));
+            if (sole.z <= 0f || crown.z <= 0f || crown.y <= sole.y) return false;
+
+            viewport = Rect.MinMaxRect(Mathf.Min(left.x, right.x), sole.y,
+                                       Mathf.Max(left.x, right.x), crown.y);
+            return true;
+        }
 
         private void Start() => Build();
 
@@ -139,9 +245,23 @@ namespace PushStars.Fight
         {
             if (_animator == null || _stageCamera == null) return;
 
+            // The ready card. The shot settles onto the standing body and then holds, which is
+            // the fixed framing the menu stage gives its hero — and the reason that figure reads
+            // as standing still. The aim rides between the body's centre and its head, and both
+            // of those breathe with the idle, so a camera left easing after them tows the whole
+            // figure around inside its own frame. On a card where each fighter now stands on a
+            // plate, that is the difference between standing on it and drifting over it. The
+            // settle is there because the idle needs a moment to cross-fade in; framing on the
+            // first frame would lock the shot onto a bind pose.
+            if (_preparation)
+            {
+                if (!_framed || Time.time < _settleUntil) FrameCharacter();
+                return;
+            }
+
             // Nothing to hold the shot for — the opponent's body, which is on a recording and
-            // stays where its stage puts it. Frames every frame, as it always did.
-            if (_holdFramingWhileMirroring == null)
+            // stays where its stage puts it. Frame it every frame.
+            if (_holdFramingWhileMirroring == null || _holdFramingWhileMirroring.Suppressed)
             {
                 FrameCharacter();
                 return;
@@ -216,18 +336,31 @@ namespace PushStars.Fight
 
             if (_shadow) ApplyShadowTint();
 
+            _renderers = Character.GetComponentsInChildren<Renderer>(true);
             CacheBones();
+
+            // The pose the stage framed this body in — restored if the ready card needs to undo an
+            // anchor placement (the anchor moves this same transform).
+            var bodyTransform = _animator.transform;
+            _bodyRestPos = bodyTransform.localPosition;
+            _bodyRestRot = bodyTransform.localRotation;
+            _bodyRestScale = bodyTransform.localScale;
+            _bodyRestCaptured = true;
+
             if (_driverBehaviour is IAvatarAnimator driver) driver.BindAnimator(_animator);
             else if (_driverBehaviour != null)
                 Debug.LogError($"[FightAvatar] {_driverBehaviour.GetType().Name} does not implement IAvatarAnimator.");
 
-            if (_alsoBound == null) return;
-            foreach (var extra in _alsoBound)
-            {
-                if (extra is IAvatarAnimator bound) bound.BindAnimator(_animator);
-                else if (extra != null)
-                    Debug.LogError($"[FightAvatar] {extra.GetType().Name} does not implement IAvatarAnimator.");
-            }
+            if (_alsoBound != null)
+                foreach (var extra in _alsoBound)
+                {
+                    if (extra is IAvatarAnimator bound) bound.BindAnimator(_animator);
+                    else if (extra != null)
+                        Debug.LogError($"[FightAvatar] {extra.GetType().Name} does not implement IAvatarAnimator.");
+                }
+
+            // The card may have asked for the standing-idle presentation before this body existed.
+            if (_preparation) SetPreparationPresentation(true);
         }
 
         /// <summary>Darkens this body's materials on the instance only. <c>renderer.materials</c>
@@ -250,6 +383,37 @@ namespace PushStars.Fight
                 }
                 renderer.materials = mats;
             }
+        }
+
+        /// <summary>The posed mesh's world-space bounds — the body's actual outline, crown and
+        /// soles included, rather than the skeleton inside it.
+        ///
+        /// <para>The class doc above says framing follows the bones because skinned bounds do not
+        /// track the pose. That is true of the bounds these FBXs ship, which sit about two metres
+        /// to one side of the body; it stops being true once the renderer is told to recompute
+        /// them, which <c>MainCharacterSetup.FixSkinnedBounds</c> does — every character prefab is
+        /// saved with <c>updateWhenOffscreen</c> on. So the bounds are read, and then checked
+        /// against the bones rather than trusted blind: a silhouette that does not contain its own
+        /// skeleton is the stale kind, and the caller falls back to the allowance above.</para>
+        /// </summary>
+        private bool TryMeshBounds(Vector3 boneMin, Vector3 boneMax, out Bounds mesh)
+        {
+            mesh = default;
+            if (_renderers == null) return false;
+
+            bool any = false;
+            foreach (var renderer in _renderers)
+            {
+                // Switched-off parts are skipped for their bounds as much as for their pixels, and
+                // an inactive one's are worse than stale: they sit at the world origin, which for
+                // the opponent's stage — parked 200 m out — would swallow the whole scene and
+                // still pass the containment test below.
+                if (renderer == null || !renderer.enabled || !renderer.gameObject.activeInHierarchy)
+                    continue;
+                if (any) mesh.Encapsulate(renderer.bounds);
+                else { mesh = renderer.bounds; any = true; }
+            }
+            return any && mesh.Contains(boneMin) && mesh.Contains(boneMax);
         }
 
         private void CacheBones()
@@ -297,6 +461,15 @@ namespace PushStars.Fight
                 radius = Mathf.Max(radius, Vector3.Distance(bone.position, aim));
             }
 
+            // And the body is not its skeleton. A sphere fitted to the bones alone puts the crown
+            // and the soles OUTSIDE the frame — which is how a standing figure kept coming back with
+            // its shoes sliced off no matter how the portrait was cropped afterwards. There is
+            // nothing to crop to if the pixels were never rendered. Measured off the mesh where it
+            // can be, so the allowance is the body's own rather than an average human's.
+            radius += TryMeshBounds(min, max, out var silhouette)
+                ? Mathf.Max(silhouette.max.y - max.y, min.y - silhouette.min.y)
+                : (max.y - min.y) * CrownAboveHeadBone;
+
             // Distance that fits a sphere of that radius in the NARROWER of the two FOVs - in
             // portrait that is the horizontal one, which is exactly the axis a prone body fills.
             float vFov = _stageCamera.fieldOfView * Mathf.Deg2Rad;
@@ -335,3 +508,5 @@ namespace PushStars.Fight
         }
     }
 }
+
+

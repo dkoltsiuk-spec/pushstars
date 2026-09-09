@@ -16,7 +16,15 @@ namespace PushStars.Fight
     ///
     /// <para>A level test skips it: there is no opponent to size up, and the result screen is where
     /// its numbers first mean something.</para>
+    ///
+    /// <para><b>Ordered after <see cref="FightAvatar"/> (300).</b> Its layout crops each stage
+    /// render to where that body sits in frame, and stands a plate under the body's soles — both
+    /// read through the stage camera, which <see cref="FightAvatar"/> moves in its own LateUpdate.
+    /// Running first would measure the pose the camera held last frame while the texture on screen
+    /// was rendered with this one, and the plate would slide out from under the feet by whatever
+    /// the camera moved in between.</para>
     /// </summary>
+    [DefaultExecutionOrder(400)]
     public sealed partial class DuelReadyPanel : MonoBehaviour
     {
         /// <summary>One fighter's card. <see cref="Unknown"/> marks a number the app cannot honestly
@@ -66,6 +74,16 @@ namespace PushStars.Fight
         public event Action OnReady;
         private FightAvatar[] _preparationAvatars;
 
+        private PushStars.UI.PushStarsTheme _theme;
+        private Sprite _playerFlagSprite;
+        private Sprite _opponentFlagSprite;
+
+        /// <summary>The design-system theme, for the flag chips and the drifting-lightning
+        /// background sprite. Loaded lazily — <see cref="PushStars.UI.ThemeInitializer"/> has
+        /// already put it in the Resources cache by the time the card shows.</summary>
+        private PushStars.UI.PushStarsTheme Theme =>
+            _theme != null ? _theme : (_theme = Resources.Load<PushStars.UI.PushStarsTheme>("PushStarsTheme"));
+
         private void Awake()
         {
             HideLegacyPortraits();
@@ -79,9 +97,11 @@ namespace PushStars.Fight
             if (_readyButton != null) _readyButton.onClick.RemoveListener(Ready);
         }
 
-        public void Show(in Side player, in Side opponent)
+        public void Show(in Side player, in Side opponent, Sprite playerFlag, Sprite opponentFlag)
         {
             if (_root == null) return;
+            _playerFlagSprite = playerFlag;
+            _opponentFlagSprite = opponentFlag;
             _root.SetActive(true);
             BuildReferenceLayout();
             _preparationAvatars = FindObjectsByType<FightAvatar>(FindObjectsSortMode.None);
@@ -91,6 +111,7 @@ namespace PushStars.Fight
             Fill(player, _playerName, _playerTrophies, _playerBest, _playerWinRate);
 
             RefreshPortraits();
+            RefreshFlags();
             LoadPlayerName();
         }
 

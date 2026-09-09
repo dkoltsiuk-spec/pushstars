@@ -29,10 +29,24 @@ Rep-counting `TrackingQuality` does not gate the visual pose: a profile may be v
 insufficient for scoring. Raw scoring landmarks and anti-cheat rules are unchanged.
 
 Update order: source/session → mirror ownership (100) → push-up clip driver (150).
-LateUpdate order: pose/blend (100) → hip placement (200) → fight camera framing (300).
+LateUpdate order: push-up pose correction (50) → pose/blend (100) → hip placement (200) → fight camera framing (300).
 When the plank arms, the evaluated clip receives ownership through a 0.35-second local-pose blend.
 At zero mirror weight the retargeter writes no bone transforms. Disarming requires fresh camera
 samples and blends back from the displayed clip pose. The camera holds throughout preparation.
+
+Both depth drivers bind `PushupPoseCorrection` to the instantiated Humanoid. During push-ups it
+uses the rig's measured limb lengths for a straight plank, symmetric elbow bend planes and fixed
+wrist/ankle targets, with parallel feet and extended fingers. Depth still comes from the player
+or ghost; scoring landmarks and root placement are unchanged. The correction precedes the
+mirror blend and fades from its displayed pose when the driver returns to an idle/rest clip.
+Foot spacing is tuned on the character prefab relative to its hip joints: the default is 0.90,
+and MainWoman uses 1.20 to keep her broader shoes separated. Character import retains this tuning.
+
+Run **Tools → Push Stars → CV → Preview Push-up Poses** to render matching before/after frontal
+and side views of both imported bodies and audit contacts, limb lengths and depth reversal.
+Outputs are `Logs/pushup-before.png`, `Logs/pushup-after.png`, the individual perspective views
+`Logs/pushup-hero.png` and `Logs/pushup-female-hero.png`, and `Logs/pushup-pose-measurements.txt`.
+The audit also checks the female skinned shoe gap throughout the repetition; no authored scene or prefab is saved.
 
 ## Repeatable Unity checks
 

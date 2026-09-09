@@ -3,23 +3,17 @@ using UnityEngine.UI;
 
 namespace PushStars.Fight
 {
-    // UI-native geometry keeps the gradient, lightning pattern and button crisp at any resolution.
+    // UI-native geometry keeps the gradient crisp at any resolution — no sprite to resample.
     [RequireComponent(typeof(CanvasRenderer))]
     public sealed class ReadyScreenGraphic : MaskableGraphic
     {
-        public bool ButtonFace;
-
         protected override void OnPopulateMesh(VertexHelper vh)
         {
             vh.Clear();
             Rect r = rectTransform.rect;
-            if (ButtonFace)
-            {
-                Quad(vh, r, 0f, 0f, 1f, 0.92f, new Color32(170, 123, 0, 255), 0.06f);
-                Quad(vh, r, 0f, 0.10f, 1f, 1f, Color.white, 0.06f);
-                Quad(vh, r, 0f, 0.10f, 1f, 0.96f, new Color32(255, 213, 17, 255), 0.06f);
-                return;
-            }
+            // Vertical gradient only — pink-red at the top, through violet, to deep blue at the
+            // bottom. The drifting lightning that used to be faked here with static triangles is a
+            // real animated LightningField now, layered over this by DuelReadyPanel.
             Color bottom = new Color32(13, 18, 136, 255);
             Color middle = new Color32(60, 49, 84, 255);
             Color top = new Color32(104, 21, 43, 255);
@@ -36,34 +30,6 @@ namespace PushStars.Fight
                 vh.AddVert(new Vector3(r.xMin, r.yMin + r.height * b), cb, Vector2.zero);
                 vh.AddTriangle(n, n + 1, n + 2); vh.AddTriangle(n, n + 2, n + 3);
             }
-            // Two convex halves form each understated lightning silhouette.
-            for (int y = -1; y < 8; y++)
-                for (int x = -1; x < 4; x++)
-                {
-                    float px = r.xMin + (x + (y % 2 == 0 ? 0.1f : 0.6f)) * r.width / 3f;
-                    float py = r.yMin + y * r.height / 7f;
-                    float s = r.width / 3f;
-                    Color tint = new Color(1f, 1f, 1f, 0.022f);
-                    Triangle(vh, new Vector2(px + s * .60f, py + s), new Vector2(px + s * .15f, py + s * .43f), new Vector2(px + s * .66f, py + s * .43f), tint);
-                    Triangle(vh, new Vector2(px + s * .34f, py + s * .57f), new Vector2(px + s * .85f, py + s * .57f), new Vector2(px + s * .40f, py), tint);
-                }
-        }
-
-        private static void Triangle(VertexHelper vh, Vector2 a, Vector2 b, Vector2 c, Color color)
-        {
-            int n = vh.currentVertCount;
-            vh.AddVert(a, color, Vector2.zero); vh.AddVert(b, color, Vector2.zero); vh.AddVert(c, color, Vector2.zero);
-            vh.AddTriangle(n, n + 1, n + 2);
-        }
-
-        private void Quad(VertexHelper vh, Rect r, float x0, float y0, float x1, float y1, Color tint, float skew)
-        {
-            tint *= color;
-            Vector2 a = new Vector2(r.xMin + r.width * x0, r.yMin + r.height * y0);
-            Vector2 b = new Vector2(r.xMin + r.width * (x1 - skew), a.y);
-            Vector2 c = new Vector2(r.xMin + r.width * x1, r.yMin + r.height * y1);
-            Vector2 d = new Vector2(r.xMin + r.width * (x0 + skew), c.y);
-            Triangle(vh, a, b, c, tint); Triangle(vh, a, c, d, tint);
         }
     }
 }

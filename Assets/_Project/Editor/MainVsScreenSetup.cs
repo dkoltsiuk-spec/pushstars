@@ -2058,71 +2058,12 @@ namespace PushStars.Editor
             so.ApplyModifiedPropertiesWithoutUndo();
         }
 
-        static void BuildLightningPattern(Transform parent, Sprite icon)
+        /// <summary>The drifting-bolt background lattice. The build lives in
+        /// <see cref="LightningField.Build"/> (runtime) so the Main screen, its overlays and the
+        /// pre-duel card all raise the same field from one place.</summary>
+        internal static void BuildLightningPattern(RectTransform parent, Sprite icon)
         {
-            // Bolts in a staggered checkerboard (every other row shifted half a cell).
-            const float iconSize = 76f, spacingX = 90f, spacingY = 102f, tilt = -10f;
-            const float scrollSpeed = 16f; // points/sec upward
-            // Edge fade: small centre core full, smooth gradient out to -90% at the screen edge.
-            const float edgeStart = 0.15f, edgeEnd = 1.0f, edgeFade = 0.90f;
-
-            var container = new GameObject("LightningPattern", typeof(RectTransform));
-            container.transform.SetParent(parent, false);
-            Stretch(container.GetComponent<RectTransform>(), 0, 0, 0, 0);
-
-            float halfW = REF_W * 0.5f, halfH = REF_H * 0.5f;
-            int cols = Mathf.CeilToInt(REF_W / spacingX) + 2;
-
-            // Tall enough to cover the screen plus a margin top & bottom; even row count so
-            // wrapping by the full lattice height preserves the checkerboard stagger.
-            int rows = Mathf.CeilToInt((REF_H + 2f * spacingY) / spacingY) + 1;
-            if (rows % 2 != 0) rows++;
-            float spanY   = rows * spacingY;     // wrap distance for the animation
-            float topWrap = halfH + spacingY;    // bolts wrap once they pass this (off-screen top)
-
-            // Build the COMPLETE lattice (no alpha-skip) so nothing pops in while scrolling.
-            for (int row = 0; row < rows; row++)
-            {
-                float y         = topWrap - (row + 0.5f) * spacingY; // tiles [topWrap - spanY, topWrap]
-                float rowOffset = (row % 2 == 0) ? 0f : spacingX * 0.5f; // checkerboard stagger
-                for (int col = -1; col < cols; col++)
-                {
-                    float x = -halfW + (col + 0.5f) * spacingX + rowOffset;
-
-                    var go  = new GameObject($"L{row}_{col}", typeof(RectTransform), typeof(Image));
-                    go.transform.SetParent(container.transform, false);
-                    var rt  = go.GetComponent<RectTransform>();
-                    Anchor(rt, new Vector2(0.5f, 0.5f), new Vector2(0.5f, 0.5f), new Vector2(0.5f, 0.5f));
-                    rt.anchoredPosition = new Vector2(x, y);
-                    rt.sizeDelta        = new Vector2(iconSize, iconSize);
-                    rt.localRotation    = Quaternion.Euler(0f, 0f, tilt);
-
-                    // Bake the same edge-fade gradient so the transition shows in edit mode too;
-                    // LightningField recomputes it per frame as the bolts scroll.
-                    float edge  = Mathf.Max(Mathf.Abs(x) / halfW, Mathf.Abs(y) / halfH);
-                    float alpha = 1f - edgeFade * Mathf.SmoothStep(edgeStart, edgeEnd, edge);
-
-                    var img = go.GetComponent<Image>();
-                    img.sprite         = icon;
-                    img.color          = new Color(1f, 1f, 1f, alpha);
-                    img.preserveAspect = true; // keep the bolt's real proportions (no vertical squish)
-                    img.raycastTarget  = false;
-                }
-            }
-
-            // Slow infinite upward drift + a light edge fade (runtime). The sprite keeps its
-            // own transparency in the centre; only the screen borders gently fade out.
-            var field = container.AddComponent<LightningField>();
-            var so = new SerializedObject(field);
-            so.FindProperty("_speed").floatValue     = scrollSpeed;
-            so.FindProperty("_spanY").floatValue     = spanY;
-            so.FindProperty("_topWrap").floatValue   = topWrap;
-            so.FindProperty("_halfW").floatValue     = halfW;
-            so.FindProperty("_halfH").floatValue     = halfH;
-            so.FindProperty("_edgeStart").floatValue = edgeStart;
-            so.FindProperty("_edgeEnd").floatValue   = edgeEnd;
-            so.FindProperty("_edgeFade").floatValue  = edgeFade;
-            so.ApplyModifiedPropertiesWithoutUndo();
+            LightningField.Build(parent, icon);
         }
 
         static RectTransform MakeRect(Transform parent, string name)

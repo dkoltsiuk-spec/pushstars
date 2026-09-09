@@ -113,6 +113,12 @@ namespace PushStars.Editor
         /// scheduled at runtime by <see cref="PushStars.UI.CharacterIdleAccent"/>.</summary>
         public const string AccentState = "WarriorIdle";
 
+        /// <summary>The FBX behind <see cref="IdleState"/>. Exposed so the fight screen's own
+        /// controller can carry the same standing idle: the character the player sees on the menu
+        /// and the one they see on the pre-duel card are the same character, and it should be
+        /// standing the same way in both.</summary>
+        public static string IdleFbxPath => $"{AnimDir}/{Clips.First(c => c.state == IdleState).file}";
+
         /// <summary>The stylised character shader (flat shading + inverted-hull outline), at
         /// Assets/_Project/Art/Shaders/CharacterToon.shader.</summary>
         public const string ToonShaderName = "Push Stars/Character Toon";
@@ -1003,6 +1009,16 @@ namespace PushStars.Editor
             FixSkinnedBounds(instance);
             NormalizeScale(def, instance);
             PoseAtRest(instance);
+
+            if (def.Gender == CharacterGender.Female)
+            {
+                // This rig has narrow hip joints but broad shoes. Keep a small gap in the
+                // push-up stance; save the tuning on the prefab so every driver uses it.
+                var correction = instance.AddComponent<PushStars.CV.PushupPoseCorrection>();
+                var settings = new SerializedObject(correction);
+                settings.FindProperty("_footSpacing").floatValue = 1.2f;
+                settings.ApplyModifiedPropertiesWithoutUndo();
+            }
 
             var prefab = PrefabUtility.SaveAsPrefabAsset(instance, def.PrefabPath);
             Object.DestroyImmediate(instance);
