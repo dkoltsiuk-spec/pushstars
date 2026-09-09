@@ -34,9 +34,9 @@ namespace PushStars.Editor
         /// <summary>Cool rim from high camera-left and behind the character. The custom toon
         /// shader reads this light through CharacterStage because it deliberately has no generic
         /// ForwardAdd pass.</summary>
-        public const float RimIntensity = 1.35f;
+        public const float RimIntensity = 2.9f;
         public const float RimPower = 3.2f;
         public const float RimStrength = 0.34f;
-        public static readonly Color RimColor = new Color(0.48f, 0.72f, 1f);
+        public static readonly Color RimColor = new Color(0.57547164f, 0.663707f, 1f);
     }
 }

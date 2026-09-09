@@ -425,13 +425,15 @@ namespace PushStars.Editor
             // rim mask; keeping a real Light here makes direction, colour and intensity easy to tune.
             var rimGO = new GameObject("RimLight_LeftBack");
             rimGO.transform.SetParent(stageGO.transform, false);
-            rimGO.transform.rotation = Quaternion.Euler(20f, 145f, 0f);
+            rimGO.transform.localPosition = new Vector3(-550.1f, 865f, -157f);
+            rimGO.transform.rotation = Quaternion.Euler(17.24f, 125.88f, -141.2f);
             var rim = rimGO.AddComponent<Light>();
             rim.type        = LightType.Directional;
             rim.intensity   = CharacterLighting.RimIntensity;
             rim.color       = CharacterLighting.RimColor;
             rim.shadows     = LightShadows.None;
             rim.cullingMask = 1 << _charLayer;
+            rim.lightmapBakeType = LightmapBakeType.Baked;
 
             var so = new SerializedObject(stage);
             so.FindProperty("_stageCamera").objectReferenceValue = cam;
