@@ -29,6 +29,15 @@ namespace PushStars.UI
         [Tooltip("UI surface that displays the rendered character (RawImage in the Duel panel).")]
         [SerializeField] private RawImage _targetImage;
 
+        [Header("Stylized rim light")]
+        [Tooltip("Directional light placed behind the character. Its transform drives the toon " +
+                 "shader's one-sided rim because that shader intentionally ignores ForwardAdd.")]
+        [SerializeField] private Light _rimLight;
+        [Range(0.5f, 12f)]
+        [SerializeField] private float _rimPower = 3.2f;
+        [Range(0f, 1f)]
+        [SerializeField] private float _rimStrength = 0.34f;
+
         [Header("Render texture")]
         [Tooltip("Portrait render target. Match the on-screen character area aspect (~9:16).")]
         [SerializeField] private int _width  = 720;
@@ -46,6 +55,11 @@ namespace PushStars.UI
         private RenderTexture _rt;
         private Vector3 _avatarBaseLocalPos;
 
+        private static readonly int RimColorId = Shader.PropertyToID("_RimColor");
+        private static readonly int RimPowerId = Shader.PropertyToID("_RimPower");
+        private static readonly int RimStrengthId = Shader.PropertyToID("_RimStrength");
+        private static readonly int RimLightDirectionId = Shader.PropertyToID("_RimLightDirection");
+
         /// <summary>Where the avatar model lives. <see cref="SetAvatar"/> parents new ones here.</summary>
         public Transform AvatarRoot => _avatarRoot;
 
@@ -57,6 +71,7 @@ namespace PushStars.UI
             CreateRenderTexture();
             if (_avatarRoot != null)
                 _avatarBaseLocalPos = _avatarRoot.localPosition;
+            ApplyStylizedRim();
         }
 
         private void Update()
@@ -97,6 +112,31 @@ namespace PushStars.UI
 
             SetLayerRecursive(avatar, _avatarRoot.gameObject.layer);
             _avatarBaseLocalPos = _avatarRoot.localPosition;
+            ApplyStylizedRim();
+        }
+
+        /// <summary>Pushes the authored rim-light direction into this stage's renderers without
+        /// changing the shared character material used by the fight and onboarding scenes.</summary>
+        public void ApplyStylizedRim()
+        {
+            if (_avatarRoot == null || _rimLight == null) return;
+
+            Vector3 towardLight = -_rimLight.transform.forward;
+            Color rimColor = _rimLight.color * Mathf.Max(0f, _rimLight.intensity);
+            rimColor.a = _rimLight.color.a;
+            var block = new MaterialPropertyBlock();
+
+            foreach (Renderer renderer in _avatarRoot.GetComponentsInChildren<Renderer>(true))
+            {
+                renderer.GetPropertyBlock(block);
+                block.SetColor(RimColorId, rimColor);
+                block.SetFloat(RimPowerId, _rimPower);
+                block.SetFloat(RimStrengthId, _rimStrength);
+                block.SetVector(RimLightDirectionId,
+                    new Vector4(towardLight.x, towardLight.y, towardLight.z, 1f));
+                renderer.SetPropertyBlock(block);
+                block.Clear();
+            }
         }
 
         private void CreateRenderTexture()

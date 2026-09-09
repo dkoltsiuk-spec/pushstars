@@ -420,10 +420,27 @@ namespace PushStars.Editor
             fill.intensity = CharacterLighting.FillIntensity;
             fill.color     = CharacterLighting.FillColor;
 
+            // Cool edge from camera-left, high and behind the avatar. The toon shader has no
+            // ForwardAdd pass, so CharacterStage also feeds this transform into its directional
+            // rim mask; keeping a real Light here makes direction, colour and intensity easy to tune.
+            var rimGO = new GameObject("RimLight_LeftBack");
+            rimGO.transform.SetParent(stageGO.transform, false);
+            rimGO.transform.rotation = Quaternion.Euler(20f, 145f, 0f);
+            var rim = rimGO.AddComponent<Light>();
+            rim.type        = LightType.Directional;
+            rim.intensity   = CharacterLighting.RimIntensity;
+            rim.color       = CharacterLighting.RimColor;
+            rim.shadows     = LightShadows.None;
+            rim.cullingMask = 1 << _charLayer;
+
             var so = new SerializedObject(stage);
             so.FindProperty("_stageCamera").objectReferenceValue = cam;
             so.FindProperty("_avatarRoot").objectReferenceValue  = avatarRoot;
+            so.FindProperty("_rimLight").objectReferenceValue    = rim;
+            so.FindProperty("_rimPower").floatValue              = CharacterLighting.RimPower;
+            so.FindProperty("_rimStrength").floatValue           = CharacterLighting.RimStrength;
             so.ApplyModifiedPropertiesWithoutUndo();
+            stage.ApplyStylizedRim();
 
             return stage;
         }

@@ -44,6 +44,7 @@ Shader "Push Stars/Character Toon"
         _RimColor    ("Rim colour", Color)          = (1, 1, 1, 1)
         _RimPower    ("Rim falloff", Range(0.5, 12))= 4
         _RimStrength ("Rim strength", Range(0, 1))  = 0.15
+        [HideInInspector] _RimLightDirection ("Rim light direction", Vector) = (0, 0, 0, 0)
 
         [Header(Outline)]
         [Space(4)]
@@ -97,6 +98,7 @@ Shader "Push Stars/Character Toon"
             half      _LightInfluence;
             half      _RimPower;
             half      _RimStrength;
+            float4    _RimLightDirection;
 
             struct appdata
             {
@@ -146,7 +148,12 @@ Shader "Push Stars/Character Toon"
                 col *= lerp(half3(1, 1, 1), _LightColor0.rgb, _LightInfluence);
 
                 float3 viewDir = normalize(_WorldSpaceCameraPos - i.worldPos);
-                half rim = pow(saturate(1 - saturate(dot(n, viewDir))), _RimPower);
+                float3 rawRimDir = _RimLightDirection.xyz;
+                float3 rimDir = dot(rawRimDir, rawRimDir) > 1e-6
+                    ? normalize(rawRimDir)
+                    : viewDir;
+                half sideMask = lerp(1, saturate(dot(n, rimDir)), saturate(_RimLightDirection.w));
+                half rim = pow(saturate(1 - saturate(dot(n, viewDir))), _RimPower) * sideMask;
                 col += _RimColor.rgb * rim * _RimStrength;
 
                 return fixed4(col, albedo.a);

@@ -3,7 +3,7 @@ using UnityEngine;
 namespace PushStars.Editor
 {
     /// <summary>
-    /// The two lights every character stage is lit by, in one place.
+    /// The lights every character stage is lit by, in one place.
     ///
     /// <para><b>Why a shared constant and not a value in each scene.</b> Every stage in this project
     /// is generated from code, so a light tuned by hand in the Scene view survives exactly until the
@@ -30,5 +30,13 @@ namespace PushStars.Editor
         /// what keeps the unlit half of the figure from going flat grey against the arena.</summary>
         public const float FillIntensity = 0.45f;
         public static readonly Color FillColor = new Color(0f, 0.3421054f, 1f);
+
+        /// <summary>Cool rim from high camera-left and behind the character. The custom toon
+        /// shader reads this light through CharacterStage because it deliberately has no generic
+        /// ForwardAdd pass.</summary>
+        public const float RimIntensity = 1.35f;
+        public const float RimPower = 3.2f;
+        public const float RimStrength = 0.34f;
+        public static readonly Color RimColor = new Color(0.48f, 0.72f, 1f);
     }
 }
