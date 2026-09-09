@@ -16,6 +16,7 @@ namespace PushStars.UI
     /// framing, render texture and UI wiring stay exactly the same; the composition built
     /// around the character does not move.
     /// </summary>
+    [ExecuteAlways]
     [DisallowMultipleComponent]
     public class CharacterStage : MonoBehaviour
     {
@@ -60,6 +61,13 @@ namespace PushStars.UI
         private static readonly int RimStrengthId = Shader.PropertyToID("_RimStrength");
         private static readonly int RimLightDirectionId = Shader.PropertyToID("_RimLightDirection");
 
+        private bool _rimStateValid;
+        private Quaternion _lastRimRotation;
+        private Color _lastRimColor;
+        private float _lastRimIntensity;
+        private float _lastRimPower;
+        private float _lastRimStrength;
+
         /// <summary>Where the avatar model lives. <see cref="SetAvatar"/> parents new ones here.</summary>
         public Transform AvatarRoot => _avatarRoot;
 
@@ -68,7 +76,7 @@ namespace PushStars.UI
 
         private void Awake()
         {
-            CreateRenderTexture();
+            if (Application.isPlaying) CreateRenderTexture();
             if (_avatarRoot != null)
                 _avatarBaseLocalPos = _avatarRoot.localPosition;
             ApplyStylizedRim();
@@ -76,9 +84,17 @@ namespace PushStars.UI
 
         private void Update()
         {
-            if (!_idleBob || _avatarRoot == null) return;
+            RefreshStylizedRimIfNeeded();
+
+            if (!Application.isPlaying || !_idleBob || _avatarRoot == null) return;
             float y = Mathf.Sin(Time.time * _bobSpeed) * _bobAmplitude;
             _avatarRoot.localPosition = _avatarBaseLocalPos + new Vector3(0f, y, 0f);
+        }
+
+        private void OnValidate()
+        {
+            _rimStateValid = false;
+            ApplyStylizedRim();
         }
 
         private void OnDestroy()
@@ -137,6 +153,27 @@ namespace PushStars.UI
                 renderer.SetPropertyBlock(block);
                 block.Clear();
             }
+
+            _lastRimRotation = _rimLight.transform.rotation;
+            _lastRimColor = _rimLight.color;
+            _lastRimIntensity = _rimLight.intensity;
+            _lastRimPower = _rimPower;
+            _lastRimStrength = _rimStrength;
+            _rimStateValid = true;
+        }
+
+        private void RefreshStylizedRimIfNeeded()
+        {
+            if (_rimLight == null) return;
+
+            bool changed = !_rimStateValid
+                || _lastRimRotation != _rimLight.transform.rotation
+                || _lastRimColor != _rimLight.color
+                || !Mathf.Approximately(_lastRimIntensity, _rimLight.intensity)
+                || !Mathf.Approximately(_lastRimPower, _rimPower)
+                || !Mathf.Approximately(_lastRimStrength, _rimStrength);
+
+            if (changed) ApplyStylizedRim();
         }
 
         private void CreateRenderTexture()
