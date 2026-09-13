@@ -8,7 +8,7 @@ workflows:
     max_build_duration: 90
     instance_type: mac_mini_m2
     environment:
-      unity: 2022.3.62f2
+      unity: 6000.3.24f1
       groups:
         - app  # UNITY_EMAIL + UNITY_PASSWORD
       vars:
@@ -45,9 +45,9 @@ workflows:
       app_store_connect: codemagic
 
     environment:
-      # Must match the project's Unity version. If Codemagic doesn't have this exact patch,
-      # set it to the nearest 2022.3.x it offers (check the build log's available versions).
-      unity: 2022.3.62f2
+      # Keep this exact version in sync with ProjectSettings/ProjectVersion.txt.
+      # Unity Build Automation uses its own target settings: enable Auto detect Unity version.
+      unity: 6000.3.24f1
       ios_signing:
         distribution_type: app_store          # app_store → TestFlight. Use `development` for ad-hoc.
         bundle_identifier: com.pushstars.app
