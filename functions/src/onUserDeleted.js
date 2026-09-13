@@ -18,6 +18,7 @@ exports.onUserDeleted = functions.auth.user().onDelete(async (user) => {
 
   const batch = db.batch();
   batch.delete(userRef);
+  batch.delete(db.doc(`onlinePresence/${uid}`));
   batch.delete(db.doc(`leaderboard/${league}/players/${uid}`));
 
   const ghostSnap = await db.collection(`ghost_sessions/${uid}/sessions`).get();

@@ -1,4 +1,5 @@
 using UnityEngine;
+using PushStars.Core;
 using PushStars.CV.AntiCheat;
 
 namespace PushStars.CV
@@ -25,10 +26,6 @@ namespace PushStars.CV
         private GUIStyle _repsStyle;
         private GUIStyle _infoStyle;
         private GUIStyle _gaugeLabelStyle;
-        private AudioSource _audio;
-        private AudioClip _beep;
-        private AudioClip _tick;
-        private AudioClip _buzz;
 
         private float _lastTickPlayTime = -10f;
         private float _lastBuzzPlayTime = -10f;
@@ -38,16 +35,6 @@ namespace PushStars.CV
         private float _lastTopFlashTime = -10f;
         private float _lastRepFlashTime = -10f;
         private float _lastVetoFlashTime = -10f;
-
-        private void Awake()
-        {
-            _audio = GetComponent<AudioSource>();
-            if (_audio == null) _audio = gameObject.AddComponent<AudioSource>();
-            _audio.playOnAwake = false;
-            _beep = MakeBeep();
-            _tick = MakeTick();
-            _buzz = MakeBuzz();
-        }
 
         private void OnEnable()
         {
@@ -70,27 +57,26 @@ namespace PushStars.CV
         private void HandleRep(int reps)
         {
             _lastRepFlashTime = Time.time;
-            if (_repSound && _audio != null && _beep != null)
-                _audio.PlayOneShot(_beep);
+            if (_repSound) GameAudio.Play(SoundCue.Rep);
         }
 
         private void HandleRepRejected(RepVote vote)
         {
             _lastVetoFlashTime = Time.time;
-            if (!_rejectBuzzSound || _audio == null || _buzz == null) return;
+            if (!_rejectBuzzSound) return;
             if (Time.time - _lastBuzzPlayTime < 0.5f) return; // debounce
             _lastBuzzPlayTime = Time.time;
-            _audio.PlayOneShot(_buzz);
+            GameAudio.Play(SoundCue.RepRejected);
         }
 
         private void HandleBottomLatched()
         {
             _bottomLatches++;
             _lastBottomFlashTime = Time.time;
-            if (!_bottomTickSound || _audio == null || _tick == null) return;
+            if (!_bottomTickSound) return;
             if (Time.time - _lastTickPlayTime < 0.15f) return; // debounce (arc guarantees 1/rep)
             _lastTickPlayTime = Time.time;
-            _audio.PlayOneShot(_tick);
+            GameAudio.Play(SoundCue.RewardTick, 1.1f);
         }
 
         private void HandleTopLatched()
@@ -476,73 +462,5 @@ namespace PushStars.CV
             style.normal.textColor = prev;
         }
 
-        // ── Procedural audio clips (no assets) ───────────────────────────────────────────────────
-
-        /// <summary>880Hz rep-counted beep (A5, 100ms).</summary>
-        private static AudioClip MakeBeep()
-        {
-            const int rate = 44100;
-            const float dur = 0.10f;
-            const float freq = 880f;
-            int n = (int)(rate * dur);
-            var samples = new float[n];
-            for (int i = 0; i < n; i++)
-            {
-                float time = (float)i / rate;
-                float attack = Mathf.Min(1f, i / (rate * 0.004f));
-                float decay  = Mathf.Min(1f, (n - i) / (rate * 0.04f));
-                float env = Mathf.Clamp01(attack) * Mathf.Clamp01(decay);
-                samples[i] = Mathf.Sin(2f * Mathf.PI * freq * time) * 0.5f * env;
-            }
-            var clip = AudioClip.Create("repBeep", n, 1, rate, false);
-            clip.SetData(samples, 0);
-            return clip;
-        }
-
-        /// <summary>1320Hz bottom-latch tick (E6, 40ms, 2ms attack, exp decay τ=15ms) — fires when
-        /// the depth registers; short and high so it never masks the 880Hz rep beep.</summary>
-        private static AudioClip MakeTick()
-        {
-            const int rate = 44100;
-            float dur = CVConstants.BottomTickDurSec;
-            float freq = CVConstants.BottomTickFreqHz;
-            int n = (int)(rate * dur);
-            var samples = new float[n];
-            const float tau = 0.015f;
-            for (int i = 0; i < n; i++)
-            {
-                float time = (float)i / rate;
-                float attack = Mathf.Clamp01(i / (rate * 0.002f));
-                float decay = Mathf.Exp(-time / tau);
-                samples[i] = Mathf.Sin(2f * Mathf.PI * freq * time) * 0.45f * attack * decay;
-            }
-            var clip = AudioClip.Create("bottomTick", n, 1, rate, false);
-            clip.SetData(samples, 0);
-            return clip;
-        }
-
-        /// <summary>220Hz veto buzz (250ms, 5ms attack, linear fade over the last 100ms).</summary>
-        private static AudioClip MakeBuzz()
-        {
-            const int rate = 44100;
-            float dur = CVConstants.RejectBuzzDurSec;
-            float freq = CVConstants.RejectBuzzFreqHz;
-            int n = (int)(rate * dur);
-            var samples = new float[n];
-            int fadeStart = n - (int)(rate * 0.1f);
-            for (int i = 0; i < n; i++)
-            {
-                float time = (float)i / rate;
-                float attack = Mathf.Clamp01(i / (rate * 0.005f));
-                float fade = i >= fadeStart ? 1f - (float)(i - fadeStart) / (n - fadeStart) : 1f;
-                // Slightly square-ish (adds the 3rd harmonic) so it reads as a "wrong" sound.
-                float wave = Mathf.Sin(2f * Mathf.PI * freq * time)
-                           + 0.35f * Mathf.Sin(2f * Mathf.PI * freq * 3f * time);
-                samples[i] = wave * 0.35f * attack * fade;
-            }
-            var clip = AudioClip.Create("rejectBuzz", n, 1, rate, false);
-            clip.SetData(samples, 0);
-            return clip;
-        }
     }
 }

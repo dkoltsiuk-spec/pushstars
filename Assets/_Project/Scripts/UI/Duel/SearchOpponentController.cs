@@ -72,6 +72,20 @@ namespace PushStars.UI
         public void Show()
         {
             if (_open || _overlay == null) return;
+            if (SelectedGameMode.Current != GameMode.Pvp)
+            {
+                string scene = SelectedGameMode.Current == GameMode.Boss
+                    ? FightConfig.PreparationSceneName : FightConfig.TrainingSceneName;
+                if (!Application.CanStreamedLevelBeLoaded(scene))
+                {
+                    Debug.LogError($"[SearchOpponent] {scene} is missing from Build Settings.");
+                    return;
+                }
+                if (SelectedGameMode.Current == GameMode.Boss) FightRequest.Boss();
+                else FightRequest.Training(TrainingPlan.Load());
+                OtaSceneLoader.LoadScene(scene);
+                return;
+            }
             _open = true;
 
             _overlay.SetActive(true);
@@ -109,11 +123,12 @@ namespace PushStars.UI
         {
             yield return new WaitForSeconds(FightConfig.SearchDelaySec);
 
-            if (!Application.CanStreamedLevelBeLoaded(FightConfig.FightSceneName))
+            if (!Application.CanStreamedLevelBeLoaded(FightConfig.FightSceneName) ||
+                !Application.CanStreamedLevelBeLoaded(FightConfig.PreparationSceneName))
             {
                 // Fight scene absent from this build (stale build settings) — stay in the
                 // searching state instead of hard-failing; ВЫЙТИ still works.
-                Debug.LogError($"[SearchOpponent] Scene '{FightConfig.FightSceneName}' is not in the build — cannot start the duel.");
+                Debug.LogError("[SearchOpponent] Fight or FightPreparation is missing from Build Settings.");
                 _searchRoutine = null;
                 yield break;
             }
@@ -134,7 +149,7 @@ namespace PushStars.UI
 
             _searchRoutine = null;
             FightRequest.Ghost();
-            OtaSceneLoader.LoadScene(FightConfig.FightSceneName);
+            OtaSceneLoader.LoadScene(FightConfig.PreparationSceneName);
         }
 
         private void ShowFoundCard(string bossName)

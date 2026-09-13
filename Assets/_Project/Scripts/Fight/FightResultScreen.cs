@@ -4,6 +4,8 @@ using UnityEngine.UI;
 using TMPro;
 using PushStars.Core;
 using PushStars.OTA;
+using PushStars.UI;
+using PushStars.UI.Layout;
 
 namespace PushStars.Fight
 {
@@ -24,6 +26,10 @@ namespace PushStars.Fight
     public sealed class FightResultScreen : MonoBehaviour
     {
         [SerializeField] private GameObject _root;
+        [SerializeField, HideInInspector] private bool _sceneAuthored;
+        [SerializeField] private Texture2D _standingPortrait;
+        public GameObject Root => _root;
+        public bool IsSceneAuthored => _sceneAuthored;
 
         [Header("Duel layout")]
         [SerializeField] private GameObject _duelLayout;
@@ -64,17 +70,67 @@ namespace PushStars.Fight
         private static readonly Color LossColor = new Color32(255, 80, 80, 255);
         private static readonly Color DrawColor = new Color32(245, 200, 66, 255); // AccentYellow
         private static readonly Color NeutralColor = Color.white;
+        [SerializeField, HideInInspector] private ScreenLayoutRoot _editableLayout;
+        private FightRewardFlow.Summary _summary;
+        private bool _hasSummary;
+        [SerializeField, HideInInspector] private bool _layoutDefaultsApplied;
+        private bool _sourcesHidden;
+        private bool _playerSourceWasEnabled, _opponentSourceWasEnabled;
+        private FightAvatar _playerStage, _opponentStage;
+        public bool IsShowing => _root != null && _root.activeSelf;
+        public RawImage PlayerAvatarSource => _playerAvatarSource;
+        public RawImage OpponentAvatarSource => _opponentAvatarSource;
+        public System.Action PreviewContinuation { get; set; }
+        public System.Action ContinueRequested { get; set; }
+
+        public void MarkSceneAuthored(Texture2D standingPortrait)
+        {
+            _sceneAuthored = true;
+            _layoutDefaultsApplied = true;
+            _standingPortrait = standingPortrait;
+            if (_editableLayout != null) _editableLayout.MarkSceneAuthored();
+            CropPortrait(_playerAvatarImage, _playerAvatarSource, null);
+            CropPortrait(_opponentAvatarImage, _opponentAvatarSource, null);
+        }
+
+        public void SetRewardSummary(int reps, float form, long xp, int trophies, string playerName)
+        {
+            _hasSummary = true;
+            _summary = new FightRewardFlow.Summary
+            {
+                PlayerName = playerName, TotalReps = reps, Technique = form / 100f,
+                EnergyXp = xp, Trophies = trophies, Aura = 0,
+                HasCase = CaseRewards.Pending != null, AvatarSource = _playerAvatarSource
+            };
+        }
+
+        public void Hide()
+        {
+            RestoreSourcePortraits();
+            if (_root != null) _root.SetActive(false);
+        }
 
         private void Awake()
         {
-            if (_root != null) _root.SetActive(false);
+            if (!_sceneAuthored && _root != null) _root.SetActive(false);
             if (_secondaryButton != null) _secondaryButton.gameObject.SetActive(false);
         }
 
         private void OnDestroy()
         {
+            RestoreSourcePortraits();
             if (_continueButton != null) _continueButton.onClick.RemoveAllListeners();
             if (_secondaryButton != null) _secondaryButton.onClick.RemoveAllListeners();
+        }
+
+        private void OnDisable() => RestoreSourcePortraits();
+
+        private void LateUpdate()
+        {
+            if (!IsShowing || _duelLayout == null || !_duelLayout.activeSelf) return;
+            // Only the UV crop follows the settling stage cameras; saved portrait boxes stay put.
+            CropPortrait(_opponentAvatarImage, _opponentAvatarSource, _opponentStage);
+            CropPortrait(_playerAvatarImage, _playerAvatarSource, _playerStage);
         }
 
         // ── Duel ─────────────────────────────────────────────────────────────────────────────────
@@ -84,6 +140,7 @@ namespace PushStars.Fight
                              string opponentName, string playerName, bool newRecord)
         {
             Open(duel: true);
+            GameAudio.Play(win && !draw ? SoundCue.Victory : draw ? SoundCue.Confirm : SoundCue.Back);
 
             SetText(_banner, draw ? "НИЧЬЯ" : win ? "ПОБЕДА" : "ПОРАЖЕНИЕ",
                     draw ? DrawColor : win ? WinColor : LossColor);
@@ -110,18 +167,14 @@ namespace PushStars.Fight
             SetText(_playerForm, $"{myForm:0}", myFormColor);
             SetText(_playerTempo, mySecondsPerRep < float.PositiveInfinity ? $"{mySecondsPerRep:0.0}с" : "—", myTempoColor);
 
-            // Same trick as the ready card: both stages already have the real bodies rendering by
-            // the time anything's Start() reaches here (Unity runs every Awake before any Start),
-            // so pointing at their textures needs no camera of this screen's own.
-            MirrorTexture(_opponentAvatarImage, _opponentAvatarSource);
-            MirrorTexture(_playerAvatarImage, _playerAvatarSource);
+            _opponentStage = AvatarBehind(_opponentAvatarSource);
+            _playerStage = AvatarBehind(_playerAvatarSource);
+            CropPortrait(_opponentAvatarImage, _opponentAvatarSource, _opponentStage);
+            CropPortrait(_playerAvatarImage, _playerAvatarSource, _playerStage);
 
-            string rewards = xp > 0 ? $"+{xp} XP" : "";
-            // Spelled out, not an emoji: the UI font is Rubik and a trophy glyph would render
-            // as a box on device.
-            if (trophies != 0)
-                rewards += (rewards.Length > 0 ? "   " : "") + $"{trophies:+#;-#;0} КУБКОВ";
-            SetText(_duelRewards, rewards, win ? WinColor : DrawColor);
+            // The next screen presents the credited XP/trophies with their own animation and room.
+            // Keeping the old repeated line here obscured the lower portrait and action button.
+            SetText(_duelRewards, "", NeutralColor);
 
             SetText(_duelNote, newRecord ? "НОВЫЙ РЕКОРД — теперь тень сильнее" : "", DrawColor);
 
@@ -144,12 +197,64 @@ namespace PushStars.Fight
             theirsColor = iAmBetter ? LossColor : WinColor;
         }
 
-        /// <summary>Points this screen's crop at the same texture the duel HUD already renders to —
-        /// a reference copy, not a render of its own.</summary>
-        private static void MirrorTexture(RawImage target, RawImage source)
+        private static FightAvatar AvatarBehind(RawImage source)
         {
-            if (target == null || source == null) return;
+            if (source == null || source.texture == null) return null;
+            foreach (var avatar in FindObjectsByType<FightAvatar>(FindObjectsInactive.Include, FindObjectsSortMode.None))
+                if (avatar.StageCamera != null && avatar.StageCamera.targetTexture == source.texture) return avatar;
+            return null;
+        }
+
+        private void CropPortrait(RawImage target, RawImage source, FightAvatar stage)
+        {
+            if (target == null) return;
+            if (_sceneAuthored && (!Application.isPlaying || source == null || source.texture == null))
+            {
+                target.texture = _standingPortrait;
+                float fallbackWidth = _standingPortrait != null
+                    ? target.rectTransform.rect.width / Mathf.Max(1f, target.rectTransform.rect.height) * _standingPortrait.height / _standingPortrait.width : 1f;
+                target.uvRect = new Rect((1f - fallbackWidth) * 0.5f, 0f, fallbackWidth, 1f);
+                target.enabled = _standingPortrait != null;
+                return;
+            }
+            target.enabled = source != null && source.texture != null;
+            if (!target.enabled) return;
             target.texture = source.texture;
+            target.raycastTarget = false;
+            target.uvRect = source.uvRect;
+            if (stage == null || !stage.TryGetBodyViewport(out var body)) return;
+            float textureAspect = (float)source.texture.width / source.texture.height;
+            float boxAspect = target.rectTransform.rect.width / Mathf.Max(1f, target.rectTransform.rect.height);
+            float height = Mathf.Min(1f, body.height / 0.94f);
+            float width = Mathf.Min(1f, height * boxAspect / textureAspect);
+            height = Mathf.Min(height, width * textureAspect / boxAspect);
+            target.uvRect = new Rect(
+                Mathf.Clamp(body.center.x - width * 0.5f, 0f, 1f - width),
+                Mathf.Clamp(body.yMin - (height - body.height) * 0.1f, 0f, 1f - height), width, height);
+        }
+
+        private void HideSourcePortraits()
+        {
+            if (_sourcesHidden) return;
+            _sourcesHidden = true;
+            if (_playerAvatarSource != null)
+            {
+                _playerSourceWasEnabled = _playerAvatarSource.enabled;
+                _playerAvatarSource.enabled = false;
+            }
+            if (_opponentAvatarSource != null)
+            {
+                _opponentSourceWasEnabled = _opponentAvatarSource.enabled;
+                _opponentAvatarSource.enabled = false;
+            }
+        }
+
+        private void RestoreSourcePortraits()
+        {
+            if (!_sourcesHidden) return;
+            _sourcesHidden = false;
+            if (_playerAvatarSource != null) _playerAvatarSource.enabled = _playerSourceWasEnabled;
+            if (_opponentAvatarSource != null) _opponentAvatarSource.enabled = _opponentSourceWasEnabled;
         }
 
         // ── Level test ───────────────────────────────────────────────────────────────────────────
@@ -160,6 +265,7 @@ namespace PushStars.Fight
         public void ShowLevelTest(int reps, FitnessTier tier, long xp, bool recorded)
         {
             Open(duel: false);
+            GameAudio.Play(reps > 0 ? SoundCue.RewardComplete : SoundCue.Back);
 
             if (reps <= 0)
             {
@@ -188,14 +294,47 @@ namespace PushStars.Fight
             HideSecondary();
         }
 
+        public void ShowTraining(int reps, int sets, long xp, bool recorded)
+        {
+            Open(duel: false);
+            GameAudio.Play(reps > 0 ? SoundCue.Victory : SoundCue.Back);
+            SetText(_testTitle, "ТРЕНИРОВКА ЗАВЕРШЕНА", NeutralColor);
+            SetText(_testTier, $"{reps} ПОВТОРОВ", DrawColor);
+            SetText(_testScore, $"Подходов: {sets}", NeutralColor);
+            SetText(_testRewards, xp > 0 ? $"+{xp} XP" : "", WinColor);
+            SetText(_testNote, recorded ? "Новый лучший подход сохранён." : "Тренировка завершена. Хорошего отдыха!", NeutralColor);
+            SetPrimary("ПРОДОЛЖИТЬ", Continue);
+            HideSecondary();
+        }
+
         // ── Actions ──────────────────────────────────────────────────────────────────────────────
 
-        private void Continue() => OtaSceneLoader.LoadScene(FightRequest.ReturnScene);
+        private void Continue()
+        {
+            if (ContinueRequested != null) { ContinueRequested(); return; }
+            if (PreviewContinuation != null) { PreviewContinuation(); return; }
+            if (_sceneAuthored) { ReturnHome(); return; }
+            if (!_hasSummary) { ReturnHome(); return; }
+            _hasSummary = false;
+            Hide();
+            foreach (var avatar in FindObjectsByType<FightAvatar>(FindObjectsSortMode.None))
+                avatar.SetPreparationPresentation(true);
+            var flow = GetComponent<FightRewardFlow>();
+            if (flow == null) flow = gameObject.AddComponent<FightRewardFlow>();
+            flow.Show(_summary, ReturnHome);
+        }
+
+        private static void ReturnHome() => FightScreenNavigation.ReturnTo(FightScreenNavigation.ReturnScene);
 
         private void Retry()
         {
-            FightRequest.LevelTest(FightRequest.ReturnScene);
-            OtaSceneLoader.LoadScene(FightConfig.FightSceneName);
+            if (FightScreenNavigation.IsPreview)
+            {
+                FightScreenNavigation.Preview(FightScreen.Battle);
+                return;
+            }
+            FightRequest.LevelTest(FightScreenNavigation.ReturnScene);
+            FightScreenNavigation.Navigate(FightScreen.Battle);
         }
 
         /// <summary>Accepts a zero so the player is not stuck in the test forever. They keep no
@@ -203,8 +342,8 @@ namespace PushStars.Fight
         /// look for an opponent.</summary>
         private void SkipLevelTest()
         {
-            OnboardingState.CompleteLevelTest(0);
-            Continue();
+            if (!FightScreenNavigation.IsPreview) OnboardingState.CompleteLevelTest(0);
+            ReturnHome();
         }
 
         // ── Plumbing ─────────────────────────────────────────────────────────────────────────────
@@ -214,6 +353,105 @@ namespace PushStars.Fight
             if (_root != null) _root.SetActive(true);
             if (_duelLayout != null) _duelLayout.SetActive(duel);
             if (_levelTestLayout != null) _levelTestLayout.SetActive(!duel);
+            HideSourcePortraits();
+            if (_sceneAuthored) return;
+            ApplyLayoutDefaults();
+            if (_editableLayout == null)
+            {
+                _editableLayout = _root.AddComponent<ScreenLayoutRoot>();
+                _editableLayout.Configure("results", false);
+                RegisterResultChildren(_duelLayout, "duel");
+                RegisterResultChildren(_levelTestLayout, "solo");
+                if (_continueButton != null) _editableLayout.Register("continue", (RectTransform)_continueButton.transform);
+                if (_secondaryButton != null) _editableLayout.Register("secondary", (RectTransform)_secondaryButton.transform);
+            }
+            _editableLayout.ApplySavedLayout();
+        }
+
+        private void ApplyLayoutDefaults()
+        {
+            if (_layoutDefaultsApplied || _sceneAuthored) return;
+            _layoutDefaultsApplied = true;
+
+            // Apply before the edit root captures its originals. User/authored layouts win afterward.
+            Place(_opponentAvatarImage != null ? _opponentAvatarImage.rectTransform : null,
+                new Vector2(1f, 1f), new Vector2(-18f, -83f), new Vector2(186f, 268f));
+            Place(_playerAvatarImage != null ? _playerAvatarImage.rectTransform : null,
+                new Vector2(0f, 0f), new Vector2(24f, 112f), new Vector2(178f, 240f));
+
+            var playerNamePlate = _playerName != null ? _playerName.transform.parent as RectTransform : null;
+            if (playerNamePlate != null && playerNamePlate.GetComponent<Image>() != null)
+                playerNamePlate.anchoredPosition = new Vector2(-18f, 315f);
+            Place(_playerReps != null ? _playerReps.rectTransform : null,
+                new Vector2(1f, 0f), new Vector2(-18f, 221f), new Vector2(170f, 82f));
+            PlacePlayerStat(_playerForm, 194f, 156f);
+            PlacePlayerStat(_playerTempo, 132f, 96f);
+
+            if (_duelNote != null)
+            {
+                var rect = _duelNote.rectTransform;
+                rect.anchorMin = new Vector2(0f, 0f); rect.anchorMax = new Vector2(1f, 0f);
+                rect.pivot = new Vector2(0.5f, 0f);
+                rect.anchoredPosition = new Vector2(0f, 5f);
+                rect.sizeDelta = new Vector2(-24f, 18f);
+                _duelNote.fontSize = 11f;
+                _duelNote.enableAutoSizing = true;
+                _duelNote.fontSizeMin = 9f; _duelNote.fontSizeMax = 11f;
+            }
+
+            if (_continueButton != null)
+            {
+                Place((RectTransform)_continueButton.transform, new Vector2(0.5f, 0f),
+                    new Vector2(0f, 45f), new Vector2(230f, 58f));
+                var theme = Resources.Load<PushStarsTheme>("PushStarsTheme");
+                var plate = _continueButton.GetComponent<Image>();
+                if (plate == null) plate = _continueButton.gameObject.AddComponent<Image>();
+                plate.sprite = theme != null ? theme.BtnShape : null;
+                plate.type = Image.Type.Simple;
+                plate.color = plate.sprite != null ? Color.white : DrawColor;
+                _continueButton.targetGraphic = plate;
+            }
+            if (_continueLabel != null)
+            {
+                _continueLabel.color = Color.white;
+                FightTypography.Apply(_continueLabel, FightTypography.Role.Button);
+                _continueLabel.fontSize = 20f;
+                _continueLabel.enableAutoSizing = true;
+                _continueLabel.fontSizeMin = 13f; _continueLabel.fontSizeMax = 20f;
+                _continueLabel.alignment = TextAlignmentOptions.Center;
+                _continueLabel.raycastTarget = false;
+                var rect = _continueLabel.rectTransform;
+                rect.anchorMin = Vector2.zero; rect.anchorMax = Vector2.one;
+                rect.offsetMin = new Vector2(17f, 4f); rect.offsetMax = new Vector2(-17f, 0f);
+            }
+        }
+
+        private static void PlacePlayerStat(TextMeshProUGUI value, float captionY, float valueY)
+        {
+            if (value == null) return;
+            var caption = value.transform.parent.Find(value.name + "Caption") as RectTransform;
+            Place(caption, new Vector2(1f, 0f), new Vector2(-18f, captionY), new Vector2(170f, 14f));
+            Place(value.rectTransform, new Vector2(1f, 0f), new Vector2(-18f, valueY), new Vector2(170f, 34f));
+        }
+
+        private static void Place(RectTransform rect, Vector2 anchor, Vector2 position, Vector2 size)
+        {
+            if (rect == null) return;
+            rect.anchorMin = rect.anchorMax = rect.pivot = anchor;
+            rect.anchoredPosition = position;
+            rect.sizeDelta = size;
+        }
+
+        private void RegisterResultChildren(GameObject parent, string prefix)
+        {
+            if (parent == null) return;
+            foreach (Transform child in parent.transform)
+            {
+                if (!(child is RectTransform rect)) continue;
+                if (child.GetComponent<Graphic>() != null || child.GetComponent<Button>() != null)
+                    _editableLayout.Register(prefix + "/" + child.name, rect);
+                else RegisterResultChildren(child.gameObject, prefix + "/" + child.name);
+            }
         }
 
         private void SetPrimary(string label, UnityEngine.Events.UnityAction action)

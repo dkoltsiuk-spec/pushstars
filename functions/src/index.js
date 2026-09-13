@@ -16,3 +16,4 @@ exports.onUserDeleted = onUserDeleted;
 exports.ensureProfile = ensureProfile;
 exports.syncOfflineXp = syncOfflineXp;
 exports.updateDisplayName = updateDisplayName;
+exports.heartbeatPresence = require('./heartbeatPresence').heartbeatPresence;

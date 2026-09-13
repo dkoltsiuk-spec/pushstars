@@ -35,17 +35,18 @@ namespace PushStars.Fight
     /// happened. A set that beats the stored one replaces it, so the shadow you fight is always
     /// your best self.</para>
     /// </summary>
-    public sealed class FightController : MonoBehaviour
+    [DefaultExecutionOrder(-1000)]
+    public sealed partial class FightController : MonoBehaviour
     {
-        private enum Phase { Ready, WaitPlank, Countdown, Live, Finished }
+        private enum Phase { Ready, WaitPlank, Countdown, Live, Finished, Rest }
 
         [SerializeField] private PushupSession _session;
         [SerializeField] private BossOpponent _boss;
         [SerializeField] private GhostOpponent _ghost;
         [SerializeField] private FightHud _hud;
-        [SerializeField] private FightResultScreen _result;
-        [Tooltip("Pre-duel card. Absent, or in a level test, the set starts straight away.")]
-        [SerializeField] private DuelReadyPanel _readyPanel;
+        // Retained only so the one-time scene migration can read older authored assets.
+        [SerializeField, HideInInspector] private FightResultScreen _result;
+        [SerializeField, HideInInspector] private DuelReadyPanel _readyPanel;
         [SerializeField] private UnityEngine.UI.Button _exitButton;
 
         [Header("Level test controls")]
@@ -87,6 +88,7 @@ namespace PushStars.Fight
         private int _baselineReps;
         private readonly List<float> _repForms = new List<float>();
         private readonly List<float> _repTimes = new List<float>();
+        private readonly string _rewardSessionId = System.Guid.NewGuid().ToString("N");
 
         /// <summary>How long a level test may fail to start before the screen offers a way past
         /// it. A player whose camera cannot see them never reaches the result screen — the plank
@@ -107,11 +109,13 @@ namespace PushStars.Fight
 
         private void Start()
         {
+            if (TryStartScreenPreview()) return;
             _sceneStartTime = Time.time;
             _mode = ResolveMode();
+            if (_mode == FightMode.Training) _training = new TrainingProgress(FightRequest.Workout);
             _theme = Resources.Load<PushStarsTheme>("PushStarsTheme"); // flag sprites for the card
             _mockOpponent = _mode == FightMode.Ghost;
-            if (_mockOpponent) _mockOpponentIdentity = MockupProfile.PickOpponent();
+            if (_mockOpponent) _mockOpponentIdentity = FightScreenNavigation.PreparedOpponent ?? MockupProfile.PickOpponent();
             ConfigureHudForMode();
 
             _hud.SetPlayerReps(0);
@@ -123,21 +127,23 @@ namespace PushStars.Fight
             if (_soloPauseButton != null) _soloPauseButton.onClick.AddListener(PauseSet);
             if (_soloResumeButton != null) _soloResumeButton.onClick.AddListener(ResumeSet);
             if (_soloFinishButton != null) _soloFinishButton.onClick.AddListener(FinishEarly);
-            if (_readyPanel != null) _readyPanel.OnReady += BeginSet;
-            ShowReadyOrStart();
+            // Preparation has its own scene. Loading Fight starts only the exercise HUD.
+            _phase = Phase.WaitPlank;
+            if (_mode == FightMode.Training) InitializeTrainingScreen();
             if (_debugButton != null) _debugButton.onClick.AddListener(ToggleDebugHud);
             SetDebugPanels(false);
         }
 
         private void OnDestroy()
         {
+            StopScreenPreview();
             if (_session != null) _session.OnRep -= HandleRep;
             if (_exitButton != null) _exitButton.onClick.RemoveListener(ExitToCaller);
             if (_soloExitButton != null) _soloExitButton.onClick.RemoveListener(ExitToCaller);
             if (_soloPauseButton != null) _soloPauseButton.onClick.RemoveListener(PauseSet);
             if (_soloResumeButton != null) _soloResumeButton.onClick.RemoveListener(ResumeSet);
             if (_soloFinishButton != null) _soloFinishButton.onClick.RemoveListener(FinishEarly);
-            if (_readyPanel != null) _readyPanel.OnReady -= BeginSet;
+
             if (_debugButton != null) _debugButton.onClick.RemoveListener(ToggleDebugHud);
         }
 
@@ -151,7 +157,7 @@ namespace PushStars.Fight
         {
             var mode = FightRequest.Mode;
 
-            if (mode == FightMode.LevelTest)
+            if (mode == FightMode.LevelTest || mode == FightMode.Training)
             {
                 _opponent = null;
                 return mode;
@@ -175,9 +181,9 @@ namespace PushStars.Fight
 
         private void ConfigureHudForMode()
         {
-            if (_mode == FightMode.LevelTest)
+            if (_mode == FightMode.LevelTest || _mode == FightMode.Training)
             {
-                _hud.ConfigureSolo("ЗАМЕР");
+                _hud.ConfigureSolo(_mode == FightMode.Training ? TrainingCaption : "ЗАМЕР");
                 // The solo layout carries its own way out, top-left, where a screen that is not a
                 // duel expects one. Leaving the duel's pill up as well puts two of them on screen,
                 // one of them over the title.
@@ -188,59 +194,6 @@ namespace PushStars.Fight
             _hud.ConfigureDuel(OpponentLabel, PlayerLabel);
             _hud.SetOpponentForm(_opponent.FormPercent);
             _hud.SetOpponentTempo(_opponent.SecondsPerRep);
-        }
-
-        /// <summary>A duel opens on the ready card; a level test has no opponent to size up, so it
-        /// goes straight to looking for the plank.</summary>
-        private void ShowReadyOrStart()
-        {
-            if (_mode == FightMode.LevelTest || _readyPanel == null)
-            {
-                _phase = Phase.WaitPlank;
-                return;
-            }
-
-            _phase = Phase.Ready;
-            _hud.HideBanner();
-            _hud.SetScoresVisible(false);
-
-            // Real record once the player has one; mock placeholders on a still-empty profile so a
-            // first-run card is not a wall of zeros.
-            bool hasHistory = LocalProfile.Trophies > 0 || LocalProfile.Games > 0 || LocalProfile.BestReps > 0;
-            var me = hasHistory
-                ? new DuelReadyPanel.Side(PlayerLabel, LocalProfile.Trophies, LocalProfile.BestReps,
-                    LocalProfile.Games > 0 ? LocalProfile.WinRatePercent : DuelReadyPanel.Side.Unknown)
-                : new DuelReadyPanel.Side(PlayerLabel, MockupProfile.PlayerTrophies,
-                    MockupProfile.PlayerBestReps, MockupProfile.PlayerWinRate);
-            var myFlag = MockupProfile.FlagSprite(MockupProfile.PlayerFlag, _theme);
-
-            DuelReadyPanel.Side them;
-            Sprite theirFlag;
-            if (_mockOpponent)
-            {
-                var identity = _mockOpponentIdentity;
-                them = new DuelReadyPanel.Side(identity.Name, identity.Trophies, identity.BestReps,
-                    identity.WinRate);
-                theirFlag = MockupProfile.FlagSprite(identity.Flag, _theme);
-            }
-            else
-            {
-                // A boss carries no ladder of its own — leave those cells blank rather than
-                // borrowing the player's numbers under its name.
-                them = new DuelReadyPanel.Side(OpponentLabel, DuelReadyPanel.Side.Unknown,
-                    _opponent.ExpectedReps, DuelReadyPanel.Side.Unknown);
-                theirFlag = null;
-            }
-
-            _readyPanel.Show(me, them, myFlag, theirFlag);
-        }
-
-        private void BeginSet()
-        {
-            if (_phase != Phase.Ready) return;
-            _phase = Phase.WaitPlank;
-            _hud.SetScoresVisible(true);
-            _sceneStartTime = Time.time; // the stuck-test timer starts when the set does
         }
 
         /// <summary>One tap shows the diagnostics — the tuning HUD and the camera preview with the
@@ -287,13 +240,16 @@ namespace PushStars.Fight
 
         private void Update()
         {
-            if (_session == null || _paused) return;
+            if (_screenPreview || UpdateLayoutPause()) return;
+            if (_session == null || _paused) { UpdateTrainingScreen(); return; }
             switch (_phase)
             {
                 case Phase.WaitPlank:  TickWaitPlank();  break;
                 case Phase.Countdown:  TickCountdown();  break;
                 case Phase.Live:       TickLive();       break;
+                case Phase.Rest:       TickTrainingRest(); break;
             }
+            UpdateTrainingScreen();
         }
 
         // ── Paused ───────────────────────────────────────────────────────────────────────────────
@@ -312,7 +268,7 @@ namespace PushStars.Fight
         /// </summary>
         private void PauseSet()
         {
-            if (_paused || _phase == Phase.Finished) return;
+            if (_paused || _phase == Phase.Finished || _phase == Phase.Rest) return;
             _paused = true;
             _pausedAt = Time.time;
             if (_session != null) _session.enabled = false;
@@ -321,6 +277,7 @@ namespace PushStars.Fight
 
         private void ResumeSet()
         {
+            if (_phase == Phase.Rest) { if (_training.Continue()) BeginNextTrainingSet(); return; }
             if (!_paused) return;
             _paused = false;
 
@@ -442,7 +399,7 @@ namespace PushStars.Fight
             _hud.SetPlayerForm(_session.Form);
             _hud.SetPlayerTempo(_session.TempoRpm);
 
-            float remain = FightConfig.DuelDurationSec - elapsed;
+            float remain = (_mode == FightMode.Training ? TrainingPlan.SetSeconds : FightConfig.DuelDurationSec) - elapsed;
             _hud.SetTimer(Mathf.Max(0, Mathf.CeilToInt(remain)));
 
             // Live guidance: the timer never pauses (a duel is a duel), but the HUD says loudly
@@ -463,17 +420,24 @@ namespace PushStars.Fight
         // ── Finished ─────────────────────────────────────────────────────────────────────────────
         private void Finish()
         {
+            if (_phase == Phase.Finished || _screenPreview) return;
             _phase = Phase.Finished;
             _hud.HideBanner();
             _hud.HideCountdown();
+            _hud.SetScoresVisible(false);
 
             int myReps = _session.Reps - _baselineReps;
+
+            _session.enabled = false;
+            foreach (var avatar in FindObjectsByType<FightAvatar>(FindObjectsSortMode.None))
+                avatar.SetPreparationPresentation(true);
 
             // XP by economy rules: per-rep form-weighted XP. Daily-cap carryover and streak
             // multipliers need server state — they arrive with phase 11.5's sync.
             long xp = XpCalculator.XpForReps(_repForms);
 
-            if (_mode == FightMode.LevelTest) FinishLevelTest(myReps, xp);
+            if (_mode == FightMode.Training) FinishTrainingSet(myReps, xp);
+            else if (_mode == FightMode.LevelTest) FinishLevelTest(myReps, xp);
             else                              FinishDuel(myReps, xp);
         }
 
@@ -493,7 +457,12 @@ namespace PushStars.Fight
                 OfflineXpBank.Add(xp);
             }
 
-            _result.ShowLevelTest(myReps, FitnessTest.TierFor(myReps), xp, recorded);
+            PresentResults(new FightResultData
+            {
+                Mode = FightMode.LevelTest, MyReps = myReps, MyForm = AverageForm(),
+                MyRepsPerMinute = _session.TempoRpm, Xp = xp, PlayerName = PlayerLabel,
+                FitnessTier = FitnessTest.TierFor(myReps), NewRecord = recorded
+            });
         }
 
         private void FinishDuel(int myReps, long xp)
@@ -514,10 +483,36 @@ namespace PushStars.Fight
 
             if (!ghost) BossCatalog.ReportResult(win);
 
-            _result.ShowDuel(win, draw, myReps, oppReps,
-                             AverageForm(), _opponent.FormPercent,
-                             _session.TempoRpm, _opponent.SecondsPerRep,
-                             xp, trophies, OpponentLabel, PlayerLabel, newRecord);
+            PresentResults(new FightResultData
+            {
+                Mode = _mode, Win = win, Draw = draw, MyReps = myReps, OppReps = oppReps,
+                MyForm = AverageForm(), OppForm = _opponent.FormPercent,
+                MyRepsPerMinute = _session.TempoRpm, OppSecondsPerRep = _opponent.SecondsPerRep,
+                Xp = xp, Trophies = trophies, OpponentName = OpponentLabel,
+                PlayerName = PlayerLabel, NewRecord = newRecord
+            });
+        }
+
+        private void PresentResults(FightResultData data)
+        {
+            // Eligibility is settled once here. Presentation never rolls or grants another case.
+            PendingCase awarded = null;
+            try
+            {
+                CaseRewards.TryAwardDailyWorkoutCase(_rewardSessionId, data.MyReps, out awarded);
+            }
+            catch (System.Exception exception)
+            {
+                // A case save failure must not strand the completed set after its XP/result
+                // has already been recorded. Keep the inventory intact and show that result.
+                Debug.LogException(exception, this);
+            }
+            var summary = new FightRewardFlow.Summary
+            {
+                PlayerName = data.PlayerName, TotalReps = data.MyReps, Technique = data.MyForm / 100f,
+                EnergyXp = data.Xp, Trophies = data.Trophies, HasCase = awarded != null
+            };
+            FightScreenNavigation.ShowResults(data, summary, awarded != null ? awarded.Id : null, FightRequest.ReturnScene);
         }
 
         /// <summary>Mean FORM across the reps that actually counted — the same list the ghost
@@ -544,7 +539,7 @@ namespace PushStars.Fight
             if (_skipOffered && _mode == FightMode.LevelTest)
                 OnboardingState.CompleteLevelTest(0);
 
-            OtaSceneLoader.LoadScene(FightRequest.ReturnScene);
+            FightScreenNavigation.ReturnTo(FightRequest.ReturnScene);
         }
 
         /// <summary>Same wording the on-device debug HUD converged on (phase 08.1).</summary>

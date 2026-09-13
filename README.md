@@ -9,6 +9,7 @@
 - **[docs/plan/](docs/plan/)** — по одному файлу на фазу реализации (00–17).
 - **[docs/architecture/](docs/architecture/)** — Firebase, Ghost Mode, константы.
 - **[docs/design/screens-reference.md](docs/design/screens-reference.md)** — описание экранов под UI из макетов.
+- **[Редактор экранов и кейсы](docs/design/fight-layout-and-cases.md)** — ручное перемещение элементов, сохранение макетов, предпросмотр и награды из кейсов.
 
 ## Быстрый старт для разработки
 

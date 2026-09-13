@@ -19,6 +19,8 @@ namespace PushStars.Core
         public const int CountdownSec = 3;
 
         public const string FightSceneName = "Fight";
+        public const string TrainingSceneName = "Training";
+        public const string PreparationSceneName = "FightPreparation";
         public const string MainSceneName = "Main";
         /// <summary>First-run intro pages. Only ever loaded by <c>AppBootstrap</c>.</summary>
         public const string OnboardingSceneName = "Onboarding";

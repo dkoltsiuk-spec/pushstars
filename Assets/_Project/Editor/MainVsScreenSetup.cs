@@ -40,7 +40,6 @@ namespace PushStars.Editor
         const string PrefabsDir    = "Assets/_Project/UI/Prefabs";
         const string MaterialsDir  = "Assets/_Project/UI/Materials";
         const string RenderingDir  = "Assets/_Project/UI/Rendering";
-        const string CharacterStandSprite = "Assets/_Project/UI/Sprites/character_stand.png";
         const string PreviewRtPath = RenderingDir + "/CharacterStageRT.renderTexture";
         const string CharacterLayer = "Character";
 
@@ -322,6 +321,10 @@ namespace PushStars.Editor
             // gear captured in BuildProfilePanel, closed by its own back button.
             BuildSettingsOverlay(canvasGO.transform, mirror, safe, mainGroup);
 
+            ModeSelectionSceneSetup.Install(scene);
+            BattleSettingsSceneSetup.Install(scene);
+            TrainingSettingsSceneSetup.Install(scene);
+
             EditorSceneManager.MarkSceneDirty(scene);
             EditorSceneManager.SaveScene(scene, MainScenePath);
             Debug.Log($"[MainVsScreen] ✓ Saved {MainScenePath}");
@@ -510,7 +513,7 @@ namespace PushStars.Editor
         // ── Composition constants (reference 390 × 844, taken off the design mock-up) ──
         // Kept together so the layout can be nudged without hunting through the builder.
         const float CharAreaY       = 40f;    // character render surface, from the screen centre
-        const float FeetY           = -178f;  // where his soles land inside that surface
+        const float FeetY           = -196f;  // contact shadow aligned with the soles
         const float ActionRowBottom = 119f;   // baseline of the PVP / BATTLE / PUSHUP plates
         const float NavBarBottom    = 22f;    // bottom edge of the bottom-nav container
 
@@ -519,7 +522,6 @@ namespace PushStars.Editor
             // Sibling order is draw order: the glow sits behind everything, then the contact
             // shadow, the character, his wardrobe decor, the HUD, and the action plates on top.
             BuildStageGlow(panel);
-            BuildCharacterStand(panel);
             BuildGroundShadow(panel);
 
             // ── Character render surface (centre) ──────────────────────────────────────
@@ -589,31 +591,17 @@ namespace PushStars.Editor
         // floating in front of the background instead of standing on it.
         static void BuildGroundShadow(RectTransform panel)
         {
-            var sprite = _theme.GroundShadow != null ? _theme.GroundShadow : ProcSprite("ground_shadow");
+            var sprite = _theme.CircleShape != null ? _theme.CircleShape : ProcSprite("circle_128");
             if (sprite == null) return;
 
             var img = MakeImage(panel, "GroundShadow", new Color(0f, 0f, 0f, 0.5f), sprite);
+            img.type = Image.Type.Simple;
+            img.preserveAspect = false;
             img.raycastTarget = false;
             var rt = img.rectTransform;
             Anchor(rt, new Vector2(0.5f, 0.5f), new Vector2(0.5f, 0.5f), new Vector2(0.5f, 0.5f));
             rt.anchoredPosition = new Vector2(0f, CharAreaY + FeetY);
             rt.sizeDelta        = new Vector2(168f, 40f);
-        }
-
-        // A shallow arena pedestal gives the standing pose a physical contact plane. It stays a
-        // normal Image in the scene, so its position and scale can be edited and saved in Unity.
-        static void BuildCharacterStand(RectTransform panel)
-        {
-            var sprite = AssetDatabase.LoadAssetAtPath<Sprite>(CharacterStandSprite);
-            if (sprite == null) return;
-
-            var img = MakeImage(panel, "CharacterStand", Color.white, sprite);
-            img.raycastTarget = false;
-            img.preserveAspect = true;
-            var rt = img.rectTransform;
-            Anchor(rt, new Vector2(0.5f, 0.5f), new Vector2(0.5f, 0.5f), new Vector2(0.5f, 0.5f));
-            rt.anchoredPosition = new Vector2(0f, -151f);
-            rt.sizeDelta = new Vector2(225f, 73f);
         }
 
         // SHOP tile and the spare slot beneath it, hugging the right edge under the currency tags.
@@ -714,9 +702,8 @@ namespace PushStars.Editor
 
         // PVP / BATTLE / PUSHUP — the three plates that replaced the wide "НАЙТИ СОПЕРНИКА" pill
         // and the mode/exercise/duration chips. BATTLE inherits the CTA's role, so it is what
-        // _findButtonGO hands to BuildSearchOverlay; the two side plates are stubs until their
-        // modes ship, and say so through the toast. Duel/60 s stay the defaults DuelModeController
-        // already used, so nothing downstream changes by dropping the chips.
+        // _findButtonGO hands to BuildSearchOverlay. ModeSelectionSceneSetup wires the left
+        // plate to the selector after the main UI is built; BattleSettingsSceneSetup wires the right plate.
         static void BuildActionRow(RectTransform panel, Toast toast)
         {
             var row = MakeRect(panel, "ActionRow");
@@ -753,8 +740,6 @@ namespace PushStars.Editor
 
             _findButtonGO = battle; // the search overlay opens from BATTLE
 
-            WireComingSoon(pvp,    toast, "PVP скоро — пока доступен BATTLE");
-            WireComingSoon(pushup, toast, "Тренировка скоро — пока доступен BATTLE");
         }
 
         /// <summary>Pins a plate to the action row's baseline at a given horizontal offset — the

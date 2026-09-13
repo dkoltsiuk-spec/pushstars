@@ -90,6 +90,14 @@ namespace PushStars.Editor
 
                 switch (task)
                 {
+                    case "install-mode-selector":
+                        ModeSelectionSceneSetup.Run();
+                        break;
+
+                    case "rebuild-mode-selector":
+                        ModeSelectionSceneSetup.Rebuild();
+                        break;
+
                     case TaskImportCharacters:
                         Debug.Log("[EditorTask] Importing main characters …");
                         MainCharacterSetup.ImportAll();

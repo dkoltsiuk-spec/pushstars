@@ -150,6 +150,11 @@ namespace PushStars.Editor
 
         static void ApplySettings(string path, string name)
         {
+            // These exports use authored cropped sprite rectangles; Single would erase them.
+            if (path.Replace('\\', '/').StartsWith("Assets/_Project/UI/Sprites/ModeSelection/")) return;
+            if (path.Replace('\\', '/').StartsWith("Assets/_Project/UI/Sprites/BattleSettings/")) return;
+            if (path.Replace('\\', '/').StartsWith("Assets/_Project/UI/Sprites/TrainingSettings/")) return;
+            if (path.Replace('\\', '/').StartsWith("Assets/_Project/UI/Sprites/TrainingScreen/")) return;
             var importer = AssetImporter.GetAtPath(path) as TextureImporter;
             if (importer == null) return;
 

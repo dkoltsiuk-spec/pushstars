@@ -179,7 +179,7 @@ namespace PushStars.UI
 
             try
             {
-                if (ServiceLocator.TryGet<FirebaseAuthService>(out var auth))
+                if (ServiceLocator.TryGet<FirebaseAuthService>(out var auth) && auth.IsSignedIn)
                 {
                     await auth.DeleteAccountAsync();
                     await UniTask.SwitchToMainThread();
@@ -187,6 +187,11 @@ namespace PushStars.UI
                 else
                 {
                     Debug.LogWarning("[Settings] Auth service unavailable — cannot delete account.");
+                    _deleting = false;
+                    if (_confirmYesButton != null) _confirmYesButton.interactable = true;
+                    HideConfirm();
+                    if (_overlay != null) _overlay.GetComponent<ProfileSettingsActions>()?.ShowNotice("Sign in before deleting your account.");
+                    return;
                 }
 
                 // Restart from Boot, which re-initializes services and signs in fresh.
@@ -195,6 +200,7 @@ namespace PushStars.UI
             catch (System.Exception e)
             {
                 Debug.LogError($"[Settings] Account deletion failed: {e}");
+                if (_overlay != null) _overlay.GetComponent<ProfileSettingsActions>()?.ShowNotice("Account deletion failed. Please sign in again and retry.");
                 _deleting = false;
                 if (_confirmYesButton != null) _confirmYesButton.interactable = true;
                 HideConfirm();

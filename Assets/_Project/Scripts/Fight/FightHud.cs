@@ -1,6 +1,7 @@
 using UnityEngine;
 using TMPro;
 using PushStars.CV;
+using PushStars.Core;
 using PushStars.CV.AntiCheat;
 
 namespace PushStars.Fight
@@ -15,13 +16,13 @@ namespace PushStars.Fight
     /// side of a comparison. Both layouts show the same four live numbers, so the setters write to
     /// whichever one is up and no caller has to know which screen it is on.</para>
     ///
-    /// <para>Audio feedback carries over from the tuning HUD unchanged: the user cannot watch the
-    /// screen from a plank, so the 880Hz rep beep and the veto buzz stay the primary channel.</para>
+    /// <para>Audio feedback uses the shared sound pack: the player can hear counted and rejected
+    /// repetitions without looking at the screen. The global sound preference applies here.</para>
     ///
     /// All references are wired by the FightSceneSetup editor tool; this component only mutates
     /// what it's given.
     /// </summary>
-    public sealed class FightHud : MonoBehaviour
+    public sealed partial class FightHud : MonoBehaviour
     {
         public enum BannerTone { Warn, Good }
 
@@ -88,9 +89,7 @@ namespace PushStars.Fight
         private static readonly Color GoodColor = new Color(0.55f, 1f, 0.45f);
         private static readonly Color VetoColor = new Color(1f, 0.35f, 0.3f);
 
-        private AudioSource _audio;
-        private AudioClip _beep;
-        private AudioClip _buzz;
+        private string _lastCountdownSound;
         private float _vetoToastUntil;
         private float _goFlashUntil;
         private Vector3 _playerRepsBaseScale = Vector3.one;
@@ -104,13 +103,11 @@ namespace PushStars.Fight
         /// rather than every caller having to know which screen it is on.</summary>
         private bool _solo;
         private TextMeshProUGUI _repsOut, _formOut, _tempoOut, _timerOut;
+        private TextMeshProUGUI _pauseTitle, _pauseHint;
 
         private void Awake()
         {
-            _audio = gameObject.AddComponent<AudioSource>();
-            _audio.playOnAwake = false;
-            _beep = MakeTone("repBeep", 880f, 0.10f);
-            _buzz = MakeTone("vetoBuzz", 220f, 0.25f, thirdHarmonic: true);
+            CaptureHudDefaults();
 
             if (_bannerRoot != null && _bannerRoot.transform is RectTransform bannerRect)
                 _duelBannerY = bannerRect.anchoredPosition.y;
@@ -156,13 +153,13 @@ namespace PushStars.Fight
 
         private void HandleRep(int _)
         {
-            if (_sounds && _beep != null) _audio.PlayOneShot(_beep);
+            if (_sounds) GameAudio.Play(SoundCue.Rep);
             _playerRepsPopTime = Time.time;
         }
 
         private void HandleRepRejected(RepVote vote)
         {
-            if (_sounds && _buzz != null) _audio.PlayOneShot(_buzz);
+            if (_sounds) GameAudio.Play(SoundCue.RepRejected);
             // Short loud toast through the banner — the phase-14 reject UX in miniature.
             _vetoToastUntil = Time.time + 1.4f;
             SetBanner("ПОВТОР НЕ ЗАСЧИТАН", VetoColor);
@@ -191,6 +188,7 @@ namespace PushStars.Fight
         /// <summary>Two fighters, two counters.</summary>
         public void ConfigureDuel(string opponentName, string playerName)
         {
+            RestoreSharedHudDefaults();
             _solo = false;
             _showOpponent = true;
             UseDuelLabels();
@@ -206,6 +204,7 @@ namespace PushStars.Fight
             SetText(_opponentReps, "0");
             SetText(_playerName, playerName);
             SetText(_playerReps, "0");
+            ConfigureEditableHud(false);
         }
 
         /// <summary>
@@ -219,6 +218,7 @@ namespace PushStars.Fight
         /// </summary>
         public void ConfigureSolo(string caption)
         {
+            RestoreSharedHudDefaults();
             _solo = true;
             _showOpponent = false;
             if (_opponentPanel != null) _opponentPanel.SetActive(false);
@@ -257,6 +257,7 @@ namespace PushStars.Fight
                 _playerHalf.offsetMin = Vector2.zero;
                 _playerHalf.offsetMax = Vector2.zero;
             }
+            ConfigureEditableHud(true);
         }
 
         /// <summary>Hides the scoreboards while the ready card is up. The card shows the same
@@ -264,6 +265,7 @@ namespace PushStars.Fight
         /// progress and lost.</summary>
         public void SetScoresVisible(bool visible)
         {
+            SetLayoutAvailable(visible);
             if (_solo)
             {
                 if (_soloPanel != null) _soloPanel.SetActive(visible);
@@ -285,7 +287,30 @@ namespace PushStars.Fight
         /// a pause that leaves the set visible and the clock stopped is somewhere to practise.</summary>
         public void SetPaused(bool paused)
         {
+            GameAudio.SetWorkoutPaused(paused);
             if (_soloPauseOverlay != null) _soloPauseOverlay.SetActive(paused);
+            if (paused) SetPauseCopy("ПАУЗА", "Нажми, чтобы продолжить");
+        }
+
+        public void ShowTrainingRest(int nextSet, int total, float seconds)
+        {
+            if (_soloPauseOverlay != null) _soloPauseOverlay.SetActive(true);
+            string time = seconds < 0 ? "Без таймера" : $"{Mathf.CeilToInt(seconds)} сек.";
+            SetPauseCopy("ОТДЫХ", $"{time} • Далее подход {nextSet}/{total}\nНажми, чтобы продолжить");
+        }
+
+        private void SetPauseCopy(string title, string hint)
+        {
+            if (_soloPauseOverlay == null) return;
+            if (_pauseTitle == null || _pauseHint == null)
+            {
+                foreach (var label in _soloPauseOverlay.GetComponentsInChildren<TextMeshProUGUI>(true))
+                {
+                    if (label.name == "PausedTitle") _pauseTitle = label;
+                    if (label.name == "PausedHint") _pauseHint = label;
+                }
+            }
+            SetText(_pauseTitle, title); SetText(_pauseHint, hint);
         }
 
         // ── Live values ──────────────────────────────────────────────────────────────────────────
@@ -350,6 +375,9 @@ namespace PushStars.Fight
         // ── Countdown ────────────────────────────────────────────────────────────────────────────
         public void ShowCountdown(string text)
         {
+            if (_sounds && text != _lastCountdownSound && int.TryParse(text, out int number) && number > 0)
+                GameAudio.Play(SoundCue.Countdown);
+            _lastCountdownSound = text;
             if (_countdown == null) return;
             _goFlashUntil = 0f;
             _countdown.gameObject.SetActive(true);
@@ -358,15 +386,17 @@ namespace PushStars.Fight
 
         public void FlashGo()
         {
+            _lastCountdownSound = null;
+            if (_sounds) GameAudio.Play(SoundCue.Confirm);
             if (_countdown == null) return;
             _countdown.gameObject.SetActive(true);
             _countdown.text = "ВПЕРЁД!";
             _goFlashUntil = Time.time + 0.8f;
-            if (_sounds && _beep != null) _audio.PlayOneShot(_beep);
         }
 
         public void HideCountdown()
         {
+            _lastCountdownSound = null;
             _goFlashUntil = 0f;
             if (_countdown != null) _countdown.gameObject.SetActive(false);
         }
@@ -376,24 +406,5 @@ namespace PushStars.Fight
             if (label != null) label.text = text;
         }
 
-        // ── Procedural clips (same recipe as the debug HUD — no audio assets) ────────────────────
-        private static AudioClip MakeTone(string name, float freq, float dur, bool thirdHarmonic = false)
-        {
-            const int rate = 44100;
-            int n = (int)(rate * dur);
-            var samples = new float[n];
-            for (int i = 0; i < n; i++)
-            {
-                float time = (float)i / rate;
-                float attack = Mathf.Clamp01(i / (rate * 0.004f));
-                float decay = Mathf.Clamp01((n - i) / (rate * 0.05f));
-                float wave = Mathf.Sin(2f * Mathf.PI * freq * time);
-                if (thirdHarmonic) wave += 0.35f * Mathf.Sin(2f * Mathf.PI * freq * 3f * time);
-                samples[i] = wave * 0.45f * attack * decay;
-            }
-            var clip = AudioClip.Create(name, n, 1, rate, false);
-            clip.SetData(samples, 0);
-            return clip;
-        }
     }
 }

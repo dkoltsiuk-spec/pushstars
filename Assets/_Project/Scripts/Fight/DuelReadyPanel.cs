@@ -1,4 +1,5 @@
 using System;
+using System.Linq;
 using TMPro;
 using UnityEngine;
 using UnityEngine.UI;
@@ -24,6 +25,7 @@ namespace PushStars.Fight
     /// was rendered with this one, and the plate would slide out from under the feet by whatever
     /// the camera moved in between.</para>
     /// </summary>
+    [ExecuteAlways]
     [DefaultExecutionOrder(400)]
     public sealed partial class DuelReadyPanel : MonoBehaviour
     {
@@ -49,6 +51,12 @@ namespace PushStars.Fight
         }
 
         [SerializeField] private GameObject _root;
+        [SerializeField, HideInInspector] private bool _sceneAuthored;
+        [SerializeField] private Texture2D _standingPortrait;
+        public GameObject Root => _root;
+        public RawImage PlayerAvatarSource => _playerAvatarSource;
+        public RawImage OpponentAvatarSource => _opponentAvatarSource;
+        public bool IsSceneAuthored => _sceneAuthored;
 
         [Header("Opponent (top-right)")]
         [SerializeField] private TextMeshProUGUI _opponentName;
@@ -86,25 +94,31 @@ namespace PushStars.Fight
 
         private void Awake()
         {
-            HideLegacyPortraits();
-            if (_root != null) _root.SetActive(false);
+            if (!Application.isPlaying) return;
+            if (!_sceneAuthored)
+            {
+                HideLegacyPortraits();
+                if (_root != null) _root.SetActive(false);
+            }
             if (_readyButton != null) _readyButton.onClick.AddListener(Ready);
         }
 
         private void OnDestroy()
         {
+            if (!Application.isPlaying) return;
             RestoreAvatarPresentation();
             if (_readyButton != null) _readyButton.onClick.RemoveListener(Ready);
         }
 
-        public void Show(in Side player, in Side opponent, Sprite playerFlag, Sprite opponentFlag)
+        public void Show(in Side player, in Side opponent, Sprite playerFlag, Sprite opponentFlag, bool loadProfile = true)
         {
             if (_root == null) return;
             _playerFlagSprite = playerFlag;
             _opponentFlagSprite = opponentFlag;
             _root.SetActive(true);
             BuildReferenceLayout();
-            _preparationAvatars = FindObjectsByType<FightAvatar>(FindObjectsSortMode.None);
+            _preparationAvatars = FindObjectsByType<FightAvatar>(FindObjectsSortMode.None)
+                .Where(avatar => avatar.gameObject.scene == gameObject.scene).ToArray();
             foreach (var avatar in _preparationAvatars) avatar.SetPreparationPresentation(true);
 
             Fill(opponent, _opponentName, _opponentTrophies, _opponentBest, _opponentWinRate);
@@ -112,7 +126,28 @@ namespace PushStars.Fight
 
             RefreshPortraits();
             RefreshFlags();
-            LoadPlayerName();
+            if (!_sceneAuthored) ConfigureEditableLayout();
+            if (loadProfile) LoadPlayerName();
+        }
+
+        /// <summary>Used once by the scene builder. Subsequent scene loads only fill data.</summary>
+        public void MarkSceneAuthored(Texture2D standingPortrait)
+        {
+            _sceneAuthored = true;
+            _standingPortrait = standingPortrait;
+            if (_editableLayout != null) _editableLayout.MarkSceneAuthored();
+            PlaceAuthoredShadow(_opponentShadow, _opponentAvatarImage);
+            PlaceAuthoredShadow(_playerShadow, _playerAvatarImage);
+            RefreshPortraits();
+        }
+
+        private static void PlaceAuthoredShadow(Image shadow, RawImage portrait)
+        {
+            if (shadow == null || portrait == null) return;
+            var box = portrait.rectTransform;
+            shadow.gameObject.SetActive(true);
+            shadow.rectTransform.anchoredPosition = box.anchoredPosition + new Vector2(box.rect.width * 0.5f, -box.rect.height + 12f);
+            shadow.rectTransform.sizeDelta = new Vector2(box.rect.height * 0.3f, 22f);
         }
 
         private async void LoadPlayerName()
@@ -135,7 +170,10 @@ namespace PushStars.Fight
             if (_root != null) _root.SetActive(false);
         }
 
-        private void OnDisable() => RestoreAvatarPresentation();
+        private void OnDisable()
+        {
+            if (Application.isPlaying) RestoreAvatarPresentation();
+        }
 
         private void RestoreAvatarPresentation()
         {

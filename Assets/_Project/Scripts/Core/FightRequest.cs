@@ -9,6 +9,7 @@ namespace PushStars.Core
         Ghost = 1,
         /// <summary>Against a scripted PvE boss from <see cref="BossCatalog"/>.</summary>
         Boss = 2,
+        Training = 3,
     }
 
     /// <summary>
@@ -23,7 +24,21 @@ namespace PushStars.Core
     /// </summary>
     public static class FightRequest
     {
+        public static bool HasRequest { get; private set; }
+
+        [UnityEngine.RuntimeInitializeOnLoadMethod(UnityEngine.RuntimeInitializeLoadType.SubsystemRegistration)]
+        public static void Clear()
+        {
+            HasRequest = false;
+            Mode = FightMode.Ghost;
+            ReturnScene = FightConfig.MainSceneName;
+            Workout = new TrainingPlan(3, 60);
+        }
         public static FightMode Mode { get; private set; } = FightMode.Ghost;
+        public static TrainingPlan Workout { get; private set; } = new TrainingPlan(3, 60);
+
+        public static void Training(TrainingPlan plan, string returnScene = FightConfig.MainSceneName)
+        { Workout = new TrainingPlan(plan.Sets, plan.RestSeconds); Set(FightMode.Training, returnScene); }
 
         /// <summary>Scene to return to when the duel ends.</summary>
         public static string ReturnScene { get; private set; } = FightConfig.MainSceneName;
@@ -39,6 +54,7 @@ namespace PushStars.Core
 
         private static void Set(FightMode mode, string returnScene)
         {
+            HasRequest = true;
             Mode = mode;
             ReturnScene = string.IsNullOrEmpty(returnScene) ? FightConfig.MainSceneName : returnScene;
         }

@@ -2,14 +2,32 @@ using TMPro;
 using UnityEngine;
 using UnityEngine.UI;
 using PushStars.UI;
+using PushStars.UI.Layout;
 
 namespace PushStars.Fight
 {
     public sealed partial class DuelReadyPanel
     {
-        private RectTransform _composition;
-        private RectTransform _safeBounds;
-        private bool _layoutBuilt;
+        [SerializeField, HideInInspector] private RectTransform _composition;
+        [SerializeField, HideInInspector] private RectTransform _safeBounds;
+        [SerializeField, HideInInspector] private bool _layoutBuilt;
+        [SerializeField, HideInInspector] private ScreenLayoutRoot _editableLayout;
+
+        private void ConfigureEditableLayout()
+        {
+            if (_editableLayout == null)
+            {
+                _editableLayout = _composition.gameObject.AddComponent<ScreenLayoutRoot>();
+                _editableLayout.Configure("preparation", false);
+                foreach (Transform child in _composition)
+                {
+                    // Shadows are positioned from the portrait's soles every frame.
+                    if (child == _opponentShadow.transform || child == _playerShadow.transform) continue;
+                    if (child is RectTransform rect) _editableLayout.Register(child.name, rect);
+                }
+            }
+            _editableLayout.ApplySavedLayout();
+        }
 
         // Share of the portrait box the figure fills, crown to sole. The boxes below are sized
         // around it: raising this alone would only crop tighter, not enlarge the figure.
@@ -36,16 +54,16 @@ namespace PushStars.Fight
         // and it is what sinks the feet into the shadow rather than perching them on top of it.
         private const float ShadowRiseOfHeight = 0.30f;
 
-        private Image _opponentFlag;
-        private Image _playerFlag;
-        private Image _opponentShadow;
-        private Image _playerShadow;
+        [SerializeField, HideInInspector] private Image _opponentFlag;
+        [SerializeField, HideInInspector] private Image _playerFlag;
+        [SerializeField, HideInInspector] private Image _opponentShadow;
+        [SerializeField, HideInInspector] private Image _playerShadow;
 
         // Reference art's content, excluding the phone bezel and operating-system chrome.
         // A uniform scale keeps portraits, typography and the square VS medal undistorted.
         private void BuildReferenceLayout()
         {
-            if (_layoutBuilt) return;
+            if (_layoutBuilt || _sceneAuthored) return;
             _layoutBuilt = true;
             var root = (RectTransform)_root.transform;
             _safeBounds = root.Find("SafeArea") as RectTransform;
@@ -128,6 +146,7 @@ namespace PushStars.Fight
 
         private void FitComposition()
         {
+            if (_composition == null || _safeBounds == null) return;
             float scale = Mathf.Min(_safeBounds.rect.width / 390f, _safeBounds.rect.height / 844f);
             if (scale > 0f) _composition.localScale = Vector3.one * scale;
         }
@@ -157,11 +176,9 @@ namespace PushStars.Fight
             label.text = "READY";
             label.fontSize = 20f;
             label.enableAutoSizing = false;
-            label.fontStyle = FontStyles.Bold;
+            FightTypography.Apply(label, FightTypography.Role.Button);
             label.alignment = TextAlignmentOptions.Center;
             label.color = Color.white;
-            label.outlineColor = Color.black;
-            label.outlineWidth = 0.2f;
             label.raycastTarget = false;
             // Centred on the plate's face, not on its box: the sprite's bottom ~9% is the darker
             // lip the button appears to sit on, and text centred over both reads low.
@@ -247,6 +264,15 @@ namespace PushStars.Fight
         private void CopyPortrait(RawImage target, RawImage source, Image shadow)
         {
             if (target == null) return;
+            if (_sceneAuthored && (!Application.isPlaying || source == null || source.texture == null))
+            {
+                target.texture = _standingPortrait;
+                float fallbackWidth = _standingPortrait != null
+                    ? target.rectTransform.rect.width / Mathf.Max(1f, target.rectTransform.rect.height) * _standingPortrait.height / _standingPortrait.width : 1f;
+                target.uvRect = new Rect((1f - fallbackWidth) * 0.5f, 0f, fallbackWidth, 1f);
+                target.enabled = _standingPortrait != null;
+                return;
+            }
             target.enabled = source != null && source.texture != null;
             if (shadow != null) shadow.gameObject.SetActive(target.enabled);
             if (!target.enabled) return;
@@ -282,7 +308,7 @@ namespace PushStars.Fight
                 Mathf.Clamp(body.yMin - (height - body.height) * PortraitFootShare, 0f, 1f - height),
                 width, height);
             target.uvRect = uv;
-            PlaceGroundShadow(shadow, target.rectTransform, uv, body);
+            if (!_sceneAuthored) PlaceGroundShadow(shadow, target.rectTransform, uv, body);
         }
 
         private Image FlagChip(Image image, string name, float x, float y, float width, float height)
@@ -305,8 +331,11 @@ namespace PushStars.Fight
             // PUSHUP, WIN RATE — and gives that edge up only to make room for a flag chip in front
             // of it. A boss carries no flag, and an indent held open for a chip that never arrives
             // is what knocked the opponent's name out of the column and pushed it over his body.
-            NamePlace(_opponentName, _opponentFlagSprite != null ? 52f : 18f, 214f, 88f);
-            NamePlace(_playerName, 138f, _playerFlagSprite != null ? 343f : 375f, 445f);
+            if (!_sceneAuthored)
+            {
+                NamePlace(_opponentName, _opponentFlagSprite != null ? 52f : 18f, 214f, 88f);
+                NamePlace(_playerName, 138f, _playerFlagSprite != null ? 343f : 375f, 445f);
+            }
 
             static void Apply(Image image, Sprite sprite)
             {

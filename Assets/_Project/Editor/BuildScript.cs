@@ -39,6 +39,7 @@ namespace PushStars.Editor
             "Assets/_Project/Scenes/Main.unity",
             OnboardingSceneSetup.ScenePath,
             FightSceneSetup.ScenePath,
+            TrainingScreenSetup.ScenePath,
             "Assets/testCV.unity",
         };
 
@@ -55,6 +56,7 @@ namespace PushStars.Editor
             BootSceneSetup.BuildScene();
             OnboardingSceneSetup.BuildScene();
             bool mediapipe = FightSceneSetup.BuildFightScene();
+            TrainingScreenSetup.Run();
 
             EditorBuildSettings.scenes =
                 AppScenes.Where(p => File.Exists(p))
