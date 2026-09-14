@@ -26,6 +26,10 @@ namespace PushStars.UI
         private bool _open;
         private float _shown;
         private Vector2 _lastSize;
+        private bool _friendDuelActive;
+        private bool _selecting;
+
+        public void SetFriendDuelActive(bool active) => _friendDuelActive = active;
 
         public bool IsOpen => _open;
 
@@ -43,10 +47,11 @@ namespace PushStars.UI
         public void Show()
         {
             if (_open) return;
-            if (SelectedGameMode.Current == GameMode.Training && _trainingSettings != null)
+            var mode = _friendDuelActive ? GameMode.Pvp : SelectedGameMode.Current;
+            if (mode == GameMode.Training && _trainingSettings != null)
             { _trainingSettings.Show(); return; }
-            _title.text = SelectedGameMode.Current == GameMode.Boss ? "BOSS SETTINGS" :
-                SelectedGameMode.Current == GameMode.Pvp ? "PVP 1V1 SETTINGS" : "TRAINING SETTINGS";
+            _title.text = mode == GameMode.Boss ? "BOSS SETTINGS" :
+                mode == GameMode.Pvp ? "PVP 1V1 SETTINGS" : "TRAINING SETTINGS";
             _open = true;
             _overlay.SetActive(true);
             _overlay.transform.SetAsLastSibling();
@@ -66,9 +71,30 @@ namespace PushStars.UI
         {
             // Push-ups are the sole supported exercise in every current fight route.
             // The two locked entries intentionally have no selection callbacks.
-            if (!_open) return;
-            _homeLabel.text = "PUSHUP";
-            Hide();
+            if (!_open || _selecting) return;
+            StartCoroutine(PressThenSelectPushup());
+        }
+
+        private IEnumerator PressThenSelectPushup()
+        {
+            _selecting = true;
+            Transform target = _pushup.transform;
+            Vector3 restScale = target.localScale;
+            _pushup.interactable = false;
+
+            // The card settles back first; only then does the settings sheet collapse.
+            yield return UITween.Scale(target, restScale, restScale * .94f,
+                .07f, 0f, UITween.EaseOutQuad);
+            yield return UITween.Scale(target, restScale * .94f, restScale,
+                .12f, 0f, UITween.EaseOutBackSoft);
+
+            _pushup.interactable = true;
+            if (_open)
+            {
+                _homeLabel.text = "PUSHUP";
+                Hide();
+            }
+            _selecting = false;
         }
 
         private void Update()
@@ -136,6 +162,7 @@ namespace PushStars.UI
             if (_transition != null) StopCoroutine(_transition);
             _transition = null;
             _open = false;
+            _selecting = false;
             _shown = 0;
             if (_overlay != null) _overlay.SetActive(false);
             if (_rest != null) for (int i = 0; i < _cards.Length; i++) CardPose(i, 1);

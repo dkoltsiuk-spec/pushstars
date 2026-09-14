@@ -168,6 +168,8 @@ namespace PushStars.Editor
             pauseCurtain.gameObject.SetActive(false);
             var so = new SerializedObject(screen);
             Set(so, "_content", content);
+            Set(so, "_background", background);
+            Set(so, "_resultsBackground", Sprite(Sprites + "bg_zamer.png"));
             Set(so, "_loading", loading.gameObject); Set(so, "_exercise", exercise.gameObject); Set(so, "_rest", rest.gameObject); Set(so, "_results", results.gameObject); Set(so, "_header", header.gameObject); Set(so, "_pauseCurtain", pauseCurtain.gameObject);
             Set(so, "_mode", modeButton.GetComponentInChildren<TextMeshProUGUI>()); Set(so, "_pauseLabel", pause.GetComponentInChildren<TextMeshProUGUI>());
             Set(so, "_set", set); Set(so, "_reps", reps); Set(so, "_technique", technique); Set(so, "_timer", timer); Set(so, "_hint", hint); Set(so, "_restTimer", restTimer); Set(so, "_elapsed", elapsed);

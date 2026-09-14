@@ -1,4 +1,5 @@
 using System.Collections.Generic;
+using System.Linq;
 using UnityEngine;
 using UnityEngine.SceneManagement;
 using PushStars.Core;
@@ -99,6 +100,15 @@ namespace PushStars.Fight
         private bool _everArmed;
         private bool _skipOffered;
         private bool _paused;
+        public BossCombatState BossHealth { get; private set; }
+        public int PlayerBattleReps => _repTimes.Count;
+        public float PlayerBattleForm => _session != null ? _session.Form : 0;
+        public float PlayerBattleTempo => _session != null ? _session.TempoRpm : 0;
+        public float BattleSecondsLeft => _phase == Phase.Live ? Mathf.Max(0, FightConfig.DuelDurationSec - (Time.time - _liveStartTime)) : FightConfig.DuelDurationSec;
+        public bool BossReady { get; private set; }
+        private bool _bossEnding;
+        public void ConfirmBossReady() { if (_mode == FightMode.Boss) BossReady = true; }
+        public bool IsBossBattleLive => _mode == FightMode.Boss && _phase == Phase.Live && !_paused && !_layoutPaused;
         private float _pausedAt;
 
         private const int DebugTapsToReset = 5;
@@ -112,6 +122,12 @@ namespace PushStars.Fight
             if (TryStartScreenPreview()) return;
             _sceneStartTime = Time.time;
             _mode = ResolveMode();
+            if (_mode == FightMode.Boss)
+            {
+                BossHealth = new BossCombatState(FightRequest.BossId ?? BossCatalog.Current.Id);
+                _boss.OnRep += HandleBossAttack;
+                BossReady = FindFirstObjectByType<BossCombatScreen>() == null;
+            }
             if (_mode == FightMode.Training) _training = new TrainingProgress(FightRequest.Workout);
             _theme = Resources.Load<PushStarsTheme>("PushStarsTheme"); // flag sprites for the card
             _mockOpponent = _mode == FightMode.Ghost;
@@ -136,6 +152,7 @@ namespace PushStars.Fight
 
         private void OnDestroy()
         {
+            if (_boss != null) _boss.OnRep -= HandleBossAttack;
             StopScreenPreview();
             if (_session != null) _session.OnRep -= HandleRep;
             if (_exitButton != null) _exitButton.onClick.RemoveListener(ExitToCaller);
@@ -232,15 +249,37 @@ namespace PushStars.Fight
 
         private void HandleRep(int totalReps)
         {
-            if (_phase != Phase.Live) return;
+            if (_phase != Phase.Live || _bossEnding) return;
             _repForms.Add(_session.Form);
             _repTimes.Add(Time.time - _liveStartTime);
             _hud.SetPlayerReps(totalReps - _baselineReps);
+            if (BossHealth != null) { BossHealth.PlayerRep(_session.Form); CheckBossKnockout(); }
+        }
+
+        private void HandleBossAttack(int reps)
+        {
+            if (_phase != Phase.Live || _bossEnding || BossHealth == null) return;
+            BossHealth.BossAttack(); CheckBossKnockout();
+        }
+        private void CheckBossKnockout()
+        {
+            if (!BossHealth.Knockout || _bossEnding) return;
+            _bossEnding = true;
+            StartCoroutine(FinishBossImpact());
+        }
+        private System.Collections.IEnumerator FinishBossImpact()
+        {
+            // Let the last hit and damage number register visually, without accepting more reps.
+            var bossScreen = GetComponent<BossCombatScreen>();
+            if (bossScreen == null) bossScreen = FindObjectsByType<BossCombatScreen>(FindObjectsSortMode.None)
+                .FirstOrDefault(s => s.gameObject.scene == gameObject.scene);
+            yield return new WaitForSecondsRealtime(bossScreen != null ? bossScreen.BossDefeatPresentationSeconds : .6f);
+            Finish();
         }
 
         private void Update()
         {
-            if (_screenPreview || UpdateLayoutPause()) return;
+            if (_screenPreview || _bossEnding || UpdateLayoutPause()) return;
             if (_session == null || _paused) { UpdateTrainingScreen(); return; }
             switch (_phase)
             {
@@ -310,6 +349,11 @@ namespace PushStars.Fight
         // ── WaitPlank ────────────────────────────────────────────────────────────────────────────
         private void TickWaitPlank()
         {
+            if (_mode == FightMode.Boss && !BossReady)
+            {
+                _hud.ShowBanner("НАЖМИ READY И ВСТАНЬ В ПЛАНКУ", FightHud.BannerTone.Warn);
+                return;
+            }
             var armer = _session.Armer;
             if (armer == null)
             {
@@ -377,6 +421,7 @@ namespace PushStars.Fight
 
             // Go live. Baseline excludes any reps done while getting set.
             _phase = Phase.Live;
+            _hud.SetSoloRepsVisible(true);
             _hud.PlayCornerAccents();
             _liveStartTime = Time.time;
             _baselineReps = _session.Reps;
@@ -396,6 +441,7 @@ namespace PushStars.Fight
                 _opponent.Tick(elapsed);
                 _hud.SetOpponentReps(_opponent.Reps);
             }
+            if (_bossEnding) return;
             _hud.SetPlayerForm(_session.Form);
             _hud.SetPlayerTempo(_session.TempoRpm);
 
@@ -426,7 +472,7 @@ namespace PushStars.Fight
             _hud.HideCountdown();
             _hud.SetScoresVisible(false);
 
-            int myReps = _session.Reps - _baselineReps;
+            int myReps = BossHealth != null ? _repTimes.Count : _session.Reps - _baselineReps;
 
             _session.enabled = false;
             foreach (var avatar in FindObjectsByType<FightAvatar>(FindObjectsSortMode.None))
@@ -470,6 +516,7 @@ namespace PushStars.Fight
             int oppReps = _opponent.Reps;
             bool win = myReps > oppReps;
             bool draw = myReps == oppReps;
+            if (BossHealth != null) { win = BossHealth.PlayerWins; draw = BossHealth.Draw; }
             bool ghost = _mode == FightMode.Ghost;
 
             if (win) xp += FightConfig.BossWinXpBonus;

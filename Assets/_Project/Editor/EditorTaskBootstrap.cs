@@ -90,6 +90,54 @@ namespace PushStars.Editor
 
                 switch (task)
                 {
+                    case "refresh-assets":
+                        AssetDatabase.Refresh();
+                        break;
+                    case "install-boss-combat":
+                        BossCombatSceneSetup.Run();
+                        break;
+                    case "validate-boss-combat":
+                        BossCombatValidation.Run();
+                        break;
+                    case "validate-boss-combat-play":
+                        BossCombatPlayValidation.Run();
+                        break;
+                    case "validate-fight-aspect":
+                        FightAspectValidation.Run();
+                        break;
+                    case "validate-preparation-home":
+                        HomeNavigationPlayValidation.Run();
+                        break;
+                    case "import-first-boss":
+                        FirstBossSetup.Import();
+                        break;
+                    case "validate-first-boss":
+                        FirstBossSetup.Validate();
+                        break;
+                    case "validate-first-boss-scenes":
+                        FirstBossValidation.Run();
+                        break;
+                    case "install-boss-map":
+                        AssetDatabase.Refresh();
+                        BossMapSceneSetup.Run();
+                        break;
+
+                    case "polish-boss-island":
+                        BossMapSceneSetup.UpdateIslandAndShine();
+                        break;
+
+                    case "polish-boss-fight":
+                        BossMapSceneSetup.UpdateFightLabels();
+                        break;
+
+                    case "validate-boss-map":
+                        BossMapValidation.Run();
+                        break;
+
+                    case "validate-boss-map-play":
+                        BossMapPlayValidation.Run();
+                        break;
+
                     case "install-mode-selector":
                         ModeSelectionSceneSetup.Run();
                         break;

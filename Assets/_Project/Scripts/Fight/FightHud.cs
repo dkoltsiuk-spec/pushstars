@@ -167,6 +167,7 @@ namespace PushStars.Fight
 
         private void Update()
         {
+            UpdateSoloPresentation();
             // Rep-counter pop: quick overshoot that settles in ~0.25s.
             if (_repsOut != null)
             {
@@ -188,6 +189,7 @@ namespace PushStars.Fight
         /// <summary>Two fighters, two counters.</summary>
         public void ConfigureDuel(string opponentName, string playerName)
         {
+            RestoreSoloPortraitAspect();
             RestoreSharedHudDefaults();
             _solo = false;
             _showOpponent = true;
@@ -205,6 +207,7 @@ namespace PushStars.Fight
             SetText(_playerName, playerName);
             SetText(_playerReps, "0");
             ConfigureEditableHud(false);
+            SetDuelAvatarZoom(true);
         }
 
         /// <summary>
@@ -218,6 +221,7 @@ namespace PushStars.Fight
         /// </summary>
         public void ConfigureSolo(string caption)
         {
+            SetDuelAvatarZoom(false);
             RestoreSharedHudDefaults();
             _solo = true;
             _showOpponent = false;
@@ -244,6 +248,7 @@ namespace PushStars.Fight
 
             SetText(_soloCaption, caption);
             SetText(_repsOut, "0");
+            SetSoloRepsVisible(false);
             SetText(_formOut, "—");
             SetText(_tempoOut, "—");
 
@@ -257,7 +262,13 @@ namespace PushStars.Fight
                 _playerHalf.offsetMin = Vector2.zero;
                 _playerHalf.offsetMax = Vector2.zero;
             }
+            ConfigureSoloPresentation();
             ConfigureEditableHud(true);
+        }
+
+        public void SetSoloRepsVisible(bool visible)
+        {
+            if (_soloReps != null) _soloReps.gameObject.SetActive(visible);
         }
 
         /// <summary>Hides the scoreboards while the ready card is up. The card shows the same
@@ -287,6 +298,7 @@ namespace PushStars.Fight
         /// a pause that leaves the set visible and the clock stopped is somewhere to practise.</summary>
         public void SetPaused(bool paused)
         {
+            _soloPaused = paused;
             GameAudio.SetWorkoutPaused(paused);
             if (_soloPauseOverlay != null) _soloPauseOverlay.SetActive(paused);
             if (paused) SetPauseCopy("ПАУЗА", "Нажми, чтобы продолжить");

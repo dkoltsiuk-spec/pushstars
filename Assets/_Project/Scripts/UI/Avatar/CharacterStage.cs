@@ -55,6 +55,25 @@ namespace PushStars.UI
 
         private RenderTexture _rt;
         private Vector3 _avatarBaseLocalPos;
+        private readonly Vector3[] _displayCorners = new Vector3[4];
+
+        /// <summary>
+        /// Match projection to the live UI surface, not just the fixed render texture size.
+        /// RawImage stretches the texture to its rect; compensating the camera aspect makes
+        /// that composite proportional without moving the UI or reallocating render targets.
+        /// Fight stages opt in; independently cropped menu/ready portraits keep their framing.
+        /// </summary>
+        public void MatchDisplayAspect()
+        {
+            if (_stageCamera == null || _targetImage == null || !_targetImage.isActiveAndEnabled) return;
+            _targetImage.rectTransform.GetWorldCorners(_displayCorners);
+            float width = Vector3.Distance(_displayCorners[0], _displayCorners[3]);
+            float height = Vector3.Distance(_displayCorners[0], _displayCorners[1]);
+            var uv = _targetImage.uvRect;
+            if (width <= .0001f || height <= .0001f || Mathf.Abs(uv.width) <= .0001f || Mathf.Abs(uv.height) <= .0001f) return;
+            float aspect = width / height * Mathf.Abs(uv.height / uv.width);
+            if (!Mathf.Approximately(_stageCamera.aspect, aspect)) _stageCamera.aspect = aspect;
+        }
 
         private static readonly int RimColorId = Shader.PropertyToID("_RimColor");
         private static readonly int RimPowerId = Shader.PropertyToID("_RimPower");

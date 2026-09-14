@@ -17,6 +17,25 @@ namespace PushStars.Editor
         const string ArtPath = "Assets/_Project/UI/Sprites/League/";
         static TMP_FontAsset _bold, _italic;
         static Material _regularOutline, _titleOutline;
+        [MenuItem("Push Stars/UI/Install Floating League Trophies")]
+        public static void InstallFloatingTrophies()
+        {
+            if (EditorApplication.isPlaying) throw new InvalidOperationException("Exit Play mode first.");
+            var scene = SceneManager.GetActiveScene();
+            if (scene.path != "Assets/_Project/Scenes/Main.unity") throw new InvalidOperationException("Open Main first.");
+            var layout = scene.GetRootGameObjects().SelectMany(r => r.GetComponentsInChildren<LeagueLayout>(true)).First();
+            foreach (Transform child in layout.Art.Cast<Transform>().ToArray())
+                if (child.name.StartsWith("BackdropCup", StringComparison.Ordinal)) Undo.DestroyObjectImmediate(child.gameObject);
+            var field = layout.Background.GetComponentInChildren<LeagueTrophyField>(true);
+            if (field == null)
+            {
+                field = LeagueTrophyField.Build(layout.Background, AssetDatabase.LoadAssetAtPath<Sprite>(ArtPath + "cup-pattern.png"));
+                Undo.RegisterCreatedObjectUndo(field.gameObject, "Add floating league trophies");
+            }
+            EditorSceneManager.MarkSceneDirty(scene);
+            EditorSceneManager.SaveScene(scene);
+        }
+
         [MenuItem("Push Stars/UI/Use Exported League Progress")]
         public static void UseExportedProgress()
         {
@@ -48,7 +67,7 @@ namespace PushStars.Editor
             var oldRenderer = bar.GetComponent<CanvasRenderer>();
             if (oldRenderer != null) oldRenderer.Clear();
             if (bar.Track == null) bar.Track = Pic(rect, "Track", "progress-track", 0, 0, 276, 50);
-            if (bar.FillImage == null) bar.FillImage = Pic(rect, "Fill", "progress-fill", 0, 0, 276 * view.Progress, 50);
+            if (bar.FillImage == null) bar.FillImage = Pic(rect, "Fill", "progress-fill", 0, 0, 276, 50);
             view.Refresh();
             EditorUtility.SetDirty(bar);
             EditorSceneManager.MarkSceneDirty(scene);
@@ -109,17 +128,12 @@ namespace PushStars.Editor
             var layout = Undo.AddComponent<LeagueLayout>(panel);
             layout.Art = art; layout.Background = backdrop.rectTransform;
             var view = panel.GetComponent<LeagueView>() ?? Undo.AddComponent<LeagueView>(panel);
-            for (int i = 0; i < 9; i++)
-            {
-                var pattern = Pic(art, "BackdropCup" + i, "cup-pattern", (i % 3) * 140 - 22, 35 + (i / 3) * 180, 132, 128);
-                pattern.color = new Color(1, .7f, .35f, .11f);
-                pattern.rectTransform.localEulerAngles = new Vector3(0, 0, i % 2 == 0 ? 14 : -12);
-            }
+            LeagueTrophyField.Build(backdrop.rectTransform, AssetDatabase.LoadAssetAtPath<Sprite>(ArtPath + "cup-pattern.png"));
             Pic(art, "LeagueHero", "hero", 0, -8, 390, 360).preserveAspect = true;
             Pic(art, "ProgressPlaque", "progress-plaque", 41, 276, 340, 119);
             view.ProgressBar = Rect(art, "TrophyProgress", 72, 318, 276, 50).gameObject.AddComponent<LeagueProgressGraphic>();
             view.ProgressBar.Track = Pic(view.ProgressBar.transform, "Track", "progress-track", 0, 0, 276, 50);
-            view.ProgressBar.FillImage = Pic(view.ProgressBar.transform, "Fill", "progress-fill", 0, 0, 276 * view.Progress, 50);
+            view.ProgressBar.FillImage = Pic(view.ProgressBar.transform, "Fill", "progress-fill", 0, 0, 276, 50);
             Pic(art, "ProgressCup", "cup-progress", -2, 307, 111, 104).preserveAspect = true;
             view.Title = Text(art, "LeagueTitle", view.LeagueName, 23, 241, 349, 55, 40, true, new Color32(255, 155, 0, 255));
             view.Title.rectTransform.localEulerAngles = new Vector3(0, 0, 5);

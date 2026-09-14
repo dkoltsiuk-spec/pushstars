@@ -26,6 +26,9 @@ namespace PushStars.Fight
         [SerializeField] private TextMeshProUGUI _exerciseMode;
         [SerializeField] private Button _exercisePause, _exerciseExit, _exerciseResume;
         [SerializeField] private Image _progressFill;
+        [SerializeField] private Image _background;
+        [SerializeField] private Sprite _resultsBackground;
+        private Sprite _exerciseBackground;
         [SerializeField] private Image[] _steps;
         [SerializeField] private TextMeshProUGUI[] _stepLabels;
         [SerializeField] private Sprite _check, _dumbbell;
@@ -50,6 +53,7 @@ namespace PushStars.Fight
         }
         private void Awake()
         {
+            if (_background != null) _exerciseBackground = _background.sprite;
             _repScale = _reps.rectTransform.localScale;
             _repMaterial = new Material(_reps.fontSharedMaterial) { name = "Training Reps Thin Outline" };
             _repMaterial.SetFloat("_OutlineWidth", .07f);
@@ -79,6 +83,8 @@ namespace PushStars.Fight
         private void Switch(View view)
         {
             _view = view;
+            if (_background != null && _resultsBackground != null)
+                _background.sprite = view == View.Results ? _resultsBackground : _exerciseBackground;
             _reps.gameObject.SetActive(false);
             _loading.SetActive(view == View.Loading); _exercise.SetActive(view == View.Exercise);
             _rest.SetActive(view == View.Rest); _results.SetActive(view == View.Results);

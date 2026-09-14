@@ -172,7 +172,9 @@ namespace PushStars.Fight
             {
                 PreparedOpponent = null;
                 FightRequest.Clear();
-                if (IsPreview) SceneManager.LoadScene(destination);
+                // Editor Play mode must return to the authored scene, not the generated OTA
+                // snapshot, which can lag behind current UI work. Player builds still use OTA.
+                if (Application.isEditor || IsPreview) SceneManager.LoadScene(destination);
                 else OtaSceneLoader.LoadScene(destination);
             }
             else SceneManager.LoadScene(destination);

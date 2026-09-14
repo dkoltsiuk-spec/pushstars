@@ -428,6 +428,7 @@ namespace PushStars.Editor
             UiBuilder.SetArray(so, "_alsoBound", alsoBound ?? new UnityEngine.Object[0]);
             UiBuilder.Set(so, "_holdFramingWhileMirroring", holdFramingFor);
             so.FindProperty("_shadow").boolValue = shadow;
+            so.FindProperty("_opponentStage").boolValue = shadow;
             so.ApplyModifiedPropertiesWithoutUndo();
         }
 

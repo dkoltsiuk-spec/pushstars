@@ -1,6 +1,7 @@
 using UnityEngine;
 using PushStars.CV;
 using PushStars.UI;
+using PushStars.Core;
 
 namespace PushStars.Fight
 {
@@ -72,6 +73,7 @@ namespace PushStars.Fight
                  "character, and two identical figures read as a bug rather than as a duel — the " +
                  "shadow says whose reps those are without needing a second character.")]
         [SerializeField] private bool _shadow;
+        [SerializeField] private bool _opponentStage;
         [SerializeField] private Color _shadowTint = new Color(0.09f, 0.10f, 0.16f, 1f);
 
         [Header("Framing")]
@@ -243,6 +245,11 @@ namespace PushStars.Fight
 
         private void LateUpdate()
         {
+            // Both live fight halves are editable/responsive RawImages. Their current display
+            // aspect can differ from the stage texture authored for the reference resolution.
+            // Do this before framing (which reads camera.aspect), including on script reload.
+            if (_driverBehaviour != null && _stageCamera != null)
+                _stageCamera.GetComponentInParent<CharacterStage>()?.MatchDisplayAspect();
             if (_animator == null || _stageCamera == null) return;
 
             // The ready card. The shot settles onto the standing body and then holds, which is
@@ -297,6 +304,12 @@ namespace PushStars.Fight
             var gender = CharacterRoster.SavedGender;
             var prefab = gender == CharacterGender.Female ? _femalePrefab : _malePrefab;
             if (prefab == null) prefab = gender == CharacterGender.Female ? _malePrefab : _femalePrefab;
+            bool bossBody = false;
+            if (_opponentStage && FightRequest.HasRequest && FightRequest.Mode == FightMode.Boss)
+            {
+                var bossPrefab = Resources.Load<GameObject>("Bosses/" + (FightRequest.BossId ?? BossCatalog.Current.Id));
+                if (bossPrefab != null) { prefab = bossPrefab; bossBody = true; }
+            }
             if (prefab == null)
             {
                 Debug.LogError("[FightAvatar] No character prefab assigned - run " +
@@ -310,7 +323,7 @@ namespace PushStars.Fight
             }
 
             Character = Instantiate(prefab, _avatarRoot);
-            Character.name = prefab.name + (_shadow ? " (Shadow)" : "");
+            Character.name = prefab.name + (_shadow && !bossBody ? " (Shadow)" : "");
             Character.transform.localPosition = Vector3.zero;
             Character.transform.localRotation = Quaternion.identity;
             SetLayerRecursive(Character, _avatarRoot.gameObject.layer);
@@ -324,8 +337,11 @@ namespace PushStars.Fight
 
             // The duel controller replaces the menu one: same rig, different clip set. Without it
             // the drivers' Animator.Play("PushUp") is a silent no-op and the body never moves.
-            if (_fightController != null) _animator.runtimeAnimatorController = _fightController;
-            else Debug.LogWarning("[FightAvatar] No fight AnimatorController assigned - the push-up clip will not play.");
+            if (!bossBody)
+            {
+                if (_fightController != null) _animator.runtimeAnimatorController = _fightController;
+                else Debug.LogWarning("[FightAvatar] No fight AnimatorController assigned - the push-up clip will not play.");
+            }
 
             // Asserted rather than inherited from the prefab. Root motion would walk the body out
             // of its own framing, and the character is only ever seen through a render texture —
@@ -334,7 +350,7 @@ namespace PushStars.Fight
             _animator.applyRootMotion = false;
             _animator.cullingMode = AnimatorCullingMode.AlwaysAnimate;
 
-            if (_shadow) ApplyShadowTint();
+            if (_shadow && !bossBody) ApplyShadowTint();
 
             _renderers = Character.GetComponentsInChildren<Renderer>(true);
             CacheBones();
@@ -347,7 +363,8 @@ namespace PushStars.Fight
             _bodyRestScale = bodyTransform.localScale;
             _bodyRestCaptured = true;
 
-            if (_driverBehaviour is IAvatarAnimator driver) driver.BindAnimator(_animator);
+            if (bossBody && _driverBehaviour != null) _driverBehaviour.enabled = false;
+            else if (_driverBehaviour is IAvatarAnimator driver) driver.BindAnimator(_animator);
             else if (_driverBehaviour != null)
                 Debug.LogError($"[FightAvatar] {_driverBehaviour.GetType().Name} does not implement IAvatarAnimator.");
 
@@ -508,5 +525,3 @@ namespace PushStars.Fight
         }
     }
 }
-
-

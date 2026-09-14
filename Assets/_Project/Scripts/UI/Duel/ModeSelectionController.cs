@@ -53,6 +53,15 @@ namespace PushStars.UI
         private Image[] _selectionOutlines;
         private int _highlightedMode = -1;
         private float _selectionPulseStarted;
+        private bool _friendDuelActive, _started;
+        private bool _selecting;
+
+        public void SetFriendDuelActive(bool active)
+        {
+            if (_friendDuelActive == active) return;
+            _friendDuelActive = active;
+            if (_started) ApplySelection();
+        }
 
         public bool IsOpen => _open;
         public bool IsInfoOpen => _infoPanel != null && _infoPanel.activeSelf;
@@ -73,6 +82,7 @@ namespace PushStars.UI
         private void Start()
         {
             CacheHomeLayout();
+            _started = true;
             _openButton.onClick.AddListener(Show);
             _backdropButton.onClick.AddListener(Back);
             _closeButton.onClick.AddListener(Hide);
@@ -118,6 +128,7 @@ namespace PushStars.UI
 
         public void Show()
         {
+            if (_friendDuelActive) return;
             if (_open) return;
             _open = true;
             _overlay.SetActive(true);
@@ -154,21 +165,44 @@ namespace PushStars.UI
 
         public void Select(GameMode mode)
         {
+            if (_friendDuelActive || _selecting || !_open) return;
             SelectedGameMode.Current = mode;
             ApplySelection();
-            Hide();
+            StartCoroutine(PressThenSelect(mode));
+        }
+
+        private IEnumerator PressThenSelect(GameMode mode)
+        {
+            _selecting = true;
+            Button button = _cards[(int)mode];
+            Transform target = button.transform;
+            Vector3 restScale = target.localScale;
+            button.interactable = false;
+
+            // Let the card visibly sink before it returns and the sheet starts closing.
+            yield return UITween.Scale(target, restScale, restScale * .94f,
+                .07f, 0f, UITween.EaseOutQuad);
+            yield return UITween.Scale(target, restScale * .94f, restScale,
+                .12f, 0f, UITween.EaseOutBackSoft);
+
+            button.interactable = true;
+            if (_open)
+            {
+                Hide();
+            }
+            _selecting = false;
         }
 
         private void ApplySelection()
         {
-            var mode = SelectedGameMode.Current;
+            var mode = _friendDuelActive ? GameMode.Pvp : SelectedGameMode.Current;
             RefreshSelectionOutline();
             _homeLabel.text = Title(mode);
             _homeIcon.sprite = _icons[(int)mode];
             bool training = mode == GameMode.Training;
             ApplyHomeBackground(training);
             if (_settingsIcon == null || _trainingSettingsIcon == null) return;
-            _actionLabel.text = training ? "START" : "BATTLE";
+            _actionLabel.text = training ? "START" : mode == GameMode.Boss ? "FIGHT" : "BATTLE";
             _settingsLabel.text = training ? "SETTINGS" : "PUSHUP";
             _settingsIcon.sprite = training ? _trainingSettingsIcon : _exerciseIcon;
             _homeIcon.rectTransform.localScale = training ? Vector3.one : _homeIconScale;
@@ -364,6 +398,7 @@ namespace PushStars.UI
             _transition = null;
             _shown = 0f;
             _open = false;
+            _selecting = false;
             if (_overlay != null) _overlay.SetActive(false);
         }
 

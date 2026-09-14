@@ -324,6 +324,7 @@ namespace PushStars.Editor
             ModeSelectionSceneSetup.Install(scene);
             BattleSettingsSceneSetup.Install(scene);
             TrainingSettingsSceneSetup.Install(scene);
+            FriendDuelSceneSetup.Install(scene);
 
             EditorSceneManager.MarkSceneDirty(scene);
             EditorSceneManager.SaveScene(scene, MainScenePath);
@@ -542,10 +543,8 @@ namespace PushStars.Editor
             // built after this and therefore draw — and are hit — on top of it.
             raw.raycastTarget = true;
 
-            // Decorative "+" wardrobe slots (3, no backing — just the plus icon, like the mock).
-            MakePlusSlot(panel, new Vector2(-118, 218));
-            MakePlusSlot(panel, new Vector2( 132, 122));
-            MakePlusSlot(panel, new Vector2( -93,  -49));
+            // One friend-duel entry point on the left of the character.
+            MakePlusSlot(panel, new Vector2(-118, 110));
 
             // ── М / Ж — swaps the body on the stage ────────────────────────────────────
             BuildGenderSwitch(panel, new Vector2(132, -72));

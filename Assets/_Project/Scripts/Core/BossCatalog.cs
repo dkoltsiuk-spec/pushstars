@@ -56,7 +56,7 @@ namespace PushStars.Core
         /// ~15 / ~25 / ~35 reps over the 60s duel.</summary>
         public static readonly IReadOnlyList<BossProfile> Bosses = new[]
         {
-            BossProfile.FromBursts("novice", "НОВОБРАНЕЦ", FightConfig.DuelDurationSec,
+            BossProfile.FromBursts("novice", "BOSS GOBLIN ARCH", FightConfig.DuelDurationSec,
                 (3f, 4, 2.2f), (18f, 4, 2.4f), (34f, 3, 2.6f), (49f, 4, 2.5f)),          // 15
             BossProfile.FromBursts("athlete", "АТЛЕТ", FightConfig.DuelDurationSec,
                 (2f, 7, 1.8f), (18f, 7, 1.9f), (34f, 6, 2.0f), (48f, 5, 2.1f)),          // 25

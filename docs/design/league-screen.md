@@ -12,9 +12,11 @@ Opening League restarts a 1.63-second unscaled entrance: hero pop at 0s, title a
 
 The leaderboard has a 229-unit clipped viewport above navigation and 682 units of content. Row pitch is 69, leaving 8 units between 61-unit cards. It supports vertical dragging and mouse-wheel scrolling, with the fourth player highlighted blue. Reopening resets to the top and scrolling unlocks when the entrance settles.
 
-The background uses the square-corner Mask group (2) export. The progress track and fill use Rectangle 434 and Group 565. The complete fill sprite resizes to retain its rounded, slanted end. The progress bar's authored X position is 72.
+The background uses the square-corner Mask group (2) export. The progress track and fill use Rectangle 434 and Group 565. The fill stays at the full track size and uses Unity UI's horizontal Filled Image, revealing the artwork from left to right without stretching its slope or highlights. The moving boundary is vertical; the authored rounded end appears at full progress. The progress bar's authored X position is 72.
 
 LeagueLayout fits the composition within the safe area and extends the backdrop behind device insets. Pop animations use separate centered wrappers, preserving the authored artwork and text positions.
+
+LeagueTrophyField draws drifting trophy silhouettes in one UI mesh under LeagueBackground, behind all foreground content. It preserves the cup-pattern sprite's baked ~6% opacity instead of multiplying it by another .11. Cups rise at 12 reference units per unscaled second with gentle lateral motion and rotation. Screen-space vertex fading reaches zero in the bottom 22% of the background, rises smoothly to full sprite opacity at 58%, and fades out again at the top edge. The field stretches with the backdrop and does not receive pointer input. LeagueSceneSetup.InstallFloatingTrophies migrates the former nine static cups.
 
 ## Editor tools and validation
 

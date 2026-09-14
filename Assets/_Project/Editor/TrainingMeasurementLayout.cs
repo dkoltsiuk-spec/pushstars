@@ -47,7 +47,7 @@ namespace PushStars.Editor
                 var playerHalf = toHud.FindProperty("_playerHalf").objectReferenceValue as RectTransform;
                 var portrait = playerHalf.GetComponentInChildren<RawImage>(true).rectTransform;
                 portrait.localScale = Vector3.one * 2.145f;
-                portrait.anchoredPosition = new Vector2(0f, 165f);
+                portrait.anchoredPosition = new Vector2(-12f, 110f);
                 var aspect = portrait.GetComponent<AspectRatioFitter>();
                 if (aspect == null) aspect = portrait.gameObject.AddComponent<AspectRatioFitter>();
                 aspect.aspectMode = AspectRatioFitter.AspectMode.HeightControlsWidth;

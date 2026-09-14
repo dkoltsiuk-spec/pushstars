@@ -12,6 +12,29 @@ namespace PushStars.Fight
         private ScreenLayoutElementState _originalPlayerAvatar;
         private ScreenLayoutElementState _originalBanner;
         private ScreenLayoutElementState _originalCountdown;
+        private RawImage _duelPlayerImage, _duelOpponentImage;
+        private Rect _duelPlayerUv, _duelOpponentUv;
+        private bool _duelZoomCaptured;
+
+        private void SetDuelAvatarZoom(bool enabled)
+        {
+            if (!_duelZoomCaptured)
+            {
+                _duelPlayerImage = _playerHalf != null ? _playerHalf.GetComponentInChildren<RawImage>(true) : null;
+                _duelOpponentImage = _opponentHalf != null ? _opponentHalf.GetComponentInChildren<RawImage>(true) : null;
+                if (_duelPlayerImage != null) _duelPlayerUv = _duelPlayerImage.uvRect;
+                if (_duelOpponentImage != null) _duelOpponentUv = _duelOpponentImage.uvRect;
+                _duelZoomCaptured = true;
+            }
+            // Crop the live render equally on both axes: 1 / .8 = 125% apparent size.
+            // Keep the lower edge fixed so the feet stay inside their respective halves.
+            // Always derive from the original UVs, never from an already zoomed viewport.
+            if (_duelPlayerImage != null) _duelPlayerImage.uvRect = enabled ? ZoomFromBottom(_duelPlayerUv) : _duelPlayerUv;
+            if (_duelOpponentImage != null) _duelOpponentImage.uvRect = enabled ? ZoomFromBottom(_duelOpponentUv) : _duelOpponentUv;
+        }
+
+        private static Rect ZoomFromBottom(Rect uv)
+            => new Rect(uv.x + uv.width * .1f, uv.y, uv.width * .8f, uv.height * .8f);
 
         private void CaptureHudDefaults()
         {

@@ -25,11 +25,14 @@ namespace PushStars.Core
     public static class FightRequest
     {
         public static bool HasRequest { get; private set; }
+        // Snapshot the chosen boss: winning advances the ladder before the result scene opens.
+        public static string BossId { get; private set; }
 
         [UnityEngine.RuntimeInitializeOnLoadMethod(UnityEngine.RuntimeInitializeLoadType.SubsystemRegistration)]
         public static void Clear()
         {
             HasRequest = false;
+            BossId = null;
             Mode = FightMode.Ghost;
             ReturnScene = FightConfig.MainSceneName;
             Workout = new TrainingPlan(3, 60);
@@ -56,6 +59,7 @@ namespace PushStars.Core
         {
             HasRequest = true;
             Mode = mode;
+            BossId = mode == FightMode.Boss ? BossCatalog.Current.Id : null;
             ReturnScene = string.IsNullOrEmpty(returnScene) ? FightConfig.MainSceneName : returnScene;
         }
     }

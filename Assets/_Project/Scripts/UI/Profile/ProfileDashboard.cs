@@ -25,9 +25,29 @@ namespace PushStars.UI
         private readonly List<GameObject> _rows = new List<GameObject>();
         private int _generation;
         private string _mode = "";
+        private RectTransform _background, _canvasRect;
+
+        // Keep the background owned by this tab so it hides with it, but cover the
+        // entire canvas, including the space outside the content's safe area.
+        private void LateUpdate()
+        {
+            if (_background == null || _canvasRect == null) return;
+            var parent = _background.parent as RectTransform;
+            if (parent == null) return;
+            var bounds = _canvasRect.rect;
+            Vector2 first = parent.InverseTransformPoint(_canvasRect.TransformPoint(bounds.min));
+            Vector2 opposite = parent.InverseTransformPoint(_canvasRect.TransformPoint(bounds.max));
+            _background.anchorMin = Vector2.zero;
+            _background.anchorMax = Vector2.one;
+            _background.offsetMin = Vector2.Min(first, opposite) - parent.rect.min;
+            _background.offsetMax = Vector2.Max(first, opposite) - parent.rect.max;
+        }
 
         private void Awake()
         {
+            _background = transform.Find("ProfileBackground") as RectTransform;
+            var canvas = GetComponentInParent<Canvas>();
+            if (canvas != null) _canvasRect = canvas.rootCanvas.transform as RectTransform;
             for (int i = 0; i < Filters.Length; i++)
             {
                 int index = i;

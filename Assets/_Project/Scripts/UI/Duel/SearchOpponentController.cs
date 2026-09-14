@@ -44,6 +44,7 @@ namespace PushStars.UI
         [Header("Triggers")]
         [SerializeField] private Button _findButton; // НАЙТИ СОПЕРНИКА — opens
         [SerializeField] private Button _exitButton; // ВЫЙТИ — closes
+        [SerializeField] private FriendDuelController _friendDuel;
 
         [Header("Animation")]
         [SerializeField] private LoadingVsRing _ring;
@@ -72,6 +73,8 @@ namespace PushStars.UI
         public void Show()
         {
             if (_open || _overlay == null) return;
+            // A private room owns this action; it must never fall through to ghost search.
+            if (_friendDuel != null && _friendDuel.HandleBattle()) return;
             if (SelectedGameMode.Current != GameMode.Pvp)
             {
                 string scene = SelectedGameMode.Current == GameMode.Boss
