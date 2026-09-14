@@ -41,7 +41,31 @@ namespace PushStars.Editor
             FightSceneSetup.ScenePath,
             TrainingScreenSetup.ScenePath,
             "Assets/testCV.unity",
+            "Assets/_Project/Scenes/FightPreparation.unity",
+            "Assets/_Project/Scenes/FightResults.unity",
+            "Assets/_Project/Scenes/RewardSummary.unity",
+            "Assets/_Project/Scenes/CaseAward.unity",
+            "Assets/_Project/Scenes/CaseOpening.unity",
+            "Assets/_Project/Scenes/CaseReward.unity",
         };
+
+        // CI passes its own scene list to BuildPlayer; Editor Build Settings alone do not
+        // guarantee these screens ship. Fail before building if a route is omitted or missing.
+        public static void ValidateAppScenes()
+        {
+            var required = System.Enum.GetValues(typeof(PushStars.Fight.FightScreen))
+                .Cast<PushStars.Fight.FightScreen>()
+                .Select(PushStars.Fight.FightScreenNavigation.ScenePath);
+            var omitted = required.Except(AppScenes).ToArray();
+            var missing = AppScenes.Where(p => !File.Exists(p)).ToArray();
+            if (omitted.Length > 0 || missing.Length > 0)
+                throw new BuildFailedException("[Build] Invalid shipping scene list. Omitted routes: " +
+                    string.Join(", ", omitted) + "; missing files: " + string.Join(", ", missing));
+            if (AppScenes[0] != BootSceneSetup.ScenePath || AppScenes.Distinct().Count() != AppScenes.Length)
+                throw new BuildFailedException("[Build] Boot must be first and shipping scenes must be unique.");
+            Debug.Log("[Build] Validated shipping scenes: " +
+                      string.Join(", ", AppScenes.Select(Path.GetFileNameWithoutExtension)));
+        }
 
         /// <summary>Creates missing flow scenes and refreshes Build Settings.
         /// Existing scenes own all authored UI and are never regenerated.
@@ -58,9 +82,9 @@ namespace PushStars.Editor
             bool mediapipe = FightSceneSetup.BuildFightScene();
             TrainingScreenSetup.Run();
 
+            ValidateAppScenes();
             EditorBuildSettings.scenes =
-                AppScenes.Where(p => File.Exists(p))
-                         .Select(p => new EditorBuildSettingsScene(p, true))
+                AppScenes.Select(p => new EditorBuildSettingsScene(p, true))
                          .ToArray();
 
             Debug.Log($"[Build] Flow scenes ready (fight pose source: {(mediapipe ? "MediaPipe" : "Mock or missing")}). " +
@@ -69,6 +93,7 @@ namespace PushStars.Editor
 
         public static void BuildiOS()
         {
+            ValidateAppScenes();
             EnableMediaPipeDefine(NamedBuildTarget.iOS);
             CopyModelToStreamingAssets();
             ConfigureIOS();
@@ -158,6 +183,7 @@ namespace PushStars.Editor
 
             // Teach this transition player about the remote catalog. Main/Fight also remain in
             // Build Settings, so the app is still usable before the first OTA download or offline.
+            ValidateAppScenes();
             OtaSetup.BuildFullContent();
 
             // Ship the real app: Boot (index 0) initializes Firebase and routes by onboarding
@@ -165,7 +191,8 @@ namespace PushStars.Editor
             EditorBuildSettings.scenes =
                 AppScenes.Select(s => new EditorBuildSettingsScene(s, true)).ToArray();
 
-            Debug.Log("[Build] PrepareForUBA done: scenes = Boot + Main + Onboarding + Fight + testCV, " +
+            Debug.Log("[Build] PrepareForUBA done: scenes = " +
+                      string.Join(", ", AppScenes.Select(Path.GetFileNameWithoutExtension)) + ", " +
                       "model copied, iOS configured.");
         }
 
