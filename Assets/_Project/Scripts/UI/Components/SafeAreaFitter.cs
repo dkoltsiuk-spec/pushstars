@@ -35,41 +35,33 @@ namespace PushStars.UI
 
         private void Apply()
         {
-            _lastSafeArea    = Screen.safeArea;
+            var size = new Vector2Int(Screen.width, Screen.height);
+            if (!TryGetAnchors(Screen.safeArea, size, out var anchorMin, out var anchorMax)) return;
+
+            _lastSafeArea = Screen.safeArea;
             _lastOrientation = Screen.orientation;
-            _lastScreenSize  = new Vector2Int(Screen.width, Screen.height);
-
-            // Guard against degenerate screen sizes (can happen in Device Simulator
-            // before the first frame is fully initialised).
-            if (Screen.width <= 0 || Screen.height <= 0) return;
-
-            var safeArea = _lastSafeArea;
-
-            // Clamp safe area to actual screen bounds — the Device Simulator can
-            // occasionally report values slightly outside [0, screenSize].
-            safeArea.xMin = Mathf.Max(safeArea.xMin, 0);
-            safeArea.yMin = Mathf.Max(safeArea.yMin, 0);
-            safeArea.xMax = Mathf.Min(safeArea.xMax, Screen.width);
-            safeArea.yMax = Mathf.Min(safeArea.yMax, Screen.height);
-
-            var anchorMin = safeArea.position;
-            var anchorMax = safeArea.position + safeArea.size;
-
-            anchorMin.x /= Screen.width;
-            anchorMin.y /= Screen.height;
-            anchorMax.x /= Screen.width;
-            anchorMax.y /= Screen.height;
-
-            // Final safety clamp so anchors never leave [0, 1].
-            anchorMin.x = Mathf.Clamp01(anchorMin.x);
-            anchorMin.y = Mathf.Clamp01(anchorMin.y);
-            anchorMax.x = Mathf.Clamp01(anchorMax.x);
-            anchorMax.y = Mathf.Clamp01(anchorMax.y);
+            _lastScreenSize = size;
 
             _rt.anchorMin = anchorMin;
             _rt.anchorMax = anchorMax;
             _rt.offsetMin = Vector2.zero;
             _rt.offsetMax = Vector2.zero;
         }
+
+        /// <summary>Ignore transient invalid reports during startup, rotation or app resume.
+        /// Keeping the last valid layout prevents the entire UI from collapsing to zero size.</summary>
+        public static bool TryGetAnchors(Rect area, Vector2Int size, out Vector2 min, out Vector2 max)
+        {
+            min = Vector2.zero;
+            max = Vector2.one;
+            if (size.x <= 0 || size.y <= 0 || !Finite(area.x) || !Finite(area.y)
+                || !Finite(area.width) || !Finite(area.height) || area.width <= 0 || area.height <= 0)
+                return false;
+            min = new Vector2(Mathf.Clamp01(area.xMin / size.x), Mathf.Clamp01(area.yMin / size.y));
+            max = new Vector2(Mathf.Clamp01(area.xMax / size.x), Mathf.Clamp01(area.yMax / size.y));
+            return max.x > min.x && max.y > min.y;
+        }
+
+        private static bool Finite(float value) => !float.IsNaN(value) && !float.IsInfinity(value);
     }
 }

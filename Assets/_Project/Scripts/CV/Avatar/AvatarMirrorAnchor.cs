@@ -34,6 +34,7 @@ namespace PushStars.CV
         [SerializeField, Range(0.05f, 2f)] private float _maxViewportSpeedPerSec = 1.2f;
         [SerializeField, Range(0.05f, 3f)] private float _maxScaleSpeedPerSec = 1.2f;
         [SerializeField, Range(4f, 40f)] private float _renderResponse = 18f;
+        [SerializeField, Range(.1f, .6f)] private float _placementSmoothTime = .24f;
 
         [Header("Placement")]
         [Tooltip("Selfie reflection, shared by the anchor and the bone retargeter.")]
@@ -49,6 +50,7 @@ namespace PushStars.CV
         public AnchorState State { get; private set; } = AnchorState.Unlocked;
         public bool MirrorHorizontally => _mirrorX;
         public Camera StageCamera => _stageCamera;
+        public void SetStageCamera(Camera camera) => _stageCamera = camera;
         public bool HasFreshPose { get; private set; }
         public float AppliedScale => _shownScale;
 
@@ -73,6 +75,8 @@ namespace PushStars.CV
         private int _stableFrames;
         private Vector2 _targetVp, _shownVp;
         private float _targetScale = 1f, _shownScale = 1f;
+        private Vector2 _placementVelocity;
+        private float _scaleVelocity;
         private Vector2 _filteredVp, _lastHipCenter;
         private float _filteredScale = 1f;
         private bool _hasHipCenter, _hasMetricReference;
@@ -171,13 +175,17 @@ namespace PushStars.CV
             }
             if (!_hasPlacement) return;
 
-            float dt = Mathf.Clamp(Time.unscaledDeltaTime, 0f, 0.1f);
-            float blend = 1f - Mathf.Exp(-Mathf.Max(1f, _renderResponse) * dt);
-            _shownVp = Vector2.MoveTowards(_shownVp, Vector2.Lerp(_shownVp, _targetVp, blend),
-                Mathf.Max(0.01f, _maxViewportSpeedPerSec) * dt);
-            _shownScale = Mathf.MoveTowards(_shownScale, Mathf.Lerp(_shownScale, _targetScale, blend),
-                Mathf.Max(0.01f, _maxScaleSpeedPerSec) * dt);
+            SmoothPlacement(Mathf.Clamp(Time.unscaledDeltaTime, 0f, 0.1f));
             ApplyPlacement();
+        }
+
+        private void SmoothPlacement(float dt)
+        {
+            float smooth = Mathf.Max(_placementSmoothTime, 2f / Mathf.Max(1f, _renderResponse));
+            _shownVp = Vector2.SmoothDamp(_shownVp, _targetVp, ref _placementVelocity,
+                smooth, Mathf.Min(.65f, Mathf.Max(.01f, _maxViewportSpeedPerSec)), dt);
+            _shownScale = Mathf.SmoothDamp(_shownScale, _targetScale, ref _scaleVelocity,
+                smooth * 1.25f, Mathf.Min(.75f, Mathf.Max(.01f, _maxScaleSpeedPerSec)), dt);
         }
 
         private bool ObserveFrame(in PoseFrame frame, float now)
@@ -214,6 +222,7 @@ namespace PushStars.CV
                     _lostSince = now;
                     _targetVp = _shownVp;
                     _targetScale = _shownScale;
+                    _placementVelocity = Vector2.zero; _scaleVelocity = 0f;
                 }
                 else if (State == AnchorState.Frozen && now - _lostSince >= _unlockAfterLostSec)
                     State = AnchorState.Unlocked;
@@ -233,7 +242,7 @@ namespace PushStars.CV
             if (!_hasPlacement && (beginningLock || (!hadPlane && _planeCaptured)))
                 CaptureShownPlacement();
             if (_planeFromCharacter && !_planeCaptured) return;
-            if (_stableFrames >= 3 && now - _stableSince >= Mathf.Max(0f, _lockAfterStableSec))
+            if (_stableFrames >= 5 && now - _stableSince >= Mathf.Max(.3f, _lockAfterStableSec))
                 State = AnchorState.Locked;
         }
 
@@ -385,6 +394,7 @@ namespace PushStars.CV
             _shownScale = Finite(scale) && scale > 0f ? scale : 1f;
             _targetVp = _filteredVp = _shownVp;
             _targetScale = _filteredScale = _shownScale;
+            _placementVelocity = Vector2.zero; _scaleVelocity = 0f;
         }
 
         private void ApplyPlacement()
@@ -404,7 +414,7 @@ namespace PushStars.CV
             var point = frame.Get(id);
             return Finite(point.X) && Finite(point.Y) && Finite(point.Visibility)
                 && point.Visibility >= _minTorsoVisibility
-                && point.X >= -0.3f && point.X <= 1.3f && point.Y >= -0.3f && point.Y <= 1.3f;
+                && point.X >= .015f && point.X <= .985f && point.Y >= .015f && point.Y <= .985f;
         }
 
         private void ResetTracking()

@@ -4,19 +4,9 @@ using UnityEngine.UI;
 namespace PushStars.UI
 {
     /// <summary>
-    /// One of the two figures on the "who are you playing as" page, and everything that has to
-    /// change when it is the chosen one.
-    ///
-    /// <para><b>Colour is the selection state</b>, with a warm halo lit behind the one it lands on.
-    /// The chosen figure keeps its own colours; the other is drained to grey. Nothing is dimmed,
-    /// outlined or shrunk — a player glancing at this screen reads "that one is live, this one is
-    /// not" from three metres away without being taught what a highlight means here, and the two
-    /// figures stay the same size so neither looks like the better deal.</para>
-    ///
-    /// <para>Drained through a material swap rather than a tint: see the shader for why a tint
-    /// cannot do it. Two shared assets rather than a material per card with its own saturation
-    /// value — there are exactly two states to show, the swap costs nothing to allocate, and a
-    /// shared asset is visible in the Scene view before anything runs.</para>
+    /// A live character choice. Selection blends scale, saturation and the blue halo;
+    /// the bottom pivot keeps both characters' feet planted. Each runtime card owns its
+    /// saturation material, leaving shared character and UI assets unchanged.
     /// </summary>
     [DisallowMultipleComponent]
     public sealed class GenderChoiceCard : MonoBehaviour
@@ -55,22 +45,59 @@ namespace PushStars.UI
         /// <summary>The card's own button, so the page can subscribe without knowing its shape.</summary>
         public Button Button => _button;
 
+        [Header("Animated selection")]
+        [SerializeField] private Sprite _selectedSprite;
+        [SerializeField] private Sprite _unselectedSprite;
+        [SerializeField, Range(.5f, 1f)] private float _unselectedScale = .78f;
+        private Material _selectionMaterial;
+        private float _selection, _target;
+        private bool _initialized;
+        public RawImage Portrait => _portrait;
+
         /// <summary>Paints the card as chosen or not. Safe to call every time the page is shown —
         /// it writes the same values again rather than toggling, so state cannot drift out of step
         /// with what was actually saved.</summary>
         public void SetSelected(bool selected)
         {
-            if (_portrait != null)
+            _target = selected ? 1f : 0f;
+            if (!_initialized || !Application.isPlaying) _selection = _target;
+            _initialized = true;
+            if (Application.isPlaying && _selectionMaterial == null && _saturated != null)
+                _selectionMaterial = new Material(_saturated);
+            if (_portrait != null) _portrait.material = _selectionMaterial != null
+                ? _selectionMaterial : (selected ? _saturated : _drained);
+            if (_dotRing is Image ring && _selectedSprite != null)
             {
-                var material = selected ? _saturated : _drained;
-                if (material != null) _portrait.material = material;
+                ring.sprite = selected ? _selectedSprite : _unselectedSprite;
+                ring.color = Color.white;
             }
-
-            // Switched off rather than faded to nothing: an invisible Graphic still draws.
-            if (_glow != null) _glow.enabled = selected;
-
-            if (_dotRing != null) _dotRing.color = selected ? _ringOn : _ringOff;
+            else if (_dotRing != null) _dotRing.color = selected ? _ringOn : _ringOff;
             if (_dotCore != null) _dotCore.color = selected ? _coreOn : _coreOff;
+            Paint();
+        }
+
+        private void Update()
+        {
+            if (Mathf.Abs(_selection - _target) < .0001f) return;
+            _selection = Mathf.MoveTowards(_selection, _target, Time.unscaledDeltaTime / .32f);
+            Paint();
+        }
+
+        private void Paint()
+        {
+            float t = Mathf.SmoothStep(0f, 1f, _selection);
+            if (_selectionMaterial != null) _selectionMaterial.SetFloat("_Saturation", t);
+            if (_portrait != null) _portrait.rectTransform.localScale = Vector3.one * Mathf.Lerp(_unselectedScale, 1f, t);
+            if (_glow != null)
+            {
+                _glow.enabled = t > .001f;
+                _glow.color = new Color(1f, 1f, 1f, t);
+            }
+        }
+
+        private void OnDestroy()
+        {
+            if (_selectionMaterial != null) Destroy(_selectionMaterial);
         }
     }
 }

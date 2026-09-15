@@ -93,6 +93,12 @@ namespace PushStars.Editor
                     case "refresh-assets":
                         AssetDatabase.Refresh();
                         break;
+                    case "install-coach-onboarding":
+                        GuidedOnboardingSetup.Run();
+                        break;
+                    case "validate-coach-onboarding":
+                        GuidedOnboardingValidation.Run();
+                        break;
                     case "install-boss-combat":
                         BossCombatSceneSetup.Run();
                         break;

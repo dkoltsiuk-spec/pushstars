@@ -48,6 +48,10 @@ namespace PushStars.Editor
                 foreach (bool mirror in new[] { false, true })
                 {
                     string label = Path.GetFileNameWithoutExtension(path) + (mirror ? " / selfie" : " / camera");
+                    RunCase(label + " / relaxed waiting stance", () =>
+                    {
+                        using (var fixture = new Fixture(path, mirror)) CheckWaitingStance(fixture);
+                    }, report, ref passed, ref failed);
                     RunCase(label + " / horizontal placement", () =>
                     {
                         using (var fixture = new Fixture(path, mirror)) CheckPlacement(fixture);
@@ -72,6 +76,10 @@ namespace PushStars.Editor
                     {
                         using (var fixture = new Fixture(path, mirror)) CheckElbowContinuity(fixture);
                     }, report, ref passed, ref failed);
+                    RunCase(label + " / close camera entry and reacquisition", () =>
+                    {
+                        using (var fixture = new Fixture(path, mirror)) CheckCloseEntry(fixture);
+                    }, report, ref passed, ref failed);
                 }
             }
 
@@ -86,6 +94,32 @@ namespace PushStars.Editor
             File.WriteAllText(ReportPath, report.ToString());
             if (failed == 0) Debug.Log($"[RetargetRegression] PASS — {passed} cases. {ReportPath}");
             else Debug.LogError($"[RetargetRegression] FAIL — {failed} of {passed + failed} cases. {ReportPath}");
+        }
+
+        private static void CheckWaitingStance(Fixture fixture)
+        {
+            fixture.TickFrame(default, false, false);
+            Vector3 across = (fixture.Bone(HumanBodyBones.RightUpperArm).position
+                - fixture.Bone(HumanBodyBones.LeftUpperArm).position).normalized;
+            float shoulders = Vector3.Distance(fixture.Bone(HumanBodyBones.LeftUpperArm).position,
+                fixture.Bone(HumanBodyBones.RightUpperArm).position);
+            float feet = Vector3.Dot(fixture.Bone(HumanBodyBones.RightFoot).position
+                - fixture.Bone(HumanBodyBones.LeftFoot).position, across);
+            Require(feet > shoulders * .65f && feet < shoulders * 1.3f,
+                "Waiting feet should stand apart, approximately shoulder width.");
+            foreach (bool left in new[] { true, false })
+            {
+                var shoulder = fixture.Bone(left ? HumanBodyBones.LeftUpperArm : HumanBodyBones.RightUpperArm);
+                var hand = fixture.Bone(left ? HumanBodyBones.LeftHand : HumanBodyBones.RightHand);
+                float gap = Vector3.Dot(hand.position - shoulder.position, across) * (left ? -1f : 1f);
+                Require(gap > shoulders * .18f && gap < shoulders * .5f,
+                    "Waiting hand must clear the torso without becoming a T-pose.");
+            }
+            Require(fixture.Solver.MirrorWeight == 0f, "Waiting stance acquired tracking without a camera frame.");
+            fixture.CheckStandingFeet();
+            fixture.Settle(Skeleton(0f));
+            for (int i = 0; i < 240; i++) fixture.TickFrame(default, false, false);
+            fixture.CheckStandingFeet();
         }
 
         private static void RunCase(string label, Action check, StringBuilder report,
@@ -245,6 +279,34 @@ namespace PushStars.Editor
                 fixture.CheckFinite();
                 priorYaw = yaw;
             }
+        }
+
+        private static void CheckCloseEntry(Fixture fixture)
+        {
+            var sample = typeof(AvatarMirrorAnchor).GetMethod("TrySample", BindingFlags.Instance | BindingFlags.NonPublic);
+            for (int n = 0; n < 60; n++)
+            {
+                var frame = Frame(Skeleton(0f), fixture.Now);
+                foreach (var id in new[] { PoseLandmark.LeftHip, PoseLandmark.RightHip })
+                {
+                    var p = frame.Landmarks[(int)id];
+                    frame.Landmarks[(int)id] = new Landmark(p.X, 1.15f, p.Z, 1f);
+                }
+                object[] args = { frame, Vector2.zero, 1f };
+                Require(!(bool)sample.Invoke(fixture.Anchor, args), "Offscreen hips changed avatar placement.");
+                fixture.TickFrame(frame, true, false);
+                Require(fixture.Solver.MirrorWeight == 0f, "Cropped close-up acquired an invented torso.");
+            }
+            var head = fixture.Bone(HumanBodyBones.Head);
+            Quaternion previous = head.rotation;
+            for (int n = 0; n < 120; n++)
+            {
+                fixture.Tick(Skeleton(0f));
+                Require(Quaternion.Angle(previous, head.rotation) < 8f, "Camera entry snapped the torso.");
+                previous = head.rotation;
+                fixture.CheckFinite();
+            }
+            Require(fixture.Solver.MirrorWeight > .95f, "Visible torso did not reacquire after stepping back.");
         }
 
         private static void CheckPlacement(Fixture fixture)
@@ -518,6 +580,7 @@ namespace PushStars.Editor
             public readonly Animator Animator;
             public readonly PoseMirrorRetargeter Solver;
             public readonly bool Mirror;
+            private readonly Quaternion[] _standingFeet;
             public float Now { get; private set; } = 1f;
 
             public Fixture(string path, bool mirror)
@@ -548,6 +611,9 @@ namespace PushStars.Editor
                     Require(Animator != null && Animator.isHuman, "Model does not have a valid Humanoid Animator: " + path);
                     Animator.applyRootMotion = false;
                     Animator.cullingMode = AnimatorCullingMode.AlwaysAnimate;
+                    _standingFeet = new[] {
+                        Quaternion.Inverse(Animator.transform.rotation) * Bone(HumanBodyBones.LeftFoot).rotation,
+                        Quaternion.Inverse(Animator.transform.rotation) * Bone(HumanBodyBones.RightFoot).rotation };
                     Solver = _owner.AddComponent<PoseMirrorRetargeter>();
                     Solver.BindAnimator(Animator);
                     Anchor.BindAnimator(Animator);
@@ -565,6 +631,16 @@ namespace PushStars.Editor
                 var bone = Animator.GetBoneTransform(id);
                 Require(bone != null, "Required humanoid bone missing: " + id);
                 return bone;
+            }
+
+            public void CheckStandingFeet()
+            {
+                for (int i = 0; i < 2; i++)
+                {
+                    var foot = Bone(i == 0 ? HumanBodyBones.LeftFoot : HumanBodyBones.RightFoot);
+                    Require(Quaternion.Angle(foot.rotation, Animator.transform.rotation * _standingFeet[i]) < .5f,
+                        "Waiting/ lost-tracking sole must retain its authored standing orientation.");
+                }
             }
 
             public PoseFrame Settle(Landmark[] points, int frames = 90)

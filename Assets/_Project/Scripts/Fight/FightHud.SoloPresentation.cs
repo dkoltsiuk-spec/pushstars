@@ -12,6 +12,30 @@ namespace PushStars.Fight
         private Image _depthMarker, _topZone, _bottomZone;
         private float _displayedDepth;
 
+        public RawImage SoloPortrait => _soloPortrait;
+
+        /// <summary>The live onboarding portrait reaches this rect before the HUD takes ownership.</summary>
+        public void AdoptOnboardingPortrait(RawImage portrait)
+        {
+            if (portrait == null || _soloPortrait == null || portrait == _soloPortrait) return;
+            var target = _soloPortrait.rectTransform;
+            var rect = portrait.rectTransform;
+            rect.SetParent(target.parent, false);
+            rect.anchorMin = target.anchorMin;
+            rect.anchorMax = target.anchorMax;
+            rect.pivot = target.pivot;
+            rect.sizeDelta = target.sizeDelta;
+            rect.anchoredPosition = target.anchoredPosition;
+            rect.localScale = target.localScale;
+            rect.localRotation = target.localRotation;
+            _soloPortrait.gameObject.SetActive(false);
+            _soloPortrait = portrait;
+            _soloPortraitAspect = portrait.GetComponent<AspectRatioFitter>();
+            if (_soloPortraitAspect == null) _soloPortraitAspect = portrait.gameObject.AddComponent<AspectRatioFitter>();
+            _soloPortraitAspect.aspectMode = AspectRatioFitter.AspectMode.HeightControlsWidth;
+            _soloPortraitAspect.aspectRatio = (float)portrait.texture.width / portrait.texture.height;
+        }
+
         private void ConfigureSoloPresentation()
         {
             if (_playerHalf != null)
@@ -22,7 +46,7 @@ namespace PushStars.Fight
                     // Shared framing for measurement and training. Absolute values avoid
                     // accumulating the enlargement when a new training set starts.
                     _soloPortrait.rectTransform.localScale = Vector3.one * 2.145f;
-                    _soloPortrait.rectTransform.anchoredPosition = new Vector2(-12f, 110f);
+                    _soloPortrait.rectTransform.anchoredPosition = new Vector2(0f, 110f);
                     _soloPortraitAspect = _soloPortrait.GetComponent<AspectRatioFitter>();
                     if (!_capturedAspect)
                     {

@@ -135,6 +135,55 @@ namespace PushStars.Fight
         private Quaternion _bodyRestRot;
         private Vector3 _bodyRestScale = Vector3.one;
         private bool _bodyRestCaptured;
+        private GameObject _guidedCharacter;
+        private bool _guidedCameraHeld;
+        private bool _guidedAwaitingPose;
+        private Transform[] _guidedFeet;
+        private Quaternion[] _guidedFootRotations;
+
+        /// <summary>Keep the exact model and camera used during character selection.</summary>
+        public void UseOnboardingStage(CharacterStage stage)
+        {
+            if (Character != null || stage == null || stage.AvatarRoot.childCount == 0) return;
+            _avatarRoot = stage.AvatarRoot;
+            _stageCamera = stage.StageCamera;
+            var facing = -_stageCamera.transform.forward;
+            _viewDirection = facing.normalized;
+            _guidedCharacter = _avatarRoot.GetChild(0).gameObject;
+            _guidedCameraHeld = true;
+            _guidedAwaitingPose = true;
+            var selectionAnimator = _guidedCharacter.GetComponentInChildren<Animator>();
+            if (selectionAnimator != null && selectionAnimator.isHuman)
+            {
+                var footBones = new[] { HumanBodyBones.LeftFoot, HumanBodyBones.RightFoot,
+                    HumanBodyBones.LeftToes, HumanBodyBones.RightToes };
+                _guidedFeet = new Transform[footBones.Length];
+                _guidedFootRotations = new Quaternion[footBones.Length];
+                for (int i = 0; i < footBones.Length; i++)
+                {
+                    _guidedFeet[i] = selectionAnimator.GetBoneTransform(footBones[i]);
+                    if (_guidedFeet[i] != null) _guidedFootRotations[i] = _guidedFeet[i].rotation;
+                }
+            }
+            if (_alsoBound != null)
+                foreach (var bound in _alsoBound)
+                {
+                    if (bound is AvatarMirrorAnchor anchor) anchor.SetStageCamera(_stageCamera);
+                    if (bound is PoseMirrorRetargeter mirror) mirror.SetStageCamera(_stageCamera);
+                }
+            if (_holdFramingWhileMirroring != null) _holdFramingWhileMirroring.SetStageCamera(_stageCamera);
+            foreach (var accent in _guidedCharacter.GetComponentsInChildren<CharacterIdleAccent>()) accent.enabled = false;
+        }
+
+        public void ReleaseOnboardingCamera()
+        {
+            _guidedCameraHeld = false;
+            _distance = Vector3.Distance(_stageCamera.transform.position, _avatarRoot.position + Vector3.up);
+            _focus = _stageCamera.transform.position + _stageCamera.transform.forward * _distance;
+            _framed = true;
+            _wasMirroring = IsMirroring;
+            _settleUntil = Time.time + _settleSeconds;
+        }
         private readonly System.Collections.Generic.List<(Material material, string property, Color original)> _shadowColors
             = new System.Collections.Generic.List<(Material, string, Color)>();
 
@@ -189,6 +238,8 @@ namespace PushStars.Fight
         /// that texture — the ready card's portraits — tell which of the two stages it is looking
         /// at without a second serialized reference.</summary>
         public Camera StageCamera => _stageCamera;
+        public bool IsMirroring => _holdFramingWhileMirroring != null && _holdFramingWhileMirroring.MirrorPhase;
+        public bool IsFramingSettled => _framed && !IsMirroring && Time.time >= _settleUntil;
 
         /// <summary>Where this body lands inside its own stage render, in viewport coordinates
         /// (0 = left/bottom, 1 = right/top). Anything cropping that render can use it to keep the
@@ -202,7 +253,7 @@ namespace PushStars.Fight
         /// under perspective the near-bottom corner lands lower in frame than the soles actually
         /// are, and a floor a few units low is exactly the gap that reads as a figure hovering
         /// over its own shadow.</para></summary>
-        public bool TryGetBodyViewport(out Rect viewport)
+        public bool TryGetBodyViewport(out Rect viewport, bool includePerspectiveExtents = false)
         {
             viewport = default;
             if (_bones == null || _stageCamera == null) return false;
@@ -228,6 +279,22 @@ namespace PushStars.Fight
                 hi.y += span * CrownAboveHeadBone;
             }
 
+            if (includePerspectiveExtents)
+            {
+                // Hands are nearer the lens than the torso. Projecting them at the box's
+                // middle depth cuts the palms off even when the stage rendered them fully.
+                Vector2 screenMin = Vector2.positiveInfinity, screenMax = Vector2.negativeInfinity;
+                for (int i = 0; i < 8; i++)
+                {
+                    var p = _stageCamera.WorldToViewportPoint(new Vector3(
+                        (i & 1) == 0 ? lo.x : hi.x, (i & 2) == 0 ? lo.y : hi.y, (i & 4) == 0 ? lo.z : hi.z));
+                    if (p.z <= _stageCamera.nearClipPlane) return false;
+                    screenMin = Vector2.Min(screenMin, p); screenMax = Vector2.Max(screenMax, p);
+                }
+                viewport = Rect.MinMaxRect(screenMin.x, screenMin.y, screenMax.x, screenMax.y);
+                return viewport.width > 0f && viewport.height > 0f;
+            }
+
             float depth = (lo.z + hi.z) * 0.5f;
             float middle = (lo.y + hi.y) * 0.5f;
             Vector3 sole = _stageCamera.WorldToViewportPoint(new Vector3((lo.x + hi.x) * 0.5f, lo.y, depth));
@@ -245,6 +312,19 @@ namespace PushStars.Fight
 
         private void LateUpdate()
         {
+            // Keep the selected idle's planted soles while the fight idle takes over.
+            // Release these rotations as soon as live pose mirroring starts.
+            bool guidedPoseReady = _holdFramingWhileMirroring != null && _holdFramingWhileMirroring.HasFreshPose;
+            if (_guidedAwaitingPose && !guidedPoseReady && _guidedFeet != null)
+                for (int i = 0; i < _guidedFeet.Length; i++)
+                    if (_guidedFeet[i] != null) _guidedFeet[i].rotation = _guidedFootRotations[i];
+            if (_guidedCameraHeld) return;
+            // Preserve the selection viewpoint until a real exercise pose is acquired.
+            if (_guidedAwaitingPose)
+            {
+                if (!guidedPoseReady) return;
+                _guidedAwaitingPose = false;
+            }
             // Both live fight halves are editable/responsive RawImages. Their current display
             // aspect can differ from the stage texture authored for the reference resolution.
             // Do this before framing (which reads camera.aspect), including on script reload.
@@ -322,7 +402,7 @@ namespace PushStars.Fight
                 return;
             }
 
-            Character = Instantiate(prefab, _avatarRoot);
+            Character = _guidedCharacter != null ? _guidedCharacter : Instantiate(prefab, _avatarRoot);
             Character.name = prefab.name + (_shadow && !bossBody ? " (Shadow)" : "");
             Character.transform.localPosition = Vector3.zero;
             Character.transform.localRotation = Quaternion.identity;

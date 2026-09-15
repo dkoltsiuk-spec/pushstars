@@ -89,6 +89,7 @@ namespace PushStars.UI
 
         /// <summary>Where the avatar model lives. <see cref="SetAvatar"/> parents new ones here.</summary>
         public Transform AvatarRoot => _avatarRoot;
+        public Camera StageCamera => _stageCamera;
 
         /// <summary>The live render target. Useful for snapshots or wardrobe previews later.</summary>
         public RenderTexture RenderTarget => _rt;

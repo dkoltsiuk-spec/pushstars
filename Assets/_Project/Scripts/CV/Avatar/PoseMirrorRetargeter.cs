@@ -28,6 +28,7 @@ namespace PushStars.CV
         [SerializeField, Range(90f, 720f)] private float _maxJointSpeed = 360f;
 
         public bool Mirroring { get; private set; }
+        public void SetStageCamera(Camera camera) => _stageCamera = camera;
         public float MirrorWeight { get; private set; }
         public bool MirrorPhase { get; private set; } = true;
 
@@ -77,6 +78,8 @@ namespace PushStars.CV
         private Transform[] _poseBones;
         private Quaternion[] _neutralLocal, _transitionLocal;
         private Vector3[] _neutralPositions, _transitionPositions;
+        private Transform[] _standingFeet;
+        private Quaternion[] _standingFootRotations;
 
         private void Start() { if (!_bound) TryBind(); }
 
@@ -92,6 +95,18 @@ namespace PushStars.CV
         {
             if (_animator == null || !_animator.isHuman || _animator.avatar == null) return;
             _root = _animator.transform;
+            // Preserve the authored, planted soles before Humanoid muscle-zero calibration.
+            // Calibration is for solving limbs, not a natural waiting pose for the shoes.
+            var footIds = new[] { HumanBodyBones.LeftFoot, HumanBodyBones.RightFoot,
+                HumanBodyBones.LeftToes, HumanBodyBones.RightToes };
+            _standingFeet = new Transform[footIds.Length];
+            _standingFootRotations = new Quaternion[footIds.Length];
+            for (int i = 0; i < footIds.Length; i++)
+            {
+                _standingFeet[i] = _animator.GetBoneTransform(footIds[i]);
+                if (_standingFeet[i] != null)
+                    _standingFootRotations[i] = Quaternion.Inverse(_root.rotation) * _standingFeet[i].rotation;
+            }
             _anchor = GetComponent<AvatarMirrorAnchor>();
             _animatorWasEnabled = _animator.enabled;
             _animator.enabled = false;
@@ -137,9 +152,9 @@ namespace PushStars.CV
             _joints = new Joint[PoseLandmarks.Count];
             for (int i = 0; i < _joints.Length; i++)
             {
-                _joints[i].X = new OneEuroFilter(1.8f, 1.5f, 1f);
-                _joints[i].Y = new OneEuroFilter(1.8f, 1.5f, 1f);
-                _joints[i].Z = new OneEuroFilter(1.4f, 1.5f, 1f);
+                _joints[i].X = new OneEuroFilter(1.2f, .6f, 1f);
+                _joints[i].Y = new OneEuroFilter(1.2f, .6f, 1f);
+                _joints[i].Z = new OneEuroFilter(1f, .5f, 1f);
                 _joints[i].SeenAt = -100f;
             }
             _lastStamp = float.NaN; _arrival = _bodySeen = _transitionAt = -100f;
@@ -155,18 +170,26 @@ namespace PushStars.CV
             var l = _animator.GetBoneTransform(lower);
             var e = _animator.GetBoneTransform(end);
             if (u == null || l == null || e == null) return null;
-            var chain = new Chain { Upper = BindSegment(u, l, a, b, arm), Lower = BindSegment(l, e, b, c, arm) };
+            // Use the hip/shoulder side for the whole chain. A neutral knee or elbow
+            // can point inward in the imported rig; that must not cross the resting limbs.
+            float side = Mathf.Sign((Quaternion.Inverse(_root.rotation * _restBasis) * (u.position - _hips.position)).x);
+            var chain = new Chain
+            {
+                Upper = BindSegment(u, l, a, b, side, arm ? .24f : .13f),
+                Lower = BindSegment(l, e, b, c, side, arm ? .16f : .09f)
+            };
             chain.RestNormal = Vector3.Cross(chain.Upper.RestDirection, chain.Lower.RestDirection).normalized;
             if (chain.RestNormal.sqrMagnitude < 0.5f)
                 chain.RestNormal = Vector3.Cross(chain.Upper.RestDirection, Vector3.forward).normalized;
             return chain;
         }
 
-        private Segment BindSegment(Transform bone, Transform child, PoseLandmark a, PoseLandmark b, bool arm)
+        private Segment BindSegment(Transform bone, Transform child, PoseLandmark a, PoseLandmark b,
+            float side, float spread)
         {
             Quaternion invBody = Quaternion.Inverse(_root.rotation * _restBasis);
             Vector3 rest = (invBody * (child.position - bone.position)).normalized;
-            Vector3 neutral = new Vector3(Mathf.Sign(rest.x) * (arm ? 0.12f : 0.025f), -1f, 0f).normalized;
+            Vector3 neutral = new Vector3(side * spread, -1f, 0f).normalized;
             return new Segment { Bone = bone, A = a, B = b, RestDirection = rest, RestRotation = invBody * bone.rotation,
                 NeutralDirection = neutral, TargetDirection = neutral, ShownDirection = neutral };
         }
@@ -224,7 +247,7 @@ namespace PushStars.CV
             }
             if (armed)
             {
-                MirrorWeight = 1f - Mathf.Clamp01((now - _transitionAt) / Mathf.Max(0.001f, _armedBlendSec));
+                MirrorWeight = TransitionWeight(now);
                 if (MirrorWeight > 0f) BlendSnapshot(MirrorWeight);
                 Mirroring = false; HasFreshPose = false; TrackedSegments = 0;
                 return; // No writes at weight zero: the evaluated animation owns every bone.
@@ -235,14 +258,14 @@ namespace PushStars.CV
             bool torsoLive = HasFreshPose && now - _bodySeen <= _staleFrameSec;
             if (!torsoLive) { _bodyStableSince = -1f; _bodySamples = 0; }
             bool active = _mirrorLimbs && (_bodyAcquired || (torsoLive && _bodyStableSince >= 0f
-                && _bodySamples >= 3 && now - _bodyStableSince >= _skeletonStableSec));
+                && _bodySamples >= 5 && now - _bodyStableSince >= Mathf.Max(.3f, _skeletonStableSec)));
             if (active) _bodyAcquired = true;
             if (!torsoLive && now - _bodySeen > _occlusionHoldSec + _occlusionRelaxSec) _bodyAcquired = false;
             float targetWeight = active && (torsoLive || now - _bodySeen <= _occlusionHoldSec) ? 1f : 0f;
             MirrorWeight = Mathf.MoveTowards(MirrorWeight, targetWeight, dt / Mathf.Max(0.05f,
-                targetWeight > MirrorWeight ? _skeletonBlendSec : _occlusionRelaxSec));
+                targetWeight > MirrorWeight ? Mathf.Max(.45f, _skeletonBlendSec) : _occlusionRelaxSec));
             var bodyGoal = Quaternion.Slerp(_restBasis, _bodyTarget, MirrorWeight);
-            _bodyShown = PoseRetargetMath.Follow(_bodyShown, bodyGoal, _followRate * 0.7f, 240f, dt);
+            _bodyShown = PoseRetargetMath.Follow(_bodyShown, bodyGoal, _followRate * 0.55f, 140f, dt);
 
             // Reset local bones, including wrists/spine/fingers left over from the push-up clip.
             // Restore locals before solving parents; never accumulate rotations from last render.
@@ -252,10 +275,19 @@ namespace PushStars.CV
             _hips.rotation = bodyWorld * _hipsRestInBody;
             TrackedSegments = 0;
             foreach (var chain in _chains) if (chain != null) SolveChain(chain, bodyWorld, active && HasFreshPose, now, dt);
-            float transition = 1f - Mathf.Clamp01((now - _transitionAt) / Mathf.Max(0.001f, _armedBlendSec));
+            // Applies to direct assessment entry and to tracking loss, not only onboarding.
+            // Full tracking owns the feet; the armed push-up path above never enters here.
+            for (int i = 0; i < _standingFeet.Length; i++)
+                if (_standingFeet[i] != null)
+                    _standingFeet[i].rotation = Quaternion.Slerp(_standingFeet[i].rotation,
+                        _root.rotation * _standingFootRotations[i], 1f - MirrorWeight);
+            float transition = TransitionWeight(now);
             if (transition > 0f) BlendSnapshot(transition);
             Mirroring = MirrorWeight > 0.01f && HasFreshPose;
         }
+
+        private float TransitionWeight(float now) => 1f - Mathf.SmoothStep(0f, 1f,
+            Mathf.Clamp01((now - _transitionAt) / Mathf.Max(.001f, _armedBlendSec)));
 
         private void Sample(PoseFrame frame, float now)
         {
@@ -268,10 +300,11 @@ namespace PushStars.CV
                 joint.Visibility = 0f;
                 if (!PoseRetargetMath.Finite(raw) || raw.sqrMagnitude > 9f || !PoseRetargetMath.Finite(image.Visibility)
                     || !PoseRetargetMath.Finite(image.X) || !PoseRetargetMath.Finite(image.Y)
-                    || image.X < -0.05f || image.X > 1.05f || image.Y < -0.05f || image.Y > 1.05f || image.Visibility < 0.12f) continue;
+                    || image.X < .015f || image.X > .985f || image.Y < .015f || image.Y > .985f
+                    || image.Visibility < Mathf.Max(.25f, _minJointVis - .1f)) continue;
                 if (!joint.Initialized || now - joint.SeenAt > 0.8f)
                 { joint.X.Reset(); joint.Y.Reset(); joint.Z.Reset(); }
-                else raw = Vector3.MoveTowards(joint.Position, raw, 5f * _sampleDt);
+                else raw = Vector3.MoveTowards(joint.Position, raw, 3f * _sampleDt);
                 joint.Position = new Vector3(joint.X.Filter(raw.x, _sampleDt), joint.Y.Filter(raw.y, _sampleDt), joint.Z.Filter(raw.z, _sampleDt));
                 joint.Visibility = image.Visibility;
                 joint.SeenAt = now; joint.Initialized = true;
@@ -336,7 +369,7 @@ namespace PushStars.CV
         {
             bool recent = live && now - segment.SeenAt <= _staleFrameSec;
             float weight = recent || now - segment.SeenAt <= _occlusionHoldSec ? MirrorWeight : 0f;
-            segment.Weight = Mathf.MoveTowards(segment.Weight, weight, dt / (weight > segment.Weight ? _skeletonBlendSec : _occlusionRelaxSec));
+            segment.Weight = Mathf.MoveTowards(segment.Weight, weight, dt / (weight > segment.Weight ? Mathf.Max(.45f, _skeletonBlendSec) : _occlusionRelaxSec));
             Vector3 target = Vector3.Slerp(segment.NeutralDirection, segment.TargetDirection, segment.Weight);
             segment.ShownDirection = Vector3.RotateTowards(segment.ShownDirection,
                 Vector3.Slerp(segment.ShownDirection, target, 1f - Mathf.Exp(-_followRate * dt)), _maxJointSpeed * Mathf.Deg2Rad * dt, 0f).normalized;
