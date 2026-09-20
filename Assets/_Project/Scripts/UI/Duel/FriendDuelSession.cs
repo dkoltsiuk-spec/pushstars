@@ -49,7 +49,7 @@ namespace PushStars.UI
         public void FriendJoined(string name, string avatarId = "male")
         {
             if (State != Phase.Waiting || string.IsNullOrWhiteSpace(name)) return;
-            FriendName = name; FriendAvatarId = avatarId; Deadline = 0; State = Phase.Joined; Notice = "Друг подключился";
+            FriendName = name; FriendAvatarId = avatarId; Deadline = 0; State = Phase.Joined; Notice = "Your friend joined";
         }
 
         public void UpdateFriendAppearance(string avatarId)
@@ -88,14 +88,14 @@ namespace PushStars.UI
         {
             if (State != Phase.ReadyCheck && State != Phase.Preparing) return;
             LocalReady = FriendReady = false; Deadline = 0; State = Phase.Joined;
-            Notice = "Готовность сброшена. Можно начать снова.";
+            Notice = "Ready status reset. You can try again.";
         }
 
         public void Disconnect(double now)
         {
             if (!HasRoom || State == Phase.Reconnecting) return;
             LocalReady = FriendReady = false; Deadline = now + 10;
-            State = Phase.Reconnecting; Notice = "Восстанавливаем связь…";
+            State = Phase.Reconnecting; Notice = "Reconnecting…";
         }
 
         public void Reconnect(double now)
@@ -103,7 +103,7 @@ namespace PushStars.UI
             if (State != Phase.Reconnecting || now >= Deadline) { Tick(now); return; }
             State = HasFriend ? Phase.Joined : Phase.Waiting;
             Deadline = HasFriend ? 0 : _invitationDeadline;
-            Notice = "Связь восстановлена. Подтверди готовность снова.";
+            Notice = "Connection restored. Confirm you're ready again.";
             Tick(now);
         }
 
@@ -111,16 +111,16 @@ namespace PushStars.UI
         {
             if (!HasRoom) return;
             State = Phase.Expired; Deadline = 0; LocalReady = FriendReady = false;
-            Notice = "Друг вышел из комнаты. Можешь пригласить его снова.";
+            Notice = "Your friend left the room. You can invite them again.";
         }
 
         public void Tick(double now)
         {
             if (Deadline <= 0 || now < Deadline) return;
-            if (State == Phase.ReadyCheck) { CancelReady(); Notice = "Время подтверждения вышло. Попробуйте снова."; }
+            if (State == Phase.ReadyCheck) { CancelReady(); Notice = "Confirmation timed out. Please try again."; }
             else if (State == Phase.Waiting || State == Phase.Reconnecting)
             {
-                Notice = State == Phase.Waiting ? "Срок кода истёк. Создай новое приглашение." : "Связь потеряна. Комната закрыта.";
+                Notice = State == Phase.Waiting ? "Code expired. Create a new invitation." : "Connection lost. Room closed.";
                 State = Phase.Expired; Deadline = 0; LocalReady = FriendReady = false;
             }
         }

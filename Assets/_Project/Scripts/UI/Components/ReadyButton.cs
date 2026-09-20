@@ -24,7 +24,7 @@ namespace PushStars.UI
 #pragma warning disable CS0414
         [SerializeField] private string _localizationKey = "btn.ready";
 #pragma warning restore CS0414
-        [SerializeField] private string _fallbackText    = "ГОТОВ";
+        [SerializeField] private string _fallbackText    = "READY";
 
         public Button Button { get; private set; }
 

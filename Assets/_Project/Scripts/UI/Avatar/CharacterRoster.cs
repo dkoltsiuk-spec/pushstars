@@ -54,8 +54,8 @@ namespace PushStars.UI
         [Tooltip("Label showing the body currently on the stage.")]
         [SerializeField] private TextMeshProUGUI _switchLabel;
 
-        [SerializeField] private string _maleLabel   = "М";
-        [SerializeField] private string _femaleLabel = "Ж";
+        [SerializeField] private string _maleLabel   = "M";
+        [SerializeField] private string _femaleLabel = "F";
 
         private GameObject _current;
 

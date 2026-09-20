@@ -71,7 +71,7 @@ namespace PushStars.Editor
                 c.Secondary.onClick.Invoke(); Capture(camera, texture, "home-with-friend");
                 Require(c.ModeButton.GetComponentsInChildren<Image>(true).All(i => i.material == c.InactiveModeMaterial), "Whole mode artwork is desaturated");
                 c.ModeButton.onClick.Invoke();
-                Require(!c.ModeSelector.IsOpen && c.ModeHint.GetComponentInChildren<TMPro.TextMeshProUGUI>(true).text == "С друзьями доступна только дуэль PvP", "Locked mode shows explanation instead of mode picker");
+                Require(!c.ModeSelector.IsOpen && c.ModeHint.GetComponentInChildren<TMPro.TextMeshProUGUI>(true).text == "Only PvP duels support friends", "Locked mode shows explanation instead of mode picker");
                 var hintGroup = c.ModeHint.GetComponent<CanvasGroup>(); hintGroup.alpha = 1;
                 Capture(camera, texture, "locked-mode-hint"); hintGroup.alpha = 0;
                 SelectedGameMode.Current = GameMode.Training;
@@ -117,9 +117,9 @@ namespace PushStars.Editor
                 Require(!c.Presentation.FriendShadow.gameObject.activeSelf, "Leaving hides friend shadow");
                 c.Secondary.onClick.Invoke();
                 c.CodeInput.text = "12"; c.Primary.onClick.Invoke(); Require(c.Message.text.Contains("6"), "Incomplete code error");
-                c.CodeInput.text = "000000"; c.Primary.onClick.Invoke(); Require(c.Message.text.Contains("истёк"), "Expired code error");
-                c.CodeInput.text = "111111"; c.Primary.onClick.Invoke(); Require(c.Message.text.Contains("заполнена"), "Full room error");
-                c.CodeInput.text = "736482"; c.Primary.onClick.Invoke(); Require(c.Message.text.Contains("твой"), "Own code error");
+                c.CodeInput.text = "000000"; c.Primary.onClick.Invoke(); Require(c.Message.text.Contains("expired"), "Expired code error");
+                c.CodeInput.text = "111111"; c.Primary.onClick.Invoke(); Require(c.Message.text.Contains("full"), "Full room error");
+                c.CodeInput.text = "736482"; c.Primary.onClick.Invoke(); Require(c.Message.text.Contains("own"), "Own code error");
                 c.CodeInput.text = "482 731"; Capture(camera, texture, "join-code"); c.Primary.onClick.Invoke();
                 Require(!c.HasRoom, "Resolve shows host before committing");
                 Capture(camera, texture, "confirm-host"); c.Primary.onClick.Invoke();
@@ -166,7 +166,7 @@ namespace PushStars.Editor
             Require(!s.HasRoom, "Reconnect does not renew expired invite");
             s.Join("482731", "ALEX"); s.Ready(500); s.SetFriendReady(531);
             Require(s.State == FriendDuelSession.Phase.Joined && !s.LocalReady && !s.FriendReady, "Late ready event cannot start a fight");
-            s.FriendLeft(); Require(!s.HasRoom && s.Notice.Contains("вышел"), "Friend leaving closes room with explanation");
+            s.FriendLeft(); Require(!s.HasRoom && s.Notice.Contains("left"), "Friend leaving closes room with explanation");
         }
         private static void Require(bool condition, string message) { if (!condition) throw new Exception(message); }
         private static void Capture(Camera camera, RenderTexture target, string name)

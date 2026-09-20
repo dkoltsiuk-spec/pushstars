@@ -57,6 +57,7 @@ namespace PushStars.Fight
 
         public void Configure(bool active)
         {
+            _preparationFrames.Clear();
             Root.SetActive(active);
             if (!active || _configured) return;
             _configured = true;
@@ -66,7 +67,10 @@ namespace PushStars.Fight
                 if (avatar != null && avatar.StageCamera != null) avatar.StageCamera.ResetAspect();
             _fight = FindObjectsByType<FightController>(FindObjectsSortMode.None).FirstOrDefault(f => f.gameObject.scene == gameObject.scene);
             string id = FightRequest.BossId ?? BossCatalog.Current.Id;
-            if (Forest != null) Forest.Configure(!Preparation && id == "novice");
+            var bossIcon = Content.Find("BossIcon")?.GetComponent<Image>();
+            var portrait = Resources.Load<Sprite>("Bosses/" + (BossCatalog.Find(id)?.PrefabId ?? id) + "-portrait");
+            if (bossIcon != null && portrait != null) bossIcon.sprite = portrait;
+            if (Forest != null) Forest.Configure(!Preparation && BossCatalog.Find(id) != null);
             _health = !Preparation && _fight != null ? _fight.BossHealth : null;
             _health ??= new BossCombatState(id);
             _health.Damaged += OnDamage;
@@ -119,7 +123,7 @@ namespace PushStars.Fight
             PlayerHpFill.FillAmount = _playerFill; BossHpFill.FillAmount = _bossFill;
             PlayerHpText.text = _health.PlayerHp + " / " + BossCombatState.PlayerMaxHp;
             BossHpText.text = _health.BossHp + " / " + _health.BossMaxHp;
-            string playerName = SourcePlayerName != null && !string.IsNullOrWhiteSpace(SourcePlayerName.text) ? SourcePlayerName.text : "ТЫ";
+            string playerName = SourcePlayerName != null && !string.IsNullOrWhiteSpace(SourcePlayerName.text) ? SourcePlayerName.text : "YOU";
             playerName = PushStars.UI.ProfileIdentityEditor.ResolveName(playerName);
             int separator = playerName.LastIndexOf('_');
             PlayerName.text = Preparation && playerName.Length > 12 && separator > 0
@@ -133,7 +137,7 @@ namespace PushStars.Fight
                 Action.interactable = !_fight.BossReady;
                 ActionLabel.text = _fight.IsBossBattleLive ? "FIGHT" : "READY";
             }
-            CopyBody(PlayerPortrait, PlayerStage, Preparation);
+            CopyBody(PlayerPortrait, PlayerStage, Preparation, smoothPlayer: !Preparation);
             CopyBody(BossPortrait, BossStage, Preparation, !Preparation && _health.BossHp == 0);
             CopyHead();
             for (int i = _numbers.Count - 1; i >= 0; i--)
@@ -146,11 +150,32 @@ namespace PushStars.Fight
             }
         }
 
-        private static void CopyBody(RawImage target, FightAvatar avatar, bool cropPortrait, bool grounded = false)
+        private readonly System.Collections.Generic.Dictionary<RawImage,
+            (FightAvatar avatar, Texture texture, Vector2 size, Rect uv)> _preparationFrames = new();
+
+        private void CopyBody(RawImage target, FightAvatar avatar, bool cropPortrait, bool grounded = false, bool smoothPlayer = false)
         {
             if (target == null || avatar == null || avatar.StageCamera == null) return;
             var texture = avatar.StageCamera.targetTexture; target.texture = texture;
-            if (texture == null || !avatar.TryGetBodyViewport(out var body)) return;
+            if (texture == null) return;
+            // Preserve the camera viewport for the live player. Fitting a crop to the
+            // body cancels the mirror anchor's distance and position measurements.
+            if (smoothPlayer)
+            {
+                target.uvRect = CameraViewport(target.rectTransform.rect.size,
+                    new Vector2(texture.width, texture.height));
+                return;
+            }
+            Vector2 size = target.rectTransform.rect.size;
+            if (cropPortrait && avatar.IsPreparationFramed
+                && _preparationFrames.TryGetValue(target, out var held)
+                && held.avatar == avatar && held.texture == texture && held.size == size)
+            {
+                target.uvRect = held.uv;
+                return;
+            }
+            _preparationFrames.Remove(target);
+            if (!avatar.TryGetBodyViewport(out var body)) return;
             float aspect = target.rectTransform.rect.width / target.rectTransform.rect.height;
             float textureAspect = (float)texture.width / texture.height;
             float height = body.height * (cropPortrait ? .64f : 1.10f);
@@ -159,6 +184,18 @@ namespace PushStars.Fight
             float centerY = body.center.y + (cropPortrait ? body.height * .20f : 0);
             if (grounded) centerY = body.yMin + height * .45f;
             target.uvRect = new Rect(body.center.x - width * .5f, centerY - height * .5f, width, height);
+            if (cropPortrait && avatar.IsPreparationFramed)
+                _preparationFrames[target] = (avatar, texture, size, target.uvRect);
+        }
+
+        internal static Rect CameraViewport(Vector2 display, Vector2 texture)
+        {
+            float aspect = Mathf.Max(1f, display.x) / Mathf.Max(1f, display.y);
+            float textureAspect = Mathf.Max(1f, texture.x) / Mathf.Max(1f, texture.y);
+            // Contain the complete camera image without stretching or zooming in.
+            float width = Mathf.Max(1f, aspect / textureAspect);
+            float height = Mathf.Max(1f, textureAspect / aspect);
+            return new Rect((1f - width) * .5f, (1f - height) * .5f, width, height);
         }
 
         private void CopyHead()

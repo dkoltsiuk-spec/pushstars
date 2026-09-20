@@ -66,8 +66,8 @@ namespace PushStars.Fight
         [SerializeField] private Button _secondaryButton;
         [SerializeField] private TextMeshProUGUI _secondaryLabel;
 
-        private static readonly Color WinColor = new Color32(107, 255, 74, 255); // AccentLime
-        private static readonly Color LossColor = new Color32(255, 80, 80, 255);
+        private static readonly Color WinColor = new Color32(91, 239, 0, 255);
+        private static readonly Color LossColor = new Color32(255, 29, 24, 255);
         private static readonly Color DrawColor = new Color32(245, 200, 66, 255); // AccentYellow
         private static readonly Color NeutralColor = Color.white;
         [SerializeField, HideInInspector] private ScreenLayoutRoot _editableLayout;
@@ -77,6 +77,7 @@ namespace PushStars.Fight
         private bool _sourcesHidden;
         private bool _playerSourceWasEnabled, _opponentSourceWasEnabled;
         private FightAvatar _playerStage, _opponentStage;
+        private DuelResultEntrance _entrance;
         public bool IsShowing => _root != null && _root.activeSelf;
         public RawImage PlayerAvatarSource => _playerAvatarSource;
         public RawImage OpponentAvatarSource => _opponentAvatarSource;
@@ -106,6 +107,7 @@ namespace PushStars.Fight
 
         public void Hide()
         {
+            _entrance?.ResetPresentation();
             RestoreSourcePortraits();
             if (_root != null) _root.SetActive(false);
         }
@@ -123,7 +125,11 @@ namespace PushStars.Fight
             if (_secondaryButton != null) _secondaryButton.onClick.RemoveAllListeners();
         }
 
-        private void OnDisable() => RestoreSourcePortraits();
+        private void OnDisable()
+        {
+            _entrance?.ResetPresentation();
+            RestoreSourcePortraits();
+        }
 
         private void LateUpdate()
         {
@@ -140,10 +146,8 @@ namespace PushStars.Fight
                              string opponentName, string playerName, bool newRecord)
         {
             Open(duel: true);
-            GameAudio.Play(win && !draw ? SoundCue.Victory : draw ? SoundCue.Confirm : SoundCue.Back);
 
-            SetText(_banner, draw ? "НИЧЬЯ" : win ? "ПОБЕДА" : "ПОРАЖЕНИЕ",
-                    draw ? DrawColor : win ? WinColor : LossColor);
+            SetText(_banner, draw ? "DRAW" : win ? "WINNER" : "DEFEAT", Color.white);
 
             Color mine = draw ? DrawColor : win ? WinColor : LossColor;
             Color theirs = draw ? DrawColor : win ? LossColor : WinColor;
@@ -157,18 +161,20 @@ namespace PushStars.Fight
             BetterWorse(myForm, oppForm, higherIsBetter: true, out Color myFormColor, out Color oppFormColor);
             BetterWorse(mySecondsPerRep, oppSecPerRep, higherIsBetter: false, out Color myTempoColor, out Color oppTempoColor);
 
-            SetText(_opponentName, opponentName, NeutralColor);
+            SetText(_opponentName, opponentName, new Color32(255, 214, 0, 255));
             SetText(_opponentReps, oppReps.ToString(), theirs);
             SetText(_opponentForm, $"{oppForm:0}", oppFormColor);
-            SetText(_opponentTempo, oppSecPerRep < float.PositiveInfinity ? $"{oppSecPerRep:0.0}с" : "—", oppTempoColor);
+            SetText(_opponentTempo, oppSecPerRep < float.PositiveInfinity ? $"{oppSecPerRep:0.0}s" : "—", oppTempoColor);
 
-            SetText(_playerName, playerName, NeutralColor);
+            SetText(_playerName, WrapPlayerName(playerName), new Color32(255, 214, 0, 255));
             SetText(_playerReps, myReps.ToString(), mine);
             SetText(_playerForm, $"{myForm:0}", myFormColor);
-            SetText(_playerTempo, mySecondsPerRep < float.PositiveInfinity ? $"{mySecondsPerRep:0.0}с" : "—", myTempoColor);
+            SetText(_playerTempo, mySecondsPerRep < float.PositiveInfinity ? $"{mySecondsPerRep:0.0}s" : "—", myTempoColor);
 
             _opponentStage = AvatarBehind(_opponentAvatarSource);
             _playerStage = AvatarBehind(_playerAvatarSource);
+            _opponentStage?.SetResultPresentation(!draw && win);
+            _playerStage?.SetResultPresentation(!draw && !win);
             CropPortrait(_opponentAvatarImage, _opponentAvatarSource, _opponentStage);
             CropPortrait(_playerAvatarImage, _playerAvatarSource, _playerStage);
 
@@ -176,15 +182,30 @@ namespace PushStars.Fight
             // Keeping the old repeated line here obscured the lower portrait and action button.
             SetText(_duelRewards, "", NeutralColor);
 
-            SetText(_duelNote, newRecord ? "НОВЫЙ РЕКОРД — теперь тень сильнее" : "", DrawColor);
+            SetText(_duelNote, newRecord ? "NEW RECORD — your ghost is stronger now" : "", DrawColor);
 
-            SetPrimary("ДАЛЕЕ", Continue);
+            SetPrimary("NEXT", Continue);
             HideSecondary();
+            var composition = _duelLayout.transform.Find("SafeArea/MockupComposition") as RectTransform;
+            if (composition != null)
+            {
+                if (_entrance == null) _entrance = composition.GetComponent<DuelResultEntrance>();
+                if (_entrance == null) _entrance = composition.gameObject.AddComponent<DuelResultEntrance>();
+                _entrance.Play(composition, win, draw, _continueButton);
+            }
+            else GameAudio.Play(draw ? SoundCue.Confirm : win ? SoundCue.Victory : SoundCue.Back);
         }
 
         /// <summary>Colours two comparable numbers by which one actually is better, not by who won
         /// the match — a tie (including "neither side has a number") stays neutral rather than
         /// picking a winner that doesn't exist.</summary>
+        private static string WrapPlayerName(string name)
+        {
+            if (string.IsNullOrEmpty(name) || name.Length <= 12) return name;
+            int split = name.LastIndexOf('_');
+            return split > 0 && split < name.Length - 1 ? name.Insert(split + 1, "\n") : name;
+        }
+
         private static void BetterWorse(float mine, float theirs, bool higherIsBetter,
                                         out Color mineColor, out Color theirsColor)
         {
@@ -205,6 +226,9 @@ namespace PushStars.Fight
             return null;
         }
 
+        private readonly System.Collections.Generic.Dictionary<RawImage,
+            (FightAvatar stage, Texture texture, Vector2 size, Rect uv)> _portraitFrames = new();
+
         private void CropPortrait(RawImage target, RawImage source, FightAvatar stage)
         {
             if (target == null) return;
@@ -221,6 +245,15 @@ namespace PushStars.Fight
             if (!target.enabled) return;
             target.texture = source.texture;
             target.raycastTarget = false;
+            Vector2 size = target.rectTransform.rect.size;
+            if (stage != null && stage.IsPreparationFramed
+                && _portraitFrames.TryGetValue(target, out var held)
+                && held.stage == stage && held.texture == source.texture && held.size == size)
+            {
+                target.uvRect = held.uv;
+                return;
+            }
+            _portraitFrames.Remove(target);
             target.uvRect = source.uvRect;
             if (stage == null || !stage.TryGetBodyViewport(out var body)) return;
             float textureAspect = (float)source.texture.width / source.texture.height;
@@ -231,6 +264,8 @@ namespace PushStars.Fight
             target.uvRect = new Rect(
                 Mathf.Clamp(body.center.x - width * 0.5f, 0f, 1f - width),
                 Mathf.Clamp(body.yMin - (height - body.height) * 0.1f, 0f, 1f - height), width, height);
+            if (stage.IsPreparationFramed)
+                _portraitFrames[target] = (stage, source.texture, size, target.uvRect);
         }
 
         private void HideSourcePortraits()
@@ -269,28 +304,28 @@ namespace PushStars.Fight
 
             if (reps <= 0)
             {
-                SetText(_testTitle, "НЕ ЗАСЧИТАНО", LossColor);
+                SetText(_testTitle, "NO REPS COUNTED", LossColor);
                 SetText(_testTier, "0", NeutralColor);
-                SetText(_testScore, "Ни одного повтора за 60 секунд", new Color(1f, 1f, 1f, 0.7f));
+                SetText(_testScore, "No reps completed in 60 seconds", new Color(1f, 1f, 1f, 0.7f));
                 SetText(_testRewards, "", NeutralColor);
-                SetText(_testNote, "Поставь телефон в 1.5–2 метрах так, чтобы в кадр попало всё тело.",
+                SetText(_testNote, "Place your phone 1.5–2 meters away so your whole body fits in frame.",
                         new Color(1f, 1f, 1f, 0.55f));
 
-                SetPrimary("ПОПРОБОВАТЬ СНОВА", Retry);
-                SetSecondary("ПРОПУСТИТЬ", SkipLevelTest);
+                SetPrimary("TRY AGAIN", Retry);
+                SetSecondary("SKIP", SkipLevelTest);
                 return;
             }
 
-            SetText(_testTitle, "ТВОЙ УРОВЕНЬ", new Color(1f, 1f, 1f, 0.7f));
+            SetText(_testTitle, "YOUR LEVEL", new Color(1f, 1f, 1f, 0.7f));
             SetText(_testTier, FitnessTest.DisplayName(tier), DrawColor);
-            SetText(_testScore, $"{reps} отжиманий за 60 секунд", NeutralColor);
+            SetText(_testScore, $"{reps} push-ups in 60 seconds", NeutralColor);
             SetText(_testRewards, xp > 0 ? $"+{xp} XP" : "", WinColor);
 
             string note = FitnessTest.Blurb(tier);
-            if (recorded) note += "\nЗапись сохранена — теперь тебе есть с кем драться.";
+            if (recorded) note += "\nRecording saved — your ghost is ready for a duel.";
             SetText(_testNote, note, new Color(1f, 1f, 1f, 0.55f));
 
-            SetPrimary("ПРОДОЛЖИТЬ", Continue);
+            SetPrimary("CONTINUE", Continue);
             HideSecondary();
         }
 
@@ -298,12 +333,12 @@ namespace PushStars.Fight
         {
             Open(duel: false);
             GameAudio.Play(reps > 0 ? SoundCue.Victory : SoundCue.Back);
-            SetText(_testTitle, "ТРЕНИРОВКА ЗАВЕРШЕНА", NeutralColor);
-            SetText(_testTier, $"{reps} ПОВТОРОВ", DrawColor);
-            SetText(_testScore, $"Подходов: {sets}", NeutralColor);
+            SetText(_testTitle, "WORKOUT COMPLETE", NeutralColor);
+            SetText(_testTier, $"{reps} REPS", DrawColor);
+            SetText(_testScore, $"Sets: {sets}", NeutralColor);
             SetText(_testRewards, xp > 0 ? $"+{xp} XP" : "", WinColor);
-            SetText(_testNote, recorded ? "Новый лучший подход сохранён." : "Тренировка завершена. Хорошего отдыха!", NeutralColor);
-            SetPrimary("ПРОДОЛЖИТЬ", Continue);
+            SetText(_testNote, recorded ? "Your new best set has been saved." : "Workout complete. Enjoy your rest!", NeutralColor);
+            SetPrimary("CONTINUE", Continue);
             HideSecondary();
         }
 
@@ -350,6 +385,33 @@ namespace PushStars.Fight
 
         private void Open(bool duel)
         {
+            _portraitFrames.Clear();
+            if (_root != null)
+            {
+                var backdrop = _root.transform.Find("DuelResultBackdrop");
+                if (duel && backdrop == null)
+                {
+                    backdrop = new GameObject("DuelResultBackdrop", typeof(RectTransform),
+                        typeof(CanvasRenderer), typeof(ReadyScreenGraphic)).transform;
+                    backdrop.SetParent(_root.transform, false);
+                    backdrop.SetAsFirstSibling();
+                    var rect = (RectTransform)backdrop;
+                    rect.anchorMin = Vector2.zero;
+                    rect.anchorMax = Vector2.one;
+                    rect.offsetMin = rect.offsetMax = Vector2.zero;
+                    backdrop.GetComponent<ReadyScreenGraphic>().raycastTarget = false;
+                }
+                if (backdrop != null)
+                {
+                    if (duel && backdrop.Find("LightningPattern") == null)
+                    {
+                        var theme = Resources.Load<PushStarsTheme>("PushStarsTheme");
+                        if (theme != null && theme.IconLightningBG != null)
+                            LightningField.Build((RectTransform)backdrop, theme.IconLightningBG);
+                    }
+                    backdrop.gameObject.SetActive(duel);
+                }
+            }
             if (_root != null) _root.SetActive(true);
             if (_duelLayout != null) _duelLayout.SetActive(duel);
             if (_levelTestLayout != null) _levelTestLayout.SetActive(!duel);

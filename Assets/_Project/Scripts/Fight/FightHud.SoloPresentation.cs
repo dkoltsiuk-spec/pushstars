@@ -9,8 +9,12 @@ namespace PushStars.Fight
         private AspectRatioFitter _soloPortraitAspect;
         private bool _originalAspectEnabled, _capturedAspect, _soloPaused;
         private AspectRatioFitter.AspectMode _originalAspectMode;
-        private Image _depthMarker, _topZone, _bottomZone;
+        private Image _depthMarker;
         private float _displayedDepth;
+
+        private const float DepthTrackHeight = 220f;
+        private static readonly Vector2 DepthTrackSize = new Vector2(27f, DepthTrackHeight);
+        private static readonly Vector2 DepthMarkerSize = new Vector2(46f, 26f);
 
         public RawImage SoloPortrait => _soloPortrait;
 
@@ -63,18 +67,18 @@ namespace PushStars.Fight
             }
             if (_depthMarker == null && _soloPanel != null)
             {
-                var track = DepthImage(_soloPanel.transform, "PushupDepth", new Color32(10, 17, 38, 235));
+                var track = DepthImage(_soloPanel.transform, "PushupDepth", Color.white);
+                track.sprite = Resources.Load<Sprite>("PushupDepthTrack");
+                track.preserveAspect = true;
                 track.rectTransform.anchorMin = track.rectTransform.anchorMax = new Vector2(1f, .42f);
                 track.rectTransform.anchoredPosition = new Vector2(-24f, 0f);
-                track.rectTransform.sizeDelta = new Vector2(16f, 220f);
+                track.rectTransform.sizeDelta = DepthTrackSize;
                 // Pause curtain and labels must render over the gauge.
                 track.transform.SetAsFirstSibling();
-                _topZone = DepthImage(track.transform, "TopZone", GoodColor);
-                PlaceZone(_topZone.rectTransform, 1f);
-                _bottomZone = DepthImage(track.transform, "BottomZone", GoodColor);
-                PlaceZone(_bottomZone.rectTransform, 0f);
-                _depthMarker = DepthImage(track.transform, "DepthMarker", Color.yellow);
-                _depthMarker.rectTransform.sizeDelta = new Vector2(26f, 6f);
+                _depthMarker = DepthImage(track.transform, "DepthMarker", Color.white);
+                _depthMarker.sprite = Resources.Load<Sprite>("PushupDepthMarker");
+                _depthMarker.preserveAspect = true;
+                _depthMarker.rectTransform.sizeDelta = DepthMarkerSize;
             }
             _displayedDepth = 0f;
             if (_depthMarker != null)
@@ -106,9 +110,7 @@ namespace PushStars.Fight
             _depthMarker.rectTransform.anchorMin = _depthMarker.rectTransform.anchorMax =
                 new Vector2(.5f, 1f - _displayedDepth);
             _depthMarker.rectTransform.anchoredPosition = Vector2.zero;
-            _depthMarker.color = valid ? new Color32(255, 216, 0, 255) : new Color32(145, 151, 170, 255);
-            _topZone.color = valid && tracker.InTopZone ? GoodColor : new Color32(40, 93, 75, 255);
-            _bottomZone.color = valid && tracker.InBottomZone ? GoodColor : new Color32(40, 93, 75, 255);
+            _depthMarker.color = valid ? Color.white : new Color32(145, 151, 170, 255);
         }
 
         private static Image DepthImage(Transform parent, string name, Color color)
@@ -120,14 +122,6 @@ namespace PushStars.Fight
             image.color = color;
             image.raycastTarget = false;
             return image;
-        }
-
-        private static void PlaceZone(RectTransform rect, float y)
-        {
-            rect.anchorMin = rect.anchorMax = new Vector2(.5f, y);
-            rect.pivot = new Vector2(.5f, y);
-            rect.anchoredPosition = new Vector2(0f, y == 0f ? 3f : -3f);
-            rect.sizeDelta = new Vector2(10f, 14f);
         }
     }
 }

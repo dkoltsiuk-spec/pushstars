@@ -116,6 +116,7 @@ namespace PushStars.Fight
             _playerFlagSprite = playerFlag;
             _opponentFlagSprite = opponentFlag;
             _root.SetActive(true);
+            _portraitFrames.Clear();
             BuildReferenceLayout();
             _preparationAvatars = FindObjectsByType<FightAvatar>(FindObjectsSortMode.None)
                 .Where(avatar => avatar.gameObject.scene == gameObject.scene).ToArray();

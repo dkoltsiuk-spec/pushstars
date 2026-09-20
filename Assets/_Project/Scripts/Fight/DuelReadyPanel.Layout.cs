@@ -52,7 +52,7 @@ namespace PushStars.Fight
         // Lowering the figure onto its shadow cannot be done by lowering the figure: the ellipse
         // is placed from the soles and would follow it down. This is the offset between the two,
         // and it is what sinks the feet into the shadow rather than perching them on top of it.
-        private const float ShadowRiseOfHeight = 0.30f;
+        private const float ShadowRiseOfHeight = 0.65f;
 
         [SerializeField, HideInInspector] private Image _opponentFlag;
         [SerializeField, HideInInspector] private Image _playerFlag;
@@ -240,11 +240,11 @@ namespace PushStars.Fight
             float figure = body.height / uv.height * boxRect.height;
 
             float height = figure * ShadowHeightOfFigure;
-            shadow.rectTransform.anchoredPosition = new Vector2(
-                box.anchoredPosition.x + (body.center.x - uv.x) / uv.width * boxRect.width,
-                box.anchoredPosition.y - boxRect.height
-                    + (body.yMin - uv.y) / uv.height * boxRect.height
-                    + height * ShadowRiseOfHeight);
+            Vector3 contact = new Vector3(
+                boxRect.xMin + (body.center.x - uv.x) / uv.width * boxRect.width,
+                boxRect.yMin + (body.yMin - uv.y) / uv.height * boxRect.height
+                    + height * ShadowRiseOfHeight, 0f);
+            shadow.rectTransform.position = box.TransformPoint(contact);
             shadow.rectTransform.sizeDelta = new Vector2(figure * ShadowWidthOfFigure, height);
         }
 
@@ -260,6 +260,9 @@ namespace PushStars.Fight
                     return avatar;
             return null;
         }
+
+        private readonly System.Collections.Generic.Dictionary<RawImage,
+            (FightAvatar avatar, Texture texture, Vector2 size, Rect body, Rect uv)> _portraitFrames = new();
 
         private void CopyPortrait(RawImage target, RawImage source, Image shadow)
         {
@@ -283,6 +286,16 @@ namespace PushStars.Fight
             // fixed fraction off both ends (what this used to do) therefore spent the zoom on the
             // feet and cut them off. Fitting the body's own rect spends it on the empty sky instead.
             var avatar = AvatarBehind(source);
+            Vector2 displaySize = target.rectTransform.rect.size;
+            if (avatar != null && avatar.IsPreparationFramed
+                && _portraitFrames.TryGetValue(target, out var held)
+                && held.avatar == avatar && held.texture == source.texture && held.size == displaySize)
+            {
+                target.uvRect = held.uv;
+                PlaceGroundShadow(shadow, target.rectTransform, held.uv, held.body);
+                return;
+            }
+            _portraitFrames.Remove(target);
             Rect body;
             if (avatar == null || !avatar.TryGetBodyViewport(out body))
             {
@@ -308,7 +321,11 @@ namespace PushStars.Fight
                 Mathf.Clamp(body.yMin - (height - body.height) * PortraitFootShare, 0f, 1f - height),
                 width, height);
             target.uvRect = uv;
-            if (!_sceneAuthored) PlaceGroundShadow(shadow, target.rectTransform, uv, body);
+            // The crop is part of the camera: re-fitting it every frame cancels the
+            // idle's torso motion and makes otherwise planted feet appear to float.
+            if (avatar.IsPreparationFramed)
+                _portraitFrames[target] = (avatar, source.texture, displaySize, body, uv);
+            PlaceGroundShadow(shadow, target.rectTransform, uv, body);
         }
 
         private Image FlagChip(Image image, string name, float x, float y, float width, float height)

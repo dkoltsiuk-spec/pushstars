@@ -41,7 +41,7 @@ namespace PushStars.Services
             return new UserProfile
             {
                 Exists      = true,
-                DisplayName = Field("displayName", "Игрок"),
+                DisplayName = Field("displayName", "Player"),
                 Rank        = Field("rank", "bronze"),
                 Trophies    = Field<long>("trophies", 0),
                 Xp          = Field<long>("xp", 0),

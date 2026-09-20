@@ -20,6 +20,39 @@ namespace PushStars.UI
         // Reference canvas the lattice geometry and the edge fade are sized against.
         private const float RefW = 390f;
         private const float RefH = 844f;
+        private const float IconSize = 92f, SpacingX = 112f, SpacingY = 112f;
+
+        // Explicit scene-authoring operation: preserve existing images and their bindings.
+        public void ArrangeCheckerboard()
+        {
+            int rows = 0;
+            foreach (Transform child in transform)
+            {
+                var parts = child.name.TrimStart('L').Split('_');
+                if (parts.Length == 2 && int.TryParse(parts[0], out int row)) rows = Mathf.Max(rows, row + 1);
+            }
+            if (rows == 0) return;
+            if (rows % 2 != 0) rows++;
+            _spanY = rows * SpacingY;
+            _topWrap = _halfH + SpacingY;
+            foreach (Transform child in transform)
+            {
+                var parts = child.name.TrimStart('L').Split('_');
+                if (parts.Length != 2 || !int.TryParse(parts[0], out int row) || !int.TryParse(parts[1], out int col)) continue;
+                var rt = child as RectTransform;
+                if (rt == null) continue;
+                float x = -_halfW + (col + .5f) * SpacingX + (row % 2) * SpacingX * .5f;
+                float y = _topWrap - (row + .5f) * SpacingY;
+                rt.anchoredPosition = new Vector2(x, y);
+                rt.sizeDelta = new Vector2(IconSize, IconSize);
+                var img = child.GetComponent<Image>();
+                if (img == null) continue;
+                var tint = img.color;
+                float edge = Mathf.Max(Mathf.Abs(x) / _halfW, Mathf.Abs(y) / _halfH);
+                tint.a = 1 - _edgeFade * Mathf.SmoothStep(_edgeStart, _edgeEnd, edge);
+                img.color = tint;
+            }
+        }
 
         [Header("Motion")]
         [SerializeField] private float _speed   = 16f;    // upward points / second
@@ -88,7 +121,7 @@ namespace PushStars.UI
         /// </summary>
         public static LightningField Build(RectTransform parent, Sprite bolt)
         {
-            const float iconSize = 76f, spacingX = 90f, spacingY = 102f, tilt = -10f;
+            const float iconSize = IconSize, spacingX = SpacingX, spacingY = SpacingY, tilt = -10f;
             const float scrollSpeed = 16f;
             const float edgeStart = 0.15f, edgeEnd = 1f, edgeFade = 0.90f;
 

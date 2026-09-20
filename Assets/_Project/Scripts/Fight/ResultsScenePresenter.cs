@@ -22,12 +22,6 @@ namespace PushStars.Fight
                 if (avatar.gameObject.scene != gameObject.scene) continue;
                 avatar.SetPreparationPresentation(true);
                 if (avatar.StageCamera != null) avatar.StageCamera.enabled = true;
-                var animator = avatar.Character != null ? avatar.Character.GetComponentInChildren<Animator>() : null;
-                if (animator != null && animator.HasState(0, Animator.StringToHash("WarriorIdle")))
-                {
-                    animator.Play("WarriorIdle", 0, 0f);
-                    animator.Update(0f);
-                }
             }
             var result = FightScreenNavigation.Result ?? new FightResultData
             {

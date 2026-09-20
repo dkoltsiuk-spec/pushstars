@@ -25,9 +25,9 @@ namespace PushStars.UI
             Ok.onClick.AddListener(Screen.Hide);
             Language.onClick.AddListener(() =>
             {
-                _store.Language = _store.Language == "en" ? "ru" : "en";
+                _store.Language = PlayerPrefsSettingsStore.LangEn;
                 RefreshLanguage();
-                ShowNotice("Language preference saved. Full translation is not available yet.");
+                ShowNotice("The app language is English.");
             });
             Apple.onClick.AddListener(() => ShowNotice("Apple sign-in is not configured yet."));
             Google.onClick.AddListener(() => ShowNotice("Google sign-in is not configured yet."));
@@ -52,7 +52,7 @@ namespace PushStars.UI
             for (int i = 0; i < Switches.Length; i++) DrawSwitch(i);
         }
 
-        private void RefreshLanguage() { if (LanguageLabel != null) LanguageLabel.text = _store.Language == "ru" ? "RUSSIAN" : "ENGLISH"; }
+        private void RefreshLanguage() { if (LanguageLabel != null) LanguageLabel.text = "ENGLISH"; }
 
         private void DrawSwitch(int i)
         {

@@ -612,7 +612,7 @@ namespace PushStars.Editor
         /// These temporary MeshRenderers draw a direct snapshot of the exact transforms audited
         /// above. Bind-pose matrices retain the source renderer's coordinate system and scale.
         /// </summary>
-        private sealed class PreviewSkin : IDisposable
+        internal sealed class PreviewSkin : IDisposable
         {
             private readonly SkinnedMeshRenderer source;
             private readonly Mesh mesh;
@@ -621,10 +621,13 @@ namespace PushStars.Editor
             private readonly BoneWeight[] weights;
             private readonly Vector3[] vertices, normals, skinnedVertices, skinnedNormals;
             private readonly Vector4[] tangents, skinnedTangents;
+            private readonly GameObject proxy;
+            private readonly bool sourceEnabled;
 
             public PreviewSkin(SkinnedMeshRenderer source)
             {
                 this.source = source;
+                sourceEnabled = source.enabled;
                 mesh = Object.Instantiate(source.sharedMesh);
                 mesh.name = source.sharedMesh.name + " / push-up CPU snapshot";
                 vertices = source.sharedMesh.vertices;
@@ -658,7 +661,8 @@ namespace PushStars.Editor
                         if (i < tangents.Length) tangents[i] += (Vector4)(deltaTangents[i] * factor);
                     }
                 }
-                var proxy = new GameObject(source.name + " / pose snapshot");
+                proxy = new GameObject(source.name + " / pose snapshot");
+                proxy.layer = source.gameObject.layer;
                 proxy.transform.SetParent(source.transform, false);
                 proxy.AddComponent<MeshFilter>().sharedMesh = mesh;
                 var renderer = proxy.AddComponent<MeshRenderer>();
@@ -740,7 +744,12 @@ namespace PushStars.Editor
                 }
             }
 
-            public void Dispose() => Object.DestroyImmediate(mesh);
+            public void Dispose()
+            {
+                if (source != null) source.enabled = sourceEnabled;
+                Object.DestroyImmediate(proxy);
+                Object.DestroyImmediate(mesh);
+            }
         }
 
         private static Texture2D MakeSheet(bool corrected)

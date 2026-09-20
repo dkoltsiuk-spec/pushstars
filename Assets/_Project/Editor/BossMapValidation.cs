@@ -50,7 +50,8 @@ namespace PushStars.Editor
                 Require(c.Home.activeSelf && !c.Map.activeSelf && c.Background.activeSelf, "Boss opens island home");
                 Require(c.CharacterDecor.All(go => !go.activeSelf), "Character, glow, wardrobe and friend entry hidden");
                 Require(c.Nodes.Count(n => n.Fight.gameObject.activeSelf) == 1, "Exactly one active boss");
-                Require(c.Nodes.All(n => n.Button && n.Platform.sprite && n.Disc.sprite && n.Face.sprite), "All boss nodes have art and interaction");
+                Require(c.Nodes.Length == BossCatalog.Bosses.Count && c.Nodes.Select(n => n.BossIndex).SequenceEqual(Enumerable.Range(0, 5)), "Five ordered boss nodes");
+                Require(c.Nodes.All(n => n.Button && n.Platform.sprite && n.Disc.sprite && n.Face.sprite && n.ProgressFace.sprite), "All boss nodes have art and interaction");
                 var actionLabel = panel.Find("ActionRow/BattleButton/Label").GetComponent<TMPro.TextMeshProUGUI>();
                 actionLabel.text = "FIGHT";
                 var modeLabel = panel.Find("ActionRow/PvpButton/Label").GetComponent<TMPro.TextMeshProUGUI>();
@@ -64,10 +65,11 @@ namespace PushStars.Editor
                 Capture(camera, texture, "map-bottom");
                 c.Scroll.verticalNormalizedPosition = 1;
                 Capture(camera, texture, "map-top");
+                ValidateBiomes(c, camera, texture);
                 SetMap(c, false);
                 Require(c.Home.activeSelf && c.BottomNav.activeSelf && c.HomeOnly.All(go => go.activeSelf), "OK restores home controls");
                 rect.sizeDelta = new Vector2(320, 568); camera.orthographicSize = 284;
-                camera.targetTexture = null; texture.Release(); Object.DestroyImmediate(texture);
+                camera.targetTexture = null; RenderTexture.active = null; texture.Release(); Object.DestroyImmediate(texture);
                 texture = new RenderTexture(640, 1136, 24); camera.targetTexture = texture;
                 Canvas.ForceUpdateCanvases();
                 typeof(BossMapController).GetMethod("Fit", BindingFlags.Instance | BindingFlags.NonPublic).Invoke(c, null);
@@ -76,7 +78,7 @@ namespace PushStars.Editor
                 SelectedGameMode.Current = GameMode.Pvp; c.RefreshMode();
                 Require(!c.Home.activeSelf && !c.Map.activeSelf && !c.Background.activeSelf, "PVP removes boss presentation");
                 Require(panel.Find("CharacterArea").gameObject.activeSelf, "PVP restores the character");
-                File.WriteAllText(Output + "validation.txt", "PASS: home, map, real scroll range, three nodes, active boss, enlarged island, active-only expanding/fading rings, masked OK shine with 3s repeat, return, small portrait, PVP restoration.\n");
+                File.WriteAllText(Output + "validation.txt", "PASS: home, map, real scroll range, five nodes, active boss, enlarged island, active-only expanding/fading rings, masked OK shine with 3s repeat, return, small portrait, PVP restoration; procedural forest/ice backdrop, light-blue winter, continuous biome boundary, supplied ice art, preview without combat.\n");
             }
             catch (Exception e)
             { File.WriteAllText(Output + "validation.txt", "FAIL: " + e); throw; }
@@ -91,6 +93,27 @@ namespace PushStars.Editor
         }
         private static void SetMap(BossMapController c, bool visible)
             => typeof(BossMapController).GetMethod("SetMapVisible", BindingFlags.Instance | BindingFlags.NonPublic).Invoke(c, new object[] { visible });
+        private static void ValidateBiomes(BossMapController c, Camera camera, RenderTexture texture)
+        {
+            var backdrop = c.Background.GetComponentInChildren<BossMapBackdrop>(true);
+            Require(backdrop != null && !backdrop.raycastTarget && !c.Background.GetComponent<Image>().enabled,
+                "Procedural atmosphere replaces the static background and does not block input");
+            Require(backdrop.Biomes.Length == 2, "Forest and ice biomes are configured");
+            var ice = (RectTransform)c.MapContent.Find("IceChapter");
+            Require(ice != null && ice.GetComponentsInChildren<Button>().Length == 0, "Ice is a preview until combat is supplied");
+            Require(ice.GetComponentsInChildren<Image>().All(i => i.sprite != null), "Ice preview has supplied art");
+            float boundary = c.MapContent.InverseTransformPoint(ice.position).y;
+            var forestColor = backdrop.Sample(new Vector2(0, 200), .5f);
+            var winterColor = backdrop.Sample(new Vector2(0, boundary + 500), .5f);
+            Require(winterColor.b > forestColor.b + .25f && winterColor.g > forestColor.g + .15f, "Winter becomes light blue");
+            var before = backdrop.Sample(new Vector2(0, boundary - .1f), .5f);
+            var after = backdrop.Sample(new Vector2(0, boundary + .1f), .5f);
+            Require(Mathf.Abs(after.b - before.b) < .01f, "No seam at the biome boundary");
+            c.Scroll.verticalNormalizedPosition = .7f;
+            Capture(camera, texture, "map-transition");
+            c.Scroll.verticalNormalizedPosition = 0;
+            Capture(camera, texture, "map-return-bottom");
+        }
         private static void ValidateEffects(BossMapController c)
         {
             const BindingFlags flags = BindingFlags.Instance | BindingFlags.NonPublic;
@@ -129,6 +152,8 @@ namespace PushStars.Editor
         }
         private static void Capture(Camera camera, RenderTexture texture, string name)
         {
+            foreach (var backdrop in camera.scene.GetRootGameObjects().SelectMany(r => r.GetComponentsInChildren<BossMapBackdrop>(true)))
+                backdrop.SetVerticesDirty();
             Canvas.ForceUpdateCanvases(); camera.Render(); RenderTexture.active = texture;
             var image = new Texture2D(texture.width, texture.height, TextureFormat.RGB24, false);
             image.ReadPixels(new Rect(0, 0, texture.width, texture.height), 0, 0); image.Apply();

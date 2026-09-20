@@ -71,6 +71,10 @@ namespace PushStars.Fight
                 training.BindPreview(); return true;
             }
             if (_debugButton != null) _debugButton.gameObject.SetActive(false);
+            // Preview the same arena as an actual PvP/ghost duel. Start returns early
+            // for previews, so its normal mode-specific background setup does not run.
+            _mode = FightMode.Ghost;
+            ApplyBackgroundForMode();
             _hud.ConfigureDuel("OSKAT009", "BEASTCORE_DEV");
             _hud.HideBanner();
             _hud.HideCountdown();

@@ -172,11 +172,11 @@ namespace PushStars.Editor
                 dots.Add(dot);
             }
 
-            var next = UiBuilder.Button(safe, "Next", "ДАЛЕЕ",
+            var next = UiBuilder.Button(safe, "Next", "NEXT",
                                         AppColors.BtnPrimaryBg, AppColors.BtnPrimaryFg, 20, out var nextLabel);
             UiBuilder.PlaceWide((RectTransform)next.transform, 0f, 88f, 58f, 28f);
 
-            var back = UiBuilder.Button(safe, "Back", "НАЗАД",
+            var back = UiBuilder.Button(safe, "Back", "BACK",
                                         new Color(1f, 1f, 1f, 0.06f), AppColors.TextSecondary, 14, out _);
             UiBuilder.Place((RectTransform)back.transform, new Vector2(0f, 1f), new Vector2(20f, -18f), new Vector2(84f, 34f));
 
@@ -189,7 +189,7 @@ namespace PushStars.Editor
             UiBuilder.Set(so, "_nextLabel", nextLabel);
             UiBuilder.Set(so, "_backButton", back);
             UiBuilder.SetStringArray(so, "_nextLabels",
-                new[] { "", "", "", "НАЧАТЬ ЗАМЕР" });
+                new[] { "", "", "", "START ASSESSMENT" });
             // Every page now carries its own button, so the shared bar never shows. It is still
             // built and still wired — a page added later without one falls back to it.
             UiBuilder.SetIntArray(so, "_ownCtaPages",
@@ -253,9 +253,9 @@ namespace PushStars.Editor
             const float BeatY = -177.5f;
             var steps = new[]
             {
-                (sprite: CamViewSprite,   x: -128f, y: -107.0f, height: 146.0f, caption: "Камера снимает\nтело"),
-                (sprite: CamPointsSprite, x:    0f, y:  -97.6f, height: 179.2f, caption: "Берем только\nкоординаты точек"),
-                (sprite: CamAvatarSprite, x:  128f, y:  -83.6f, height: 201.0f, caption: "Показываем\nсопернику аватар"),
+                (sprite: CamViewSprite,   x: -128f, y: -107.0f, height: 146.0f, caption: "Camera sees\nyour body"),
+                (sprite: CamPointsSprite, x:    0f, y:  -97.6f, height: 179.2f, caption: "We only use\nbody landmarks"),
+                (sprite: CamAvatarSprite, x:  128f, y:  -83.6f, height: 201.0f, caption: "Your opponent\nsees your avatar"),
             };
 
             var widths = new float[steps.Length];
@@ -327,7 +327,7 @@ namespace PushStars.Editor
             UiBuilder.Stretch(calloutFill.rectTransform, 2f, 2f, 2f, 2f);
 
             var calloutText = UiBuilder.Text(callout.rectTransform, "Label", AppColors.TextPrimary,
-                                             "Видео не видит\nсоперник", 12, FontStyles.Normal,
+                                             "Your opponent\nnever sees your video", 12, FontStyles.Normal,
                                              TextAlignmentOptions.Left);
             calloutText.lineSpacing = 2f;
             // Left inset clears the dot the line starts from, which sits inside the plate.
@@ -397,10 +397,10 @@ namespace PushStars.Editor
 
             // ── The claim ───────────────────────────────────────────────────────────────────────
             string yellow = ColorUtility.ToHtmlStringRGB(AppColors.AccentYellow);
-            var title = Heading(page, "МЫ БЕРЕМ\n<color=#" + yellow + ">ТОЛЬКО СКЕЛЕТ.</color>");
+            var title = Heading(page, "WE ONLY USE\n<color=#" + yellow + ">YOUR SKELETON.</color>");
 
-            var body = Paragraph(page, "Видео с камеры никогда не покидает телефон — по сети идут " +
-                                       "только координаты точек тела.");
+            var body = Paragraph(page, "Camera video never leaves your phone — only " +
+                                       "body landmark coordinates are sent.");
 
             // ── The one button ──────────────────────────────────────────────────────────────────
             allow = UiBuilder.Button(page, "Allow", "ALLOW", Color.white, AppColors.TextPrimary, 18,
@@ -429,7 +429,7 @@ namespace PushStars.Editor
 
             // Not a second way to grant anything: it walks on into the pages that explain the game,
             // and the camera is asked for again where it is actually needed.
-            howItWorks = UiBuilder.Button(page, "HowItWorks", "How its work?",
+            howItWorks = UiBuilder.Button(page, "HowItWorks", "How does it work?",
                                           new Color(0f, 0f, 0f, 0f), LinkBlue, 13, out var linkLabel);
             var linkRect = (RectTransform)howItWorks.transform;
             UiBuilder.Place(linkRect, new Vector2(0.5f, 0f), new Vector2(0f, LinkBottom),
@@ -496,21 +496,21 @@ namespace PushStars.Editor
                                 new Vector2(210f, 5f));
             }
 
-            var distance = UiBuilder.Text(page, "Distance", AppColors.AccentYellow, "1.5 - 2.0 м", 23,
+            var distance = UiBuilder.Text(page, "Distance", AppColors.AccentYellow, "1.5 - 2.0 m", 23,
                                           FontStyles.Bold);
             distance.enableWordWrapping = false;
             UiBuilder.Place(distance.rectTransform, new Vector2(0.5f, 1f), new Vector2(22f, -213f),
                             new Vector2(180f, 32f));
 
             // ── Captions ────────────────────────────────────────────────────────────────────────
-            var left = UiBuilder.Text(page, "PersonCaption", Caption, "Встаньте напротив\nтелефона", 11,
+            var left = UiBuilder.Text(page, "PersonCaption", Caption, "Stand in front of\nyour phone", 11,
                                       FontStyles.Normal);
             left.lineSpacing = 4f;
             UiBuilder.Place(left.rectTransform, new Vector2(0.5f, 1f), new Vector2(-132f, -290f),
                             new Vector2(150f, 40f));
 
             var right = UiBuilder.Text(page, "PhoneCaption", Caption,
-                                       "Установите телефон\nвозле стены или\nна штатив", 11,
+                                       "Place your phone\nagainst a wall or\non a stand", 11,
                                        FontStyles.Normal);
             right.lineSpacing = 4f;
             UiBuilder.Place(right.rectTransform, new Vector2(0.5f, 1f), new Vector2(128f, -290f),
@@ -529,7 +529,7 @@ namespace PushStars.Editor
             UiBuilder.Stretch(calloutFill.rectTransform, 2f, 2f, 2f, 2f);
 
             var calloutText = UiBuilder.Text(callout.rectTransform, "Label", AppColors.TextPrimary,
-                                             "Телефон расположен\nна расстоянии 1.5 - 2м", 12,
+                                             "Keep your phone\n1.5 - 2 m away", 12,
                                              FontStyles.Normal, TextAlignmentOptions.Left);
             calloutText.lineSpacing = 2f;
             // Room on the right for the dot the line leaves from — the mirror of the permission page,
@@ -565,10 +565,10 @@ namespace PushStars.Editor
 
             // ── The instruction ─────────────────────────────────────────────────────────────────
             string yellow = ColorUtility.ToHtmlStringRGB(AppColors.AccentYellow);
-            var title = Heading(page, "ВСТАНЬ ТАК,\nЧТОБЫ <color=#" + yellow + ">ВЛЕЗТЬ\nЦЕЛИКОМ</color>");
+            var title = Heading(page, "STEP BACK\nTO <color=#" + yellow + ">FIT YOUR\nWHOLE BODY</color>");
 
-            var body = Paragraph(page, "Поставь телефон на уровне груди в ~2 метрах и отойди — " +
-                                       "от макушки до стоп должно быть видно на экране.");
+            var body = Paragraph(page, "Place your phone at chest height, about 2 meters away — " +
+                                       "your whole body should be visible on screen.");
 
             // ── The one button ──────────────────────────────────────────────────────────────────
             ok = UiBuilder.Button(page, "Ok", "OK", Color.white, AppColors.TextPrimary, 18, out var okLabel);
@@ -623,9 +623,9 @@ namespace PushStars.Editor
 
             // ── The question ────────────────────────────────────────────────────────────────────
             string yellow = ColorUtility.ToHtmlStringRGB(AppColors.AccentYellow);
-            var title = Heading(page, "ВЫБЕРИ\n<color=#" + yellow + ">ЗА КОГО ИГРАТЬ</color>");
+            var title = Heading(page, "CHOOSE\n<color=#" + yellow + ">YOUR CHARACTER</color>");
 
-            var body = Paragraph(page, "Ты можешь поменять персонажа в любой момент.");
+            var body = Paragraph(page, "You can change your character at any time.");
 
             // ── The one button ──────────────────────────────────────────────────────────────────
             next = UiBuilder.Button(page, "NextCta", "NEXT", Color.white, AppColors.TextPrimary, 17,
@@ -954,13 +954,13 @@ namespace PushStars.Editor
 
             // ── The invitation ──────────────────────────────────────────────────────────────────
             string yellow = ColorUtility.ToHtmlStringRGB(AppColors.AccentYellow);
-            var title = Heading(page, "ПРОВЕРИМ\n<color=#" + yellow + ">НА ЧТО\nТЫ СПОСОБЕН</color>");
+            var title = Heading(page, "LET'S SEE\n<color=#" + yellow + ">WHAT YOU\nCAN DO</color>");
 
-            var body = Paragraph(page, "Ты можешь пропустить этот шаг если пока что не готов, " +
-                                       "проверим когда будет возможность.");
+            var body = Paragraph(page, "You can skip this step if you're not ready yet. " +
+                                       "Try it whenever you're ready.");
 
             // ── Go, or not yet ──────────────────────────────────────────────────────────────────
-            letsGo = UiBuilder.Button(page, "LetsGo", "LETS GO", Color.white, AppColors.TextPrimary, 17,
+            letsGo = UiBuilder.Button(page, "LetsGo", "LET'S GO", Color.white, AppColors.TextPrimary, 17,
                                      out var goLabel);
             var goImage = letsGo.GetComponent<Image>();
             var plate = SpriteImporter.Load(AllowSprite);

@@ -69,7 +69,8 @@ namespace PushStars.UI
 
         private void ApplyPose()
         {
-            if (!_cached) return;
+            // OnDisable also runs while the previous scene's cameras/UI are being destroyed.
+            if (!_cached || PlayerImage == null || FriendImage == null) return;
             float t = Mathf.SmoothStep(0, 1, _blend);
             float scale = Mathf.Lerp(1, PairScale, t);
             // Keep the feet on the same ground line as the portrait shrinks slightly.
@@ -82,7 +83,8 @@ namespace PushStars.UI
             FriendImage.rectTransform.localScale = _playerScale * friendScale;
             FriendImage.color = new Color(1, 1, 1, t);
             FriendImage.gameObject.SetActive(_avatar != null && (_present || _blend > 0));
-            FriendCamera.enabled = Application.isPlaying && FriendImage.gameObject.activeInHierarchy;
+            if (FriendCamera != null)
+                FriendCamera.enabled = Application.isPlaying && FriendImage.gameObject.activeInHierarchy;
             PositionShadow(PlayerShadow, PlayerImage, SourceCamera, PlayerRoot, scale, .5f);
             if (PlayerShadow != null)
             {

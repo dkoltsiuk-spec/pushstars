@@ -168,6 +168,7 @@ namespace PushStars.Editor
 
         private static void Polish(BossMapController c)
         {
+            GoblinLadderSetup.ExpandMap(c);
             var panel = c.transform.parent;
             c.ResponsiveControls = new[] { "ActionRow", "TrophyPill", "HudGroup" }.Select(n => (RectTransform)panel.Find(n)).ToArray();
             foreach (var tile in c.Background.GetComponentsInChildren<Image>(true))
@@ -182,12 +183,14 @@ namespace PushStars.Editor
                 r.anchoredPosition = new Vector2(r.anchoredPosition.x, 420 + node.BossIndex * 135);
             }
             var rewardPlatform = (RectTransform)chapter.Find("RewardPlatform");
-            rewardPlatform.sizeDelta = new Vector2(146, 146); rewardPlatform.anchoredPosition = new Vector2(60, 805);
-            ((RectTransform)chapter.Find("GemReward")).anchoredPosition = new Vector2(60, 833);
-            ((RectTransform)chapter.Find("IslandChest")).anchoredPosition = new Vector2(-28, 970);
-            ((RectTransform)chapter).sizeDelta = new Vector2(390, 1070);
+            float extra = (c.Nodes.Length - 3) * 135;
+            rewardPlatform.sizeDelta = new Vector2(146, 146); rewardPlatform.anchoredPosition = new Vector2(60, 805 + extra);
+            ((RectTransform)chapter.Find("GemReward")).anchoredPosition = new Vector2(60, 833 + extra);
+            ((RectTransform)chapter.Find("IslandChest")).anchoredPosition = new Vector2(-28, 970 + extra);
+            ((RectTransform)chapter).sizeDelta = new Vector2(390, 1070 + extra);
             EnlargeIslandAndAnimateShine(c);
             PolishFightLabels(c);
+            BossMapEnvironmentSetup.Install(c);
             EditorUtility.SetDirty(c);
         }
 

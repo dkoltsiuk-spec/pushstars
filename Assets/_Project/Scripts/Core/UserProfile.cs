@@ -8,7 +8,7 @@ namespace PushStars.Core
     public class UserProfile
     {
         public bool   Exists;
-        public string DisplayName = "Игрок";
+        public string DisplayName = "Player";
         public string Rank = "bronze";
         public long   Trophies;
         public long   Xp;

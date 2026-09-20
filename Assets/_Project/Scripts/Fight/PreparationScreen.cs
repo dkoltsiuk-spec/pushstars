@@ -21,12 +21,6 @@ namespace PushStars.Fight
                 if (avatar.gameObject.scene != gameObject.scene) continue;
                 avatar.SetPreparationPresentation(true);
                 if (avatar.StageCamera != null) avatar.StageCamera.enabled = true;
-                var animator = avatar.Character != null ? avatar.Character.GetComponentInChildren<Animator>() : null;
-                if (animator != null && animator.HasState(0, Animator.StringToHash("WarriorIdle")))
-                {
-                    animator.Play("WarriorIdle", 0, 0f);
-                    animator.Update(0f);
-                }
             }
             if (_panel == null) return;
             _panel.OnReady += Ready;
@@ -35,7 +29,7 @@ namespace PushStars.Fight
             var theme = Resources.Load<PushStarsTheme>("PushStarsTheme");
             bool hasHistory = !preview && (LocalProfile.Games > 0 || LocalProfile.Trophies > 0 || LocalProfile.BestReps > 0);
             var player = hasHistory
-                ? new DuelReadyPanel.Side("ТЫ", LocalProfile.Trophies, LocalProfile.BestReps,
+                ? new DuelReadyPanel.Side("YOU", LocalProfile.Trophies, LocalProfile.BestReps,
                     LocalProfile.Games > 0 ? LocalProfile.WinRatePercent : DuelReadyPanel.Side.Unknown)
                 : new DuelReadyPanel.Side("BEASTCORE_DEV", 120, 32, 52);
             DuelReadyPanel.Side opponent;

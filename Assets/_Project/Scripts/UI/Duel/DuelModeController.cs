@@ -66,25 +66,25 @@ namespace PushStars.UI
         public void ShowExerciseHint()
         {
             if (_toast != null)
-                _toast.Show("Приседания скоро — пока только отжимания");
+                _toast.Show("Squats are coming soon — push-ups for now");
         }
 
         private void ApplyMode()
         {
             if (_modeChip != null)
             {
-                _modeChip.SetLabel(CurrentMode == Mode.Duel ? "ДУЭЛЬ" : "ТРЕНИР.");
+                _modeChip.SetLabel(CurrentMode == Mode.Duel ? "DUEL" : "TRAINING");
                 _modeChip.SetSelected(true); // the mode chip always reads as the active selection
             }
 
             if (_findButton != null)
-                _findButton.SetLabel(CurrentMode == Mode.Duel ? "НАЙТИ СОПЕРНИКА" : "НАЧАТЬ ТРЕНИРОВКУ");
+                _findButton.SetLabel(CurrentMode == Mode.Duel ? "FIND OPPONENT" : "START TRAINING");
         }
 
         private void ApplyDuration()
         {
             if (_durationChip != null)
-                _durationChip.SetLabel(CurrentDuration == Duration.Sixty ? "60 СЕК" : "МАКС");
+                _durationChip.SetLabel(CurrentDuration == Duration.Sixty ? "60 SEC" : "MAX");
         }
     }
 }

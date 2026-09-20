@@ -94,7 +94,16 @@ namespace PushStars.Editor
                 int visibleLabels = FindAll<TextMeshProUGUI>(scene).Count(label => label.enabled && label.gameObject.activeInHierarchy &&
                     !string.IsNullOrWhiteSpace(label.text) && label.color.a > 0f);
                 int visibleGraphics = FindAll<Graphic>(scene).Count(item => item.enabled && item.gameObject.activeInHierarchy);
-                Require(visibleLabels >= 3 && visibleGraphics >= 5, "Scene is blank until Play/build code runs: " + source);
+                int minimumLabels = screen == FightScreen.CaseOpening ? 1 : screen == FightScreen.CaseReward ? 2 : 3;
+                Require(visibleLabels >= minimumLabels && visibleGraphics >= 5, "Scene is blank until Play/build code runs: " + source);
+                if (screen == FightScreen.CaseOpening)
+                {
+                    var opening = FindAll<RewardScreen>(scene).Single().CaseUi;
+                    Require(opening.Artwork != null && opening.Artwork.sprite != null &&
+                        opening.TapButton != null && opening.TapButton.gameObject.activeInHierarchy &&
+                        opening.RarityStarGroups.Any(row => row != null && row.activeInHierarchy),
+                        "Case opening needs visible artwork, rarity stars and a clickable case.");
+                }
                 Require(!FindAll<FightRewardFlow>(scene).Any(), "Legacy runtime reward builder is still attached: " + source);
                 if (screen == FightScreen.Battle)
                 {
@@ -113,6 +122,16 @@ namespace PushStars.Editor
                     Require(FindAll<DuelReadyPanel>(scene).SingleOrDefault()?.IsSceneAuthored == true, "Preparation panel is not marked as authored.");
                 if (screen == FightScreen.Results)
                     Require(FindAll<FightResultScreen>(scene).SingleOrDefault()?.IsSceneAuthored == true, "Results panel is not marked as authored.");
+                if (screen == FightScreen.RewardSummary)
+                {
+                    var summary = FindAll<RewardScreen>(scene).Single().SummaryUi;
+                    Require(summary.Avatar != null && summary.Avatar.gameObject.scene == scene &&
+                        summary.Avatar.StageCamera != null && summary.Portrait != null,
+                        "Summary needs its own serialized idle stage and portrait surface.");
+                    var stage = summary.Avatar.StageCamera.GetComponentInParent<CharacterStage>();
+                    Require(stage != null && new SerializedObject(stage).FindProperty("_targetImage").objectReferenceValue == summary.Portrait,
+                        "Summary idle stage must render into the summary portrait.");
+                }
                 if (screen >= FightScreen.RewardSummary)
                     Require(FindAll<RewardScreen>(scene).SingleOrDefault()?.Screen == screen, "RewardScreen kind/binding does not match " + source);
                 ValidateReferences(scene, source);

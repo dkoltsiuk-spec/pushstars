@@ -136,12 +136,12 @@ namespace PushStars.Editor
         /// <para><b>Download every clip as "Without Skin".</b> Mixamo's default packs a full mesh
         /// and its textures into the FBX, which makes a two-second take a 53 MB file — and the mesh
         /// is dead weight, because clips reach the characters through Humanoid retargeting, never
-        /// as geometry. Two clips (Victory, SadIdle) were downloaded the wrong way and dropped
-        /// again for that reason; re-add them here when a result screen needs them, at ~2 MB
-        /// each.</para></summary>
+        /// as geometry. SadIdle is the motion-only export used by the losing result avatar.
+        /// </para></summary>
         private static readonly (string file, string state, bool loop)[] Clips =
         {
             ("Standing W_Briefcase Idle.fbx", IdleState,   true),
+            ("Sad Idle.fbx",                  "SadIdle", true),
             // Loop OFF: it is a one-shot break, and the accent scheduler waits for it to end.
             ("Warrior Idle.fbx",              AccentState, false),
         };

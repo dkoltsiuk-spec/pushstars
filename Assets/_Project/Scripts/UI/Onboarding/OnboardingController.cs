@@ -42,8 +42,8 @@ namespace PushStars.UI
         [SerializeField] private Button _nextButton;
         [SerializeField] private TextMeshProUGUI _nextLabel;
         [SerializeField] private Button _backButton;
-        [Tooltip("Label for the button on each page. Falls back to ДАЛЕЕ when short.")]
-        [SerializeField] private string[] _nextLabels = { "", "ДАЛЕЕ", "ДАЛЕЕ", "ДАЛЕЕ", "НАЧАТЬ ЗАМЕР" };
+        [Tooltip("Label for the button on each page. Falls back to NEXT when short.")]
+        [SerializeField] private string[] _nextLabels = { "", "NEXT", "NEXT", "NEXT", "START ASSESSMENT" };
 
         [Header("Pages with their own button")]
         [Tooltip("Indices of the pages that carry their own call to action. The shared navigation " +
@@ -175,7 +175,7 @@ namespace PushStars.UI
                         _dots[i].color = i == _page ? DotOn : new Color(1f, 1f, 1f, 0.2f);
 
             if (_nextLabel != null)
-                _nextLabel.text = _page < _nextLabels.Length ? _nextLabels[_page] : "ДАЛЕЕ";
+                _nextLabel.text = _page < _nextLabels.Length ? _nextLabels[_page] : "NEXT";
 
             // A page with its own button hides the shared one rather than showing both. Two things
             // to press, one of which does nothing the player asked for, is how a permission screen
@@ -252,7 +252,7 @@ namespace PushStars.UI
             if (_cameraStatus == null) return;
             _cameraStatus.text = Application.HasUserAuthorization(UserAuthorization.WebCam)
                 ? ""
-                : "Камера не разрешена — повторы не засчитаются";
+                : "Camera access denied — reps cannot be counted";
         }
 
         /// <summary>

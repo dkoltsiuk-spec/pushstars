@@ -28,6 +28,7 @@ namespace PushStars.UI
         public Node[] Nodes;
         public Sprite Grass, Stone, Complete, Current, Locked, Goblin, LockedGoblin;
         public Sprite ProgressCurrent, ProgressLocked;
+        public Sprite FinalGoblin, FinalLockedGoblin;
         public FriendDuelController FriendDuel;
         public SearchOpponentController Battle;
         public Toast Hint;
@@ -97,11 +98,16 @@ namespace PushStars.UI
                 bool cleared = node.BossIndex < _progress;
                 node.Platform.sprite = current || cleared ? Grass : Stone;
                 node.Disc.sprite = current ? Current : cleared ? Complete : Locked;
-                node.Face.sprite = current || cleared ? Goblin : LockedGoblin;
+                bool final = node.BossIndex == BossCatalog.Bosses.Count - 1;
+                var face = final && FinalGoblin != null ? FinalGoblin : Goblin;
+                var lockedFace = final && FinalLockedGoblin != null ? FinalLockedGoblin : LockedGoblin;
+                node.Face.sprite = current || cleared ? face : lockedFace;
                 node.Fight.gameObject.SetActive(current);
                 node.ProgressPlate.sprite = current || cleared ? ProgressCurrent : ProgressLocked;
                 node.ProgressPlate.color = cleared ? new Color(.65f, 1f, .35f) : Color.white;
-                node.ProgressFace.sprite = current || cleared ? Goblin : LockedGoblin;
+                node.ProgressFace.sprite = current || cleared ? face : lockedFace;
+                node.Face.color = node.ProgressFace.color = final && !current && !cleared
+                    ? new Color(.45f, .45f, .45f, 1) : Color.white;
             }
         }
 
@@ -149,13 +155,13 @@ namespace PushStars.UI
             {
                 if (node.BossIndex == BossCatalog.CurrentIndex) Battle.Show();
                 else Hint?.Show(node.BossIndex < BossCatalog.CurrentIndex
-                    ? "Этот босс уже побеждён" : "Сначала победи предыдущего босса");
+                    ? "You've already defeated this boss" : "Defeat the previous boss first");
             }));
         }
 
         public void ShowRewardHint()
         {
-            Hint?.Show("Награды этого острова появятся позже");
+            Hint?.Show("Island rewards are coming later");
         }
 
         private IEnumerator Press(RectTransform target, Action complete)

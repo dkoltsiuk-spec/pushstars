@@ -139,7 +139,7 @@ namespace PushStars.UI
             var ghost = GhostStore.Load();
             if (ghost == null)
             {
-                ShowFoundCard("СНАЧАЛА ЗАМЕР УРОВНЯ");
+                ShowFoundCard("TAKE AN ASSESSMENT FIRST");
                 yield return new WaitForSeconds(FightConfig.FoundPauseSec);
                 _searchRoutine = null;
                 FightRequest.LevelTest();
@@ -160,7 +160,7 @@ namespace PushStars.UI
             EnsureTitleRef();
             if (_title == null) return;
 
-            _title.text = "СОПЕРНИК НАЙДЕН";
+            _title.text = "OPPONENT FOUND";
 
             // The boss name is a runtime clone of the title label (inherits the Rubik font and
             // styling), parked under the VS ring.

@@ -651,8 +651,8 @@ namespace PushStars.Editor
                 var comp2 = root.AddComponent<ExitButton>();
                 Wire(comp2, "_border",       borderImg);
                 Wire(comp2, "_fill",         fillImg);
-                Wire(comp2, "_label",        MakeButtonLabel(root, t, "ВЫЙТИ", BorderPx, t.BtnExitFg));
-                Wire(comp2, "_fallbackText", "ВЫЙТИ");
+                Wire(comp2, "_label",        MakeButtonLabel(root, t, "EXIT", BorderPx, t.BtnExitFg));
+                Wire(comp2, "_fallbackText", "EXIT");
                 SavePrefab(root, $"{PrefabsDir}/ExitButton.prefab");
                 Object.DestroyImmediate(root);
                 return;
@@ -660,8 +660,8 @@ namespace PushStars.Editor
 
             var comp = root.AddComponent<ExitButton>();
             Wire(comp, "_border",       borderImg);
-            Wire(comp, "_label",        MakeButtonLabel(root, t, "ВЫЙТИ", 0, t.BtnExitFg));
-            Wire(comp, "_fallbackText", "ВЫЙТИ");
+            Wire(comp, "_label",        MakeButtonLabel(root, t, "EXIT", 0, t.BtnExitFg));
+            Wire(comp, "_fallbackText", "EXIT");
 
             SavePrefab(root, $"{PrefabsDir}/ExitButton.prefab");
             Object.DestroyImmediate(root);
@@ -748,8 +748,8 @@ namespace PushStars.Editor
                 var comp2 = root.AddComponent<ReadyButton>();
                 Wire(comp2, "_border",       borderImg);
                 Wire(comp2, "_fill",         fillImg);
-                Wire(comp2, "_label",        MakeButtonLabel(root, t, "ГОТОВ", BorderPx, t.BtnReadyFg));
-                Wire(comp2, "_fallbackText", "ГОТОВ");
+                Wire(comp2, "_label",        MakeButtonLabel(root, t, "READY", BorderPx, t.BtnReadyFg));
+                Wire(comp2, "_fallbackText", "READY");
                 SavePrefab(root, $"{PrefabsDir}/ReadyButton.prefab");
                 Object.DestroyImmediate(root);
                 return;
@@ -757,8 +757,8 @@ namespace PushStars.Editor
 
             var comp = root.AddComponent<ReadyButton>();
             Wire(comp, "_border",       borderImg);
-            Wire(comp, "_label",        MakeButtonLabel(root, t, "ГОТОВ", 0, t.BtnReadyFg));
-            Wire(comp, "_fallbackText", "ГОТОВ");
+            Wire(comp, "_label",        MakeButtonLabel(root, t, "READY", 0, t.BtnReadyFg));
+            Wire(comp, "_fallbackText", "READY");
 
             SavePrefab(root, $"{PrefabsDir}/ReadyButton.prefab");
             Object.DestroyImmediate(root);
@@ -925,24 +925,24 @@ namespace PushStars.Editor
                 btnDanger.GetComponent<PrimaryButton>()?.SetLabel("EXIT");
             }
 
-            AddSubHeader(contentGO, "Exit Button (ВЫЙТИ — Search Opponent)", theme.TextSecondary);
+            AddSubHeader(contentGO, "Exit Button (EXIT — Search Opponent)", theme.TextSecondary);
             var exitRow = MakeHStack(contentGO.transform, "ExitButtonRow");
             var exitBtn = Spawn(exitPrefab, exitRow.transform);
-            exitBtn?.GetComponent<ExitButton>()?.SetLabel("ВЫЙТИ");
+            exitBtn?.GetComponent<ExitButton>()?.SetLabel("EXIT");
 
-            AddSubHeader(contentGO, "Ready Button (ГОТОВ — confirm screen)", theme.TextSecondary);
+            AddSubHeader(contentGO, "Ready Button (READY — confirm screen)", theme.TextSecondary);
             var readyRow = MakeHStack(contentGO.transform, "ReadyButtonRow");
             var readyBtn = Spawn(readyPrefab, readyRow.transform);
-            readyBtn?.GetComponent<ReadyButton>()?.SetLabel("ГОТОВ");
+            readyBtn?.GetComponent<ReadyButton>()?.SetLabel("READY");
 
             AddSubHeader(contentGO, "Mode Chips", theme.TextSecondary);
             var chipsRow = MakeHStack(contentGO.transform, "ChipsRow");
             var c1 = Spawn(chipPrefab, chipsRow.transform);
             var c2 = Spawn(chipPrefab, chipsRow.transform);
             var c3 = Spawn(chipPrefab, chipsRow.transform);
-            c1?.GetComponent<SecondaryChip>()?.SetLabel("ДУЭЛЬ");
-            c2?.GetComponent<SecondaryChip>()?.SetLabel("отжим.");
-            c3?.GetComponent<SecondaryChip>()?.SetLabel("60 сек");
+            c1?.GetComponent<SecondaryChip>()?.SetLabel("DUEL");
+            c2?.GetComponent<SecondaryChip>()?.SetLabel("push-ups");
+            c3?.GetComponent<SecondaryChip>()?.SetLabel("60 sec");
             if (c1 != null) { c1.GetComponent<SecondaryChip>()?.SetIcon(theme.IconLightning); c1.GetComponent<SecondaryChip>()?.SetSelected(true); }
             if (c2 != null) { c2.GetComponent<SecondaryChip>()?.SetIcon(theme.IconPushup);    c2.GetComponent<SecondaryChip>()?.SetSelected(false); }
             if (c3 != null) { c3.GetComponent<SecondaryChip>()?.SetIcon(theme.IconTime);      c3.GetComponent<SecondaryChip>()?.SetSelected(false); }
@@ -1082,7 +1082,7 @@ namespace PushStars.Editor
             var samples = new (string label, string text, float size, FontStyles style)[]
             {
                 ("H1 / 32 / Bold",            "Push Stars",            32, FontStyles.Bold),
-                ("H2 / 24 / Bold",            "ПОИСК СОПЕРНИКА",       24, FontStyles.Bold),
+                ("H2 / 24 / Bold",            "FINDING OPPONENT",       24, FontStyles.Bold),
                 ("H3 / 18 / Bold",            "FIND OPPONENT",         18, FontStyles.Bold),
                 ("Body / 16 / Regular",       "Auras can be used to buy unique animations", 16, FontStyles.Normal),
                 ("Body / 14 / Italic",        "tip: keep your form straight", 14, FontStyles.Italic),
@@ -1137,7 +1137,7 @@ namespace PushStars.Editor
             var matches = new (string opp, string result, string score, string mode, bool win)[]
             {
                 ("PushKing99",  "WIN",  "24 – 18", "DUEL",   true),
-                ("FitWarrior",  "LOSE", "11 – 19", "60 СЕК", false),
+                ("FitWarrior",  "LOSE", "11 – 19", "60 SEC", false),
                 ("IronMike_88", "WIN",  "32 – 27", "PUSHUP", true),
             };
 

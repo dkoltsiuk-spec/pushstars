@@ -53,7 +53,7 @@ namespace PushStars.Editor
                 if (canvas == null) throw new InvalidOperationException("Fight source has no canvas on its panel host.");
                 var stages = PrepareIndependentStages(copied);
                 Texture2D portrait = EnsureStandingPortrait(stages.First());
-                EnsurePortrait(stages.First(), StandingFemalePortraitPath, "WarriorIdle", 0.13f, 512, 1024, true);
+                EnsurePortrait(stages.First(), StandingFemalePortraitPath, "StandIdle", 0f, 512, 1024, true);
                 EnsurePortrait(stages.First(), PronePortraitPath, "PushUp", 0.5f, 960, 640);
                 Canvas.ForceUpdateCanvases();
 
@@ -241,18 +241,26 @@ namespace PushStars.Editor
             serialized.ApplyModifiedPropertiesWithoutUndo();
         }
 
+        public static void RefreshStandingPortraits()
+        {
+            var avatar = UnityEngine.Object.FindFirstObjectByType<FightAvatar>();
+            if (avatar == null) throw new InvalidOperationException("Open a fight preparation scene first.");
+            EnsurePortrait(avatar, StandingPortraitPath, "StandIdle", 0f, 512, 1024, force: true);
+            EnsurePortrait(avatar, StandingFemalePortraitPath, "StandIdle", 0f, 512, 1024, true, force: true);
+        }
+
         private static Texture2D EnsureStandingPortrait(FightAvatar avatar) =>
-            EnsurePortrait(avatar, StandingPortraitPath, "WarriorIdle", 0.13f, 512, 1024);
+            EnsurePortrait(avatar, StandingPortraitPath, "StandIdle", 0f, 512, 1024);
 
         public static Texture2D EnsureTrainingRestPortrait(FightAvatar avatar, bool female = false) =>
             EnsurePortrait(avatar, "Assets/_Project/UI/Portraits/training_rest" + (female ? "_female" : "") + ".png", "WarriorIdle", .13f, 960, 720, female, true);
         public static Texture2D EnsureTrainingPushupPortrait(FightAvatar avatar, bool female = false) =>
             EnsurePortrait(avatar, "Assets/_Project/UI/Portraits/training_pushup" + (female ? "_female" : "") + ".png", "PushUp", .5f, 720, 720, female);
 
-        private static Texture2D EnsurePortrait(FightAvatar avatar, string assetPath, string pose, float poseTime, int width, int height, bool female = false, bool resting = false)
+        private static Texture2D EnsurePortrait(FightAvatar avatar, string assetPath, string pose, float poseTime, int width, int height, bool female = false, bool resting = false, bool force = false)
         {
             var existing = AssetDatabase.LoadAssetAtPath<Texture2D>(assetPath);
-            if (existing != null) return existing;
+            if (existing != null && !force) return existing;
             var serialized = new SerializedObject(avatar);
             var prefab = serialized.FindProperty(female ? "_femalePrefab" : "_malePrefab").objectReferenceValue as GameObject;
             if (prefab == null)

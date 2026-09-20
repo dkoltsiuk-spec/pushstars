@@ -29,16 +29,18 @@ Material:
         m_Offset: {x: 0, y: 0}
     m_Ints: []
     m_Floats:
-    - _LightInfluence: 0.527
-    - _OutlineWidth: 0.0101
+    - _LightInfluence: 0.489
+    - _OutlineWidth: 0.0046
     - _RimPower: 12
     - _RimStrength: 0
-    - _ShadeSoftness: 0.073
-    - _ShadeStrength: 0.898
-    - _ShadeThreshold: 0.32
+    - _ShadeSoftness: 0.475
+    - _ShadeStrength: 0.836
+    - _ShadeThreshold: 0.29
     m_Colors:
     - _BaseColor: {r: 0.75, g: 0.75, b: 0.78, a: 1}
     - _OutlineColor: {r: 0, g: 0, b: 0, a: 1}
     - _RimColor: {r: 1, g: 1, b: 1, a: 1}
+    - _RimLightDirection: {r: 0, g: 0, b: 0, a: 0}
     - _ShadeColor: {r: 0.41999996, g: 0.45999992, b: 0.62, a: 1}
   m_BuildTextureStacks: []
+  m_AllowLocking: 1

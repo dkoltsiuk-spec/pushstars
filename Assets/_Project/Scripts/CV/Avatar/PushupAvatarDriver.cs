@@ -66,6 +66,7 @@ namespace PushStars.CV
         private float _targetDepth;
         private float _depthVel;
         private bool _started;
+        private bool _restPresentation;
         private PushupPoseCorrection _poseCorrection;
 
         private void Awake() => RehashStates();
@@ -95,6 +96,15 @@ namespace PushStars.CV
             _started = false;
             Mode = AvatarMode.Idle;
             RehashStates();
+        }
+
+        /// <summary>Forces the seated rest pose used by the training screen between sets.
+        /// The live session is disabled while the rest screen is shown, so the normal session
+        /// state cannot select the rest clip on its own during that interval.</summary>
+        public void SetRestPresentation(bool resting)
+        {
+            _restPresentation = resting;
+            _started = false;
         }
 
         private void OnDisable() => ReleaseCorrection();
@@ -133,7 +143,7 @@ namespace PushStars.CV
             if (_session == null || _animator == null || !_animator.isActiveAndEnabled) return;
             if (_poseCorrection == null) _poseCorrection = PushupPoseCorrection.Bind(_animator);
 
-            AvatarMode target = ResolveMode();
+            AvatarMode target = _restPresentation ? AvatarMode.Rest : ResolveMode();
             if (!_started || target != Mode)
             {
                 _started = true;

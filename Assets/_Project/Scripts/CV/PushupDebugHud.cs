@@ -169,17 +169,17 @@ namespace PushStars.CV
         {
             color = new Color(1f, 0.75f, 0.2f); // default: orange "do something" tone
             var armer = _session.Armer;
-            if (armer == null) { color = Color.red; return "ИНИЦИАЛИЗАЦИЯ…"; }
+            if (armer == null) { color = Color.red; return "INITIALIZING…"; }
 
             // Armed and counting — the quietest state.
             if (armer.IsArmed)
             {
                 if (_session.WristAnchor.LastVerdict == AnchorVerdict.Airborne)
-                { color = new Color(1f, 0.4f, 0.3f); return "СЧЁТ НА ПАУЗЕ — ладони на пол"; }
+                { color = new Color(1f, 0.4f, 0.3f); return "COUNT PAUSED — palms on the floor"; }
                 if (_session.Tracker.BottomAltHintActive)
-                { return "РАЗВЕДИ ЛОКТИ ШИРЕ"; }
+                { return "MOVE YOUR ELBOWS WIDER"; }
                 color = new Color(0.4f, 1f, 0.5f);
-                return "СЧИТАЮ";
+                return "COUNTING";
             }
 
             // Arming beats the rest-state display: the user is actively getting back into the
@@ -187,29 +187,29 @@ namespace PushStars.CV
             if (armer.State == PlankArmerState.Arming)
             {
                 color = new Color(0.8f, 1f, 0.6f);
-                return $"ДЕРЖИ ПЛАНКУ…  {armer.ArmingProgress01 * 100f:0}%";
+                return $"HOLD A PLANK…  {armer.ArmingProgress01 * 100f:0}%";
             }
 
             if (_session.SetTracker.State == WorkoutSetState.Resting)
-            { color = new Color(0.5f, 0.8f, 1f); return $"ОТДЫХ  ({_session.SetTracker.RestingForSec:0}s)"; }
+            { color = new Color(0.5f, 0.8f, 1f); return $"REST  ({_session.SetTracker.RestingForSec:0}s)"; }
             if (_session.SetTracker.State == WorkoutSetState.SetComplete)
-            { color = new Color(0.5f, 0.8f, 1f); return "ПОДХОД ЗАВЕРШЁН — встань в планку для следующего"; }
+            { color = new Color(0.5f, 0.8f, 1f); return "SET COMPLETE — get into a plank for the next set"; }
 
             // Disarmed — say WHY in plain words.
             return armer.LastRejectReason switch
             {
-                PlankRejectReason.TrackingLost        => "НЕ ВИЖУ ТЕБЯ — отойди на 1.5–2 метра",
-                PlankRejectReason.TooCloseOrFar       => "ВСТАНЬ В 1.5–2 МЕТРАХ ОТ ТЕЛЕФОНА",
-                PlankRejectReason.BadFraming          => "ПОМЕСТИСЬ В КАДР — голова и обе ладони видны",
-                PlankRejectReason.PhoneTilted         => "ПОСТАВЬ ТЕЛЕФОН РОВНЕЕ",
-                PlankRejectReason.HipNotVisible       => "НЕ ВИДНО КОРПУС — поправь кадр",
-                PlankRejectReason.BodyIncline         => "ПРИМИ УПОР ЛЁЖА",
-                PlankRejectReason.LowerBodyNotVisible => "ОТОЙДИ — НЕ ВИДНО НОГ",
-                PlankRejectReason.BodySagging         => "ВЫПРЯМИ ТЕЛО",
-                PlankRejectReason.KneesBent           => "ВЫТЯНИ ТЕЛО — колени не под собой",
-                PlankRejectReason.NotAtTop            => "ВЫПРЯМИ РУКИ",
-                PlankRejectReason.WristsAirborne      => "ПОСТАВЬ ЛАДОНИ НА ПОЛ",
-                _                                     => "ВСТАНЬ В ПЛАНКУ",
+                PlankRejectReason.TrackingLost        => "CAN'T SEE YOU — step back 1.5–2 meters",
+                PlankRejectReason.TooCloseOrFar       => "STAND 1.5–2 METERS FROM YOUR PHONE",
+                PlankRejectReason.BadFraming          => "FIT IN FRAME — show your head and both palms",
+                PlankRejectReason.PhoneTilted         => "KEEP YOUR PHONE LEVEL",
+                PlankRejectReason.HipNotVisible       => "TORSO NOT VISIBLE — adjust the camera",
+                PlankRejectReason.BodyIncline         => "GET INTO A PUSH-UP POSITION",
+                PlankRejectReason.LowerBodyNotVisible => "STEP BACK — LEGS NOT VISIBLE",
+                PlankRejectReason.BodySagging         => "KEEP YOUR BODY STRAIGHT",
+                PlankRejectReason.KneesBent           => "EXTEND YOUR BODY — move knees back",
+                PlankRejectReason.NotAtTop            => "STRAIGHTEN YOUR ARMS",
+                PlankRejectReason.WristsAirborne      => "PLACE YOUR PALMS ON THE FLOOR",
+                _                                     => "GET INTO A PLANK",
             };
         }
 
@@ -285,7 +285,7 @@ namespace PushStars.CV
             _gaugeLabelStyle ??= new GUIStyle(GUI.skin.label)
             { fontStyle = FontStyle.Bold, alignment = TextAnchor.UpperRight };
             _gaugeLabelStyle.fontSize = Mathf.RoundToInt(Mathf.Clamp(Screen.height * 0.016f, 12f, 24f));
-            string hint = t.BottomAltHintActive ? "\nЛОКТИ ШИРЕ!" : "";
+            string hint = t.BottomAltHintActive ? "\nELBOWS WIDER!" : "";
             string label = $"{t.MedianElbowDeg:0}°{hint}";
             GUI.color = t.BottomAltHintActive ? new Color(1f, 0.7f, 0.2f) : Color.white;
             GUI.Label(new Rect(barX - 30f * s, barY + barH + 0.5f * s, barW + 30f * s, 6f * s), label, _gaugeLabelStyle);
@@ -343,10 +343,10 @@ namespace PushStars.CV
             var st = _session.SetTracker;
             return st.State switch
             {
-                WorkoutSetState.Idle        => "Idle (встань в планку)",
+                WorkoutSetState.Idle        => "Idle (get into a plank)",
                 WorkoutSetState.Active      => $"Active  #{st.SetIndex}  reps={st.RepsInSet}",
-                WorkoutSetState.Resting     => $"ОТДЫХ  #{st.SetIndex}  reps={st.RepsInSet}  {st.RestingForSec:0.0}s/{CVConstants.RestToSetCompleteSec:0}s",
-                WorkoutSetState.SetComplete => $"ПОДХОД ЗАВЕРШЁН  #{st.SetIndex}  reps={st.RepsInSet}",
+                WorkoutSetState.Resting     => $"REST  #{st.SetIndex}  reps={st.RepsInSet}  {st.RestingForSec:0.0}s/{CVConstants.RestToSetCompleteSec:0}s",
+                WorkoutSetState.SetComplete => $"SET COMPLETE  #{st.SetIndex}  reps={st.RepsInSet}",
                 _ => st.State.ToString(),
             };
         }

@@ -112,17 +112,17 @@ namespace PushStars.Editor
         private static void BuildSummary()
         {
             var ui = _screen.SummaryUi;
-            Label("Title", Group("header", 195, 105, 354, 90), "ТРЕНИРОВКА\nЗАВЕРШЕНА!", 29, Gold,
+            Label("Title", Group("header", 195, 105, 354, 90), "WORKOUT\nCOMPLETE!", 29, Gold,
                 FightTypography.Role.Title, TextAlignmentOptions.Left);
-            Label("Subtitle", Group("subtitle", 195, 163, 352, 24), "Становишься сильнее с каждым разом", 12.5f,
+            Label("Subtitle", Group("subtitle", 195, 163, 352, 24), "Getting stronger every time", 12.5f,
                 Color.white, FightTypography.Role.Subtitle, TextAlignmentOptions.Left);
             ui.PlayerName = Label("PlayerName", Group("player-name", 195, 199, 352, 24), "BEASTCORE_DEV", 14,
                 Gold, FightTypography.Role.Label, TextAlignmentOptions.Left);
-            ui.Trophies = RewardRow("trophies", "КУБКИ", _theme != null ? _theme.IconCup : null,
+            ui.Trophies = RewardRow("trophies", "TROPHIES", _theme != null ? _theme.IconCup : null,
                 258, Gold, "+21", out ui.TrophyContent, out _);
-            ui.EnergyXp = RewardRow("energy-xp", "ОПЫТ", _theme != null ? _theme.IconXP : null,
+            ui.EnergyXp = RewardRow("energy-xp", "XP", _theme != null ? _theme.IconXP : null,
                 310, Gold, "+570", out ui.XpContent, out _);
-            ui.Aura = RewardRow("aura", "АУРА", _theme != null ? _theme.IconAura : null,
+            ui.Aura = RewardRow("aura", "AURA", _theme != null ? _theme.IconAura : null,
                 362, Violet, "+32", out ui.AuraContent, out var aura);
             ui.AuraGroup = aura.gameObject;
 
@@ -138,29 +138,30 @@ namespace PushStars.Editor
             if (ui.Portrait.texture == null)
                 throw new InvalidOperationException("Build the presentation scenes and standing portrait before the reward scenes.");
             var reps = Group("reps", 77, 466, 116, 98);
-            Label("Caption", Rect("CaptionBox", reps, 58, 13, 116, 26), "ВСЕГО ПОВТОРОВ", 11, Muted,
+            Label("Caption", Rect("CaptionBox", reps, 58, 13, 116, 26), "TOTAL REPS", 11, Muted,
                 FightTypography.Role.Caption, TextAlignmentOptions.Left);
             ui.TotalReps = Label("Count", Rect("CountBox", reps, 58, 65, 116, 70), "57", 57,
                 Color.white, FightTypography.Role.Value, TextAlignmentOptions.Left);
             var technique = Group("technique", 77, 565, 116, 65);
-            Label("Caption", Rect("CaptionBox", technique, 58, 12, 116, 24), "ТЕХНИКА", 12, Muted,
+            Label("Caption", Rect("CaptionBox", technique, 58, 12, 116, 24), "FORM", 12, Muted,
                 FightTypography.Role.Caption, TextAlignmentOptions.Left);
             ui.Technique = Label("Value", Rect("ValueBox", technique, 58, 44, 116, 40), "92%", 25,
                 Lime, FightTypography.Role.Value, TextAlignmentOptions.Left);
             ui.CaseAwardButton = ActionButton(Group("case-award-button", 94, 673, 150, 48),
-                "ПОЛУЧЕН КЕЙС", _screen.InspectCaseAward, out var awardLabel);
+                "CASE EARNED", _screen.InspectCaseAward, out var awardLabel);
             awardLabel.fontSize = 13; awardLabel.fontSizeMax = 13; awardLabel.fontSizeMin = 10;
-            ActionButton(Group("continue-button", 195, 775, 230, 60), "НА ГЛАВНУЮ", _screen.Home, out _);
+            ActionButton(Group("continue-button", 195, 775, 230, 60), "HOME", _screen.Home, out _);
+            RewardSummaryStageSetup.Attach(_screen);
         }
 
         private static void BuildCase(bool receipt)
         {
             var ui = _screen.CaseUi;
-            Label("Title", Group("header", 195, 111, 340, 46), receipt ? "ПОЛУЧЕН КЕЙС!" : "ТВОЙ КЕЙС", 28,
+            Label("Title", Group("header", 195, 111, 340, 46), receipt ? "CASE EARNED!" : "YOUR CASE", 28,
                 receipt ? Gold : Color.white, FightTypography.Role.Heading);
-            ui.Source = Label("Source", Group("queue", 195, 151, 340, 24), "КЕЙС ЗА ТРЕНИРОВКУ", 12,
+            ui.Source = Label("Source", Group("queue", 195, 151, 340, 24), "WORKOUT CASE", 12,
                 Muted, FightTypography.Role.Caption);
-            ui.Rarity = Label("Rarity", Group("rarity", 195, 224, 340, 40), "ОБЫЧНЫЙ", 24,
+            ui.Rarity = Label("Rarity", Group("rarity", 195, 224, 340, 40), "COMMON", 24,
                 RewardScreen.RarityColor(CaseRarity.Common), FightTypography.Role.Value);
             var stars = Group("stars", 195, 271, 180, 40);
             ui.StarsContent = FullRect("AnimatedStars", stars);
@@ -191,7 +192,7 @@ namespace PushStars.Editor
             ui.TapButton.targetGraphic = hit; ui.TapButton.transition = Selectable.Transition.None;
             UnityEventTools.AddPersistentListener(ui.TapButton.onClick, _screen.TapCase);
             ui.Status = Label("Message", Group("upgrade-message", 195, 612, 352, 37),
-                receipt ? "КЕЙС СОХРАНЁН В ИНВЕНТАРЕ" : "КАЖДЫЙ ТАП — ШАНС НА УЛУЧШЕНИЕ", 17,
+                receipt ? "CASE SAVED TO INVENTORY" : "EACH TAP IS A CHANCE TO UPGRADE", 17,
                 Gold, FightTypography.Role.Label);
             if (!receipt)
             {
@@ -206,20 +207,21 @@ namespace PushStars.Editor
                 }
             }
             ui.Hint = Label("Hint", Group("hint", 195, 704, 340, 52),
-                receipt ? "Открой сейчас или вернись к нему позже" : "Нажимай на кейс — каждый тап\nдаёт шанс повысить редкость",
+                receipt ? "Open it now or come back later" : "Tap the case — each tap gives you\na chance to upgrade its rarity",
                 15, Color.white, FightTypography.Role.Caption);
             ui.ActionButton = ActionButton(Group("open-button", 195, 781, 228, 57),
-                receipt ? "ОТКРЫТЬ СЕЙЧАС" : "УЛУЧШИТЬ  1/3", receipt ? (UnityAction)_screen.OpenNow : _screen.TapCase,
+                receipt ? "OPEN NOW" : "UPGRADE  1/3", receipt ? (UnityAction)_screen.OpenNow : _screen.TapCase,
                 out ui.ActionLabel);
             HomeButton();
+            if (!receipt) RewardCaseAttentionSetup.Attach(_screen);
         }
 
         private static void BuildPrize()
         {
             var ui = _screen.PrizeUi;
-            Label("Title", Group("header", 195, 185, 350, 48), "КРИСТАЛЛЫ", 30,
+            Label("Title", Group("header", 195, 185, 350, 48), "CRYSTALS", 30,
                 Color.white, FightTypography.Role.Heading);
-            ui.Rarity = Label("Rarity", Group("rarity", 195, 231, 340, 26), "РЕДКИЙ КЕЙС", 13,
+            ui.Rarity = Label("Rarity", Group("rarity", 195, 231, 340, 26), "RARE CASE", 13,
                 new Color(1, 1, 1, 0.72f), FightTypography.Role.Caption);
             var prize = Group("gems", 195, 430, 245, 230);
             ui.Glow = Glow(prize, new Color(0.8f, 1, 0.1f), 410);
@@ -227,16 +229,17 @@ namespace PushStars.Editor
             Icon("GemsArt", ui.Content, Resources.Load<Sprite>("Rewards/Gems"));
             ui.Amount = Label("Amount", Group("amount", 195, 576, 270, 65), "×100", 46,
                 Color.white, FightTypography.Role.Value);
-            ui.Note = Label("Note", Group("receipt", 195, 682, 346, 42), "Кристаллы пополнят твой баланс", 14,
+            ui.Note = Label("Note", Group("receipt", 195, 682, 346, 42), "Crystals will be added to your balance", 14,
                 Color.white, FightTypography.Role.Caption);
-            ui.ClaimButton = ActionButton(Group("claim-button", 195, 780, 252, 60), "ЗАБРАТЬ И ДОМОЙ", _screen.ClaimPrize,
+            ui.ClaimButton = ActionButton(Group("claim-button", 195, 780, 252, 60), "CLAIM & HOME", _screen.ClaimPrize,
                 out ui.ClaimLabel);
             HomeButton();
+            GemRewardSceneSetup.Configure(_screen);
         }
 
         private static void HomeButton()
         {
-            var button = ActionButton(Group("home-button", 74, 49, 126, 42), "ДОМОЙ", _screen.Home, out var label);
+            var button = ActionButton(Group("home-button", 74, 49, 126, 42), "HOME", _screen.Home, out var label);
             label.fontSize = 14; label.fontSizeMax = 14; label.fontSizeMin = 12;
         }
 
@@ -256,17 +259,7 @@ namespace PushStars.Editor
         private static void AddPattern(Transform parent, FightRewardBackdrop.Style appearance)
         {
             if (_theme == null || _theme.IconLightningBG == null) return;
-            var pattern = FullRect("LightningPattern", parent);
-            for (int row = 0; row < 9; row++)
-                for (int col = 0; col < 5; col++)
-                {
-                    var bolt = Icon("Bolt", pattern, _theme.IconLightningBG);
-                    bolt.rectTransform.anchorMin = bolt.rectTransform.anchorMax =
-                        new Vector2((col + (row % 2) * 0.45f) / 4f, row / 8f);
-                    bolt.rectTransform.anchoredPosition = Vector2.zero;
-                    bolt.rectTransform.sizeDelta = new Vector2(70, 90);
-                    bolt.color = new Color(1, 1, 1, appearance == FightRewardBackdrop.Style.Gems ? 0.07f : 0.025f);
-                }
+            LightningField.Build((RectTransform)parent, _theme.IconLightningBG);
         }
 
         private static RectTransform Group(string id, float x, float y, float width, float height)

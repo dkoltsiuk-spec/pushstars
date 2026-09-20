@@ -185,7 +185,7 @@ namespace PushStars.CV
             if (!_ready || !PoseRetargetMath.Finite(depth)) return;
             depth = Mathf.Clamp01(depth);
             Restore(_referencePositions, _referenceRotations);
-            float height = Mathf.Lerp(_topHeight, _wristHeight + _armLength * .64f, depth);
+            float height = Mathf.Lerp(_topHeight, _wristHeight + _armLength * .56f, depth);
             float angle = PlankAngle(height);
             Quaternion plank = Quaternion.Euler(90f - angle * Mathf.Rad2Deg, 0f, 0f);
             Vector3 ankleCentre = new Vector3(0f, _ankleHeight, _ankleZ);

@@ -50,7 +50,7 @@ namespace PushStars.Editor
         const string PausePlateSprite = "Assets/_Project/UI/Sprites/btn_pause.png";
         const string YellowPlateSprite = "Assets/_Project/UI/Sprites/onb_btn_allow.png";
         /// <summary>The supplied blue backdrop for the post-onboarding level test.</summary>
-        const string MainBgSprite = "Assets/_Project/UI/Sprites/bg_zamer.png";
+        const string MainBgSprite = "Assets/_Project/UI/Sprites/IMG_0916.PNG";
         const string BoltTopSprite = "Assets/_Project/UI/Sprites/bolt_corner_top.png";
         const string BoltBottomSprite = "Assets/_Project/UI/Sprites/bolt_corner_bottom.png";
         const string VsCoinSprite = "Assets/_Project/UI/Sprites/VS_for_serching.png";
@@ -59,6 +59,7 @@ namespace PushStars.Editor
         /// this project's 390×844 reference canvas — so it is meant to be shown at native aspect,
         /// full-bleed, not tiled or cropped.</summary>
         const string FightBgSprite = "Assets/_Project/UI/Sprites/bg_fight.png";
+        const string DuelFightBgSprite = "Assets/_Project/UI/Sprites/bg_fight-divider-variant.png";
         /// <summary>The jagged ribbon banner the verdict sits on. 811×296 (aspect 2.74) — placed at
         /// that same aspect so its torn edges render as drawn, not stretched.</summary>
         const string BannerWinSprite = "Assets/_Project/UI/Sprites/bg_winner.png";
@@ -307,6 +308,8 @@ namespace PushStars.Editor
             UiBuilder.Set(ctrlSO, "_hud", hud);
             UiBuilder.Set(ctrlSO, "_result", result);
             UiBuilder.Set(ctrlSO, "_readyPanel", readyPanel);
+            UiBuilder.Set(ctrlSO, "_baseBackground", baseBg);
+            UiBuilder.Set(ctrlSO, "_duelBackground", LoadSprite(DuelFightBgSprite));
             UiBuilder.Set(ctrlSO, "_exitButton", exitBtn);
             UiBuilder.Set(ctrlSO, "_exitLabel", exitLabel);
             UiBuilder.Set(ctrlSO, "_soloExitButton", soloRefs.Exit);
@@ -474,7 +477,7 @@ namespace PushStars.Editor
             var opp = UiBuilder.Rect(safe, "OpponentScore");
             UiBuilder.Stretch(opp);
             refs.OpponentPanel = opp.gameObject;
-            refs.OpponentName = NameBadge(opp, "OpponentName", "СОПЕРНИК", new Vector2(0f, 1f),
+            refs.OpponentName = NameBadge(opp, "OpponentName", "OPPONENT", new Vector2(0f, 1f),
                                           new Vector2(14f, -14f));
             refs.OpponentReps = UiBuilder.Text(opp, "OpponentReps", AppColors.TextPrimary, "0", 68,
                                                FontStyles.Bold, TextAlignmentOptions.Left);
@@ -482,7 +485,7 @@ namespace PushStars.Editor
                             new Vector2(14f, -46f), new Vector2(180f, 82f));
             refs.OpponentForm = StatBlock(opp, "OpponentForm", "FORM", new Vector2(1f, 1f),
                                           new Vector2(-14f, -50f));
-            refs.OpponentTempo = StatBlock(opp, "OpponentTempo", "ТЕМП", new Vector2(1f, 1f),
+            refs.OpponentTempo = StatBlock(opp, "OpponentTempo", "PACE", new Vector2(1f, 1f),
                                            new Vector2(-14f, -110f));
 
             // Player scoreboard: same side-assignment as the opponent's (name+count share a side,
@@ -493,7 +496,7 @@ namespace PushStars.Editor
             var mine = UiBuilder.Rect(safe, "PlayerScore");
             UiBuilder.Stretch(mine);
             refs.PlayerPanel = mine.gameObject;
-            refs.PlayerName = NameBadge(mine, "PlayerName", "ТЫ", new Vector2(0f, 0f),
+            refs.PlayerName = NameBadge(mine, "PlayerName", "YOU", new Vector2(0f, 0f),
                                         new Vector2(14f, 380f));
             refs.PlayerReps = UiBuilder.Text(mine, "PlayerReps", AppColors.AccentYellow, "0", 68,
                                              FontStyles.Bold, TextAlignmentOptions.Right);
@@ -501,7 +504,7 @@ namespace PushStars.Editor
                             new Vector2(-14f, 292f), new Vector2(180f, 82f));
             refs.PlayerForm = StatBlock(mine, "PlayerForm", "FORM", new Vector2(0f, 0f),
                                         new Vector2(14f, 344f));
-            refs.PlayerTempo = StatBlock(mine, "PlayerTempo", "ТЕМП", new Vector2(0f, 0f),
+            refs.PlayerTempo = StatBlock(mine, "PlayerTempo", "PACE", new Vector2(0f, 0f),
                                          new Vector2(14f, 288f));
 
             // Clock on the seam: both fighters are readable without leaving it.
@@ -522,7 +525,7 @@ namespace PushStars.Editor
             var bannerBg = UiBuilder.Image(bannerRoot, "Bg", new Color(0f, 0f, 0f, 0.62f));
             UiBuilder.Stretch(bannerBg.rectTransform);
             refs.BannerText = UiBuilder.Text(bannerRoot, "Text", new Color(1f, 0.75f, 0.2f),
-                                             "ВСТАНЬ В ПЛАНКУ ПЕРЕД КАМЕРОЙ", 18, FontStyles.Bold);
+                                             "GET INTO A PLANK IN FRONT OF THE CAMERA", 18, FontStyles.Bold);
             UiBuilder.Stretch(refs.BannerText.rectTransform, 10, 6, 10, 6);
             refs.BannerRoot = bannerRoot.gameObject;
 
@@ -531,7 +534,7 @@ namespace PushStars.Editor
                             new Vector2(0f, 0f), new Vector2(380f, 130f));
             refs.Countdown.gameObject.SetActive(false);
 
-            exitBtn = UiBuilder.Button(safe, "ExitFight", "ВЫЙТИ", new Color(0f, 0f, 0f, 0.45f),
+            exitBtn = UiBuilder.Button(safe, "ExitFight", "EXIT", new Color(0f, 0f, 0f, 0.45f),
                                        AppColors.TextSecondary, 13, out exitLabel);
             UiBuilder.Place((RectTransform)exitBtn.transform, new Vector2(0.5f, 1f),
                             new Vector2(0f, -14f), new Vector2(88f, 30f));
@@ -594,9 +597,9 @@ namespace PushStars.Editor
             var pieces = new (string name, string sprite, Vector2 anchor, Vector2 offset, Vector2 size)[]
             {
                 ("BoltTop",    BoltTopSprite,    new Vector2(0f, 1f),
-                 new Vector2(-46f, 34f),  new Vector2(390f, 443f)),
+                 new Vector2(-46f, 34f),  new Vector2(1154f / 3f, 1280f / 3f)),
                 ("BoltBottom", BoltBottomSprite, new Vector2(1f, 0f),
-                 new Vector2(46f, -34f),  new Vector2(390f, 433f)),
+                 new Vector2(46f, -34f),  new Vector2(868f / 3f, 976f / 3f)),
             };
 
             list.arraySize = pieces.Length;
@@ -647,7 +650,7 @@ namespace PushStars.Editor
 
             // A label, not a button: nothing happens when it is pressed, so it is not built as
             // something that can be.
-            refs.Caption = SpritePlate(root, "SoloTitle", "ЗАМЕР", YellowPlateSprite,
+            refs.Caption = SpritePlate(root, "SoloTitle", "ASSESSMENT", YellowPlateSprite,
                                        new Vector2(0.5f, 1f), new Vector2(0f, -10f),
                                        new Vector2(124f, 44f), 20);
 
@@ -698,11 +701,11 @@ namespace PushStars.Editor
             refs.PauseOverlay = refs.Resume.gameObject;
 
             var pausedTitle = UiBuilder.Text((RectTransform)refs.Resume.transform, "PausedTitle",
-                                             AppColors.TextPrimary, "ПАУЗА", 40, FontStyles.Bold);
+                                             AppColors.TextPrimary, "PAUSED", 40, FontStyles.Bold);
             UiBuilder.Place(pausedTitle.rectTransform, new Vector2(0.5f, 0.5f), new Vector2(0f, 16f),
                             new Vector2(320f, 56f));
             var pausedHint = UiBuilder.Text((RectTransform)refs.Resume.transform, "PausedHint",
-                                            AppColors.TextSecondary, "Нажми, чтобы продолжить", 15,
+                                            AppColors.TextSecondary, "Tap to continue", 15,
                                             FontStyles.Normal);
             UiBuilder.Place(pausedHint.rectTransform, new Vector2(0.5f, 0.5f), new Vector2(0f, -26f),
                             new Vector2(320f, 26f));
@@ -854,15 +857,15 @@ namespace PushStars.Editor
 
             // ── Opponent block, top-left — kept clear of the portrait by stopping at x≈190 ──
             refs.OpponentName = UiBuilder.Text(safe, "OpponentName", AppColors.AccentYellow,
-                                               "СОПЕРНИК", 24, FontStyles.Bold | FontStyles.Italic,
+                                               "OPPONENT", 24, FontStyles.Bold | FontStyles.Italic,
                                                TextAlignmentOptions.Left);
             UiBuilder.Place(refs.OpponentName.rectTransform, new Vector2(0f, 1f),
                             new Vector2(18f, -32f), new Vector2(170f, 34f));
             refs.OpponentTrophies = TrophyRow(safe, "OpponentTrophies", new Vector2(0f, 1f),
                                               new Vector2(18f, -80f));
-            refs.OpponentBest = CardStat(safe, "OpponentBest", "МАКС. ОТЖИМАНИЙ", new Vector2(0f, 1f),
+            refs.OpponentBest = CardStat(safe, "OpponentBest", "BEST PUSH-UPS", new Vector2(0f, 1f),
                                          new Vector2(18f, -128f));
-            refs.OpponentWinRate = CardStat(safe, "OpponentWinRate", "ПОБЕД", new Vector2(0f, 1f),
+            refs.OpponentWinRate = CardStat(safe, "OpponentWinRate", "WINS", new Vector2(0f, 1f),
                                             new Vector2(18f, -196f));
 
             // ── VS medal, on the seam between the two portraits ──
@@ -874,18 +877,18 @@ namespace PushStars.Editor
                             new Vector2(108f, 108f));
 
             // ── Player block, bottom-right — mirrors the opponent's, right-aligned ──
-            refs.PlayerName = UiBuilder.Text(safe, "PlayerName", AppColors.AccentYellow, "ТЫ", 24,
+            refs.PlayerName = UiBuilder.Text(safe, "PlayerName", AppColors.AccentYellow, "YOU", 24,
                                              FontStyles.Bold | FontStyles.Italic, TextAlignmentOptions.Right);
             UiBuilder.Place(refs.PlayerName.rectTransform, new Vector2(1f, 0f),
                             new Vector2(-18f, 284f), new Vector2(170f, 34f));
             refs.PlayerTrophies = TrophyRow(safe, "PlayerTrophies", new Vector2(1f, 0f),
                                             new Vector2(-18f, 240f));
-            refs.PlayerBest = CardStat(safe, "PlayerBest", "МАКС. ОТЖИМАНИЙ", new Vector2(1f, 0f),
+            refs.PlayerBest = CardStat(safe, "PlayerBest", "BEST PUSH-UPS", new Vector2(1f, 0f),
                                        new Vector2(-18f, 196f));
-            refs.PlayerWinRate = CardStat(safe, "PlayerWinRate", "ПОБЕД", new Vector2(1f, 0f),
+            refs.PlayerWinRate = CardStat(safe, "PlayerWinRate", "WINS", new Vector2(1f, 0f),
                                           new Vector2(-18f, 140f));
 
-            refs.ReadyButton = UiBuilder.Button(safe, "Ready", "ГОТОВ", AppColors.AccentYellow,
+            refs.ReadyButton = UiBuilder.Button(safe, "Ready", "READY", AppColors.AccentYellow,
                                                 new Color32(24, 20, 8, 255), 22, out _);
             UiBuilder.PlaceWide((RectTransform)refs.ReadyButton.transform, 0f, 44f, 60f, 40f);
 
@@ -989,7 +992,7 @@ namespace PushStars.Editor
             duelSafe.gameObject.AddComponent<SafeAreaFitter>();
 
             // Opponent column, top-left — kept clear of the portrait by stopping short of x≈190.
-            refs.OpponentName = NameBadge(duelSafe, "OpponentName", "СОПЕРНИК", new Vector2(0f, 1f),
+            refs.OpponentName = NameBadge(duelSafe, "OpponentName", "OPPONENT", new Vector2(0f, 1f),
                                           new Vector2(18f, -32f));
             refs.OpponentReps = UiBuilder.Text(duelSafe, "OpponentReps", AppColors.TextPrimary, "0", 64,
                                                FontStyles.Bold, TextAlignmentOptions.Left);
@@ -997,7 +1000,7 @@ namespace PushStars.Editor
                             new Vector2(18f, -72f), new Vector2(170f, 82f));
             refs.OpponentForm = CardStat(duelSafe, "OpponentResultForm", "FORM", new Vector2(0f, 1f),
                                          new Vector2(18f, -166f));
-            refs.OpponentTempo = CardStat(duelSafe, "OpponentResultTempo", "ТЕМП", new Vector2(0f, 1f),
+            refs.OpponentTempo = CardStat(duelSafe, "OpponentResultTempo", "PACE", new Vector2(0f, 1f),
                                           new Vector2(18f, -234f));
 
             // Verdict banner, on the seam, on the torn-ribbon art rather than a flat rectangle.
@@ -1009,11 +1012,11 @@ namespace PushStars.Editor
                             new Vector2(380f, 139f));
             bannerPlate.rectTransform.localRotation = Quaternion.Euler(0f, 0f, -3f);
             refs.Banner = UiBuilder.Text(bannerPlate.rectTransform, "Banner", AppColors.TextPrimary,
-                                         "ПОБЕДА", 30, FontStyles.Bold | FontStyles.Italic);
+                                         "VICTORY", 30, FontStyles.Bold | FontStyles.Italic);
             UiBuilder.Stretch(refs.Banner.rectTransform, 16, 4, 16, 4);
 
             // Player column, bottom-right — mirrors the opponent's, right-aligned.
-            refs.PlayerName = NameBadge(duelSafe, "PlayerName", "ТЫ", new Vector2(1f, 0f),
+            refs.PlayerName = NameBadge(duelSafe, "PlayerName", "YOU", new Vector2(1f, 0f),
                                         new Vector2(-18f, 286f));
             refs.PlayerReps = UiBuilder.Text(duelSafe, "PlayerReps", AppColors.TextPrimary, "0", 64,
                                              FontStyles.Bold, TextAlignmentOptions.Right);
@@ -1021,7 +1024,7 @@ namespace PushStars.Editor
                             new Vector2(-18f, 192f), new Vector2(170f, 82f));
             refs.PlayerForm = CardStat(duelSafe, "PlayerResultForm", "FORM", new Vector2(1f, 0f),
                                        new Vector2(-18f, 166f));
-            refs.PlayerTempo = CardStat(duelSafe, "PlayerResultTempo", "ТЕМП", new Vector2(1f, 0f),
+            refs.PlayerTempo = CardStat(duelSafe, "PlayerResultTempo", "PACE", new Vector2(1f, 0f),
                                         new Vector2(-18f, 140f));
 
             refs.DuelRewards = UiBuilder.Text(duelSafe, "DuelRewards", AppColors.AccentLime, "+0 XP", 22,
@@ -1040,11 +1043,11 @@ namespace PushStars.Editor
             UiBuilder.Stretch(test);
             refs.TestLayout = test.gameObject;
 
-            refs.TestTitle = UiBuilder.Text(test, "Title", AppColors.TextSecondary, "ТВОЙ УРОВЕНЬ", 22, FontStyles.Bold);
+            refs.TestTitle = UiBuilder.Text(test, "Title", AppColors.TextSecondary, "YOUR LEVEL", 22, FontStyles.Bold);
             UiBuilder.PlaceWide(refs.TestTitle.rectTransform, 0.5f, 232f, 30f);
-            refs.TestTier = UiBuilder.Text(test, "Tier", AppColors.AccentYellow, "АТЛЕТ", 52, FontStyles.Bold);
+            refs.TestTier = UiBuilder.Text(test, "Tier", AppColors.AccentYellow, "ATHLETE", 52, FontStyles.Bold);
             UiBuilder.PlaceWide(refs.TestTier.rectTransform, 0.5f, 176f, 66f);
-            refs.TestScore = UiBuilder.Text(test, "Score", AppColors.TextPrimary, "0 отжиманий за 60 секунд", 18, FontStyles.Bold);
+            refs.TestScore = UiBuilder.Text(test, "Score", AppColors.TextPrimary, "0 push-ups in 60 seconds", 18, FontStyles.Bold);
             UiBuilder.PlaceWide(refs.TestScore.rectTransform, 0.5f, 122f, 28f);
             refs.TestRewards = UiBuilder.Text(test, "Rewards", AppColors.AccentLime, "+0 XP", 26, FontStyles.Bold);
             UiBuilder.PlaceWide(refs.TestRewards.rectTransform, 0.5f, 70f, 34f);
@@ -1052,11 +1055,11 @@ namespace PushStars.Editor
             UiBuilder.PlaceWide(refs.TestNote.rectTransform, 0.5f, -10f, 80f, 34f);
 
             // ── Shared actions ─────────────────────────────────────────────────────────────────
-            refs.Continue = UiBuilder.Button(safe, "Continue", "ДАЛЕЕ", AppColors.AccentYellow,
+            refs.Continue = UiBuilder.Button(safe, "Continue", "NEXT", AppColors.AccentYellow,
                                              new Color32(24, 20, 8, 255), 20, out refs.ContinueLabel);
             UiBuilder.PlaceWide((RectTransform)refs.Continue.transform, 0f, 44f, 58f, 40f);
 
-            refs.Secondary = UiBuilder.Button(safe, "Secondary", "ПРОПУСТИТЬ",
+            refs.Secondary = UiBuilder.Button(safe, "Secondary", "SKIP",
                                               new Color(1f, 1f, 1f, 0.06f), AppColors.TextSecondary, 16,
                                               out refs.SecondaryLabel);
             UiBuilder.PlaceWide((RectTransform)refs.Secondary.transform, 0f, 100f, 44f, 40f);

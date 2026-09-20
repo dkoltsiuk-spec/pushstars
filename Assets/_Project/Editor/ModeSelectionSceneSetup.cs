@@ -190,7 +190,7 @@ namespace PushStars.Editor
             var back = Image(infoPanel, "BackToModes", null, new Color32(255, 179, 0, 255));
             Place(back.rectTransform, 22, 386, 318, 44);
             var infoClose = Button(back);
-            Label(back.transform, "Label", "К РЕЖИМАМ", 19, Color.white, 0, 0, 318, 44, true);
+            Label(back.transform, "Label", "CHOOSE MODE", 19, Color.white, 0, 0, 318, 44, true);
 
             var homeLabel = open.GetComponentInChildren<TextMeshProUGUI>(true);
             if (homeLabel == null) throw new InvalidOperationException("PvpButton requires its editable TMP label.");

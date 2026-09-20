@@ -15,12 +15,12 @@ namespace PushStars.UI
     /// <see cref="SearchOpponentController"/>.
     ///
     /// Surfaces store-required preferences: sound, vibration, in-app notifications, language
-    /// (RU/EN), Privacy Policy and Terms links, app version, and account deletion (GDPR). Toggles
+    /// (English), Privacy Policy and Terms links, app version, and account deletion (GDPR). Toggles
     /// persist through <see cref="ISettingsStore"/>; deletion goes through
     /// <see cref="FirebaseAuthService.DeleteAccountAsync"/> after an explicit confirmation, then
     /// restarts the app from the Boot scene (which signs in a fresh anonymous account).
     ///
-    /// Full localization of all strings is out of scope here — that lands in phase 17.
+    /// The interface currently ships in English.
     /// </summary>
     public class SettingsScreen : MonoBehaviour
     {
@@ -84,7 +84,7 @@ namespace PushStars.UI
             if (_privacyButton != null) _privacyButton.onClick.AddListener(() => Application.OpenURL(PrivacyUrl));
             if (_termsButton   != null) _termsButton.onClick.AddListener(() => Application.OpenURL(TermsUrl));
 
-            if (_langRuButton != null) _langRuButton.onClick.AddListener(() => SetLanguage(PlayerPrefsSettingsStore.LangRu));
+            if (_langRuButton != null) _langRuButton.gameObject.SetActive(false);
             if (_langEnButton != null) _langEnButton.onClick.AddListener(() => SetLanguage(PlayerPrefsSettingsStore.LangEn));
 
             if (_deleteButton     != null) _deleteButton.onClick.AddListener(ShowConfirm);
@@ -124,14 +124,12 @@ namespace PushStars.UI
         {
             _store.Language = lang;
             RefreshLanguage();
-            // Live re-localization of every string is phase 17; here we only persist the choice.
         }
 
         private void RefreshLanguage()
         {
-            bool ru = _store.Language != PlayerPrefsSettingsStore.LangEn;
-            if (_langRuLabel != null) _langRuLabel.color = ru ? LangActive : LangInactive;
-            if (_langEnLabel != null) _langEnLabel.color = ru ? LangInactive : LangActive;
+            if (_langRuLabel != null) _langRuLabel.color = LangInactive;
+            if (_langEnLabel != null) _langEnLabel.color = LangActive;
         }
 
         // ── Open / close ────────────────────────────────────────────────────────────

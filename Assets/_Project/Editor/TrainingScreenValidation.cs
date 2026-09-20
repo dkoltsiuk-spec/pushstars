@@ -33,7 +33,7 @@ namespace PushStars.Editor
         public static void Run()
         {
             Directory.CreateDirectory(Output); File.WriteAllText(Output + "/validation.txt", "Training screen validation\n");
-            TrainingSettingsRegression.Run(); TrainingScreenSetup.Run();
+            TrainingSettingsRegression.Run();
             EditorSceneManager.OpenScene(TrainingScreenSetup.ScenePath);
             SessionState.SetBool(Key, true); EditorApplication.isPlaying = true;
         }
@@ -85,7 +85,7 @@ namespace PushStars.Editor
             File.WriteAllBytes(Output + "/" + name + ".png", image.EncodeToPNG()); Object.Destroy(image); RenderTexture.active = previous;
         }
         private static void Require(bool condition, string message) { if (!condition) throw new Exception(message); File.AppendAllText(Output + "/validation.txt", "PASS: " + message + "\n"); }
-        private static void Finish(int code) { EditorApplication.update -= Tick; Application.logMessageReceived -= OnLog; SessionState.SetBool(Key, false); File.AppendAllText(Output + "/validation.txt", "RESULT: " + (code == 0 ? "PASS" : "FAIL") + "\n"); EditorApplication.Exit(code); }
+        private static void Finish(int code) { EditorApplication.update -= Tick; Application.logMessageReceived -= OnLog; SessionState.SetBool(Key, false); File.AppendAllText(Output + "/validation.txt", "RESULT: " + (code == 0 ? "PASS" : "FAIL") + "\n"); if (Application.isBatchMode) EditorApplication.Exit(code); else EditorApplication.isPlaying = false; }
         private static void OnLog(string message, string stack, LogType type) { if (type == LogType.Error || type == LogType.Exception) _error = message; }
     }
 }

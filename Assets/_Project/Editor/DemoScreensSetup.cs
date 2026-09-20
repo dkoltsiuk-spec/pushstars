@@ -148,7 +148,7 @@ namespace PushStars.Editor
 
             // Yellow level pill
             MakeIconPill(topBar, "LevelPill", _theme.AccentYellow, _theme.BgDark,
-                         iconColor: _theme.BgDark, label: "L 2 уровень", width: 130);
+                         iconColor: _theme.BgDark, label: "L 2 level", width: 130);
 
             // Spacer
             var spacer = MakeRect(topBar, "Spacer");
@@ -252,9 +252,9 @@ namespace PushStars.Editor
             chipsRow.gameObject.AddComponent<ContentSizeFitter>().horizontalFit
                 = ContentSizeFitter.FitMode.PreferredSize;
 
-            MakeChip(chipsRow, "ДУЭЛЬ",  selected: true);
-            MakeChip(chipsRow, "ОТЖИМ.", selected: false);
-            MakeChip(chipsRow, "60 СЕК", selected: false);
+            MakeChip(chipsRow, "DUEL",  selected: true);
+            MakeChip(chipsRow, "PUSH-UPS", selected: false);
+            MakeChip(chipsRow, "60 SEC", selected: false);
 
             // ── Bottom navigation ─────────────────────────────────────────────────
             var navBar = MakeRect(safe, "BottomNav");
@@ -306,7 +306,7 @@ namespace PushStars.Editor
             safe.gameObject.AddComponent<SafeAreaFitter>();
 
             // ── Title ────────────────────────────────────────────────────────────
-            var title = MakeTMP(safe, "Title", _theme.TextPrimary, "ПОИСК СОПЕРНИКА", 22, FontStyles.Bold);
+            var title = MakeTMP(safe, "Title", _theme.TextPrimary, "FINDING OPPONENT", 22, FontStyles.Bold);
             Anchor(title.rectTransform, new Vector2(0, 1), new Vector2(1, 1), new Vector2(0.5f, 1));
             title.rectTransform.anchoredPosition = new Vector2(0, -80);
             title.rectTransform.sizeDelta        = new Vector2(-32, 32);
@@ -352,12 +352,12 @@ namespace PushStars.Editor
             tipVL.childControlHeight    = true;
             tipVL.childForceExpandWidth = true;
 
-            var tipHeader = MakeTMP(tipBlock, "Header", _theme.TextPrimary, "СОВЕТ:", 14, FontStyles.Bold);
+            var tipHeader = MakeTMP(tipBlock, "Header", _theme.TextPrimary, "TIP:", 14, FontStyles.Bold);
             tipHeader.alignment = TextAlignmentOptions.Center;
             tipHeader.gameObject.AddComponent<LayoutElement>().preferredHeight = 20;
 
             var tipBody = MakeTMP(tipBlock, "Body", _theme.TextSecondary,
-                "Ауру вы можете использовать\nдля покупки уникальных анимаций\nв магазине.",
+                "Use Aura to buy\nunique animations\nin the shop.",
                 14, FontStyles.Normal);
             tipBody.alignment = TextAlignmentOptions.Center;
             tipBody.gameObject.AddComponent<LayoutElement>().preferredHeight = 70;
@@ -373,7 +373,7 @@ namespace PushStars.Editor
             Stretch(exitBg.rectTransform, 0, 0, 0, 0);
             exitBg.gameObject.AddComponent<Button>().targetGraphic = exitBg;
 
-            var exitLabel = MakeTMP(exitBg.transform, "Label", _theme.BtnDangerFg, "ВЫЙТИ", 18, FontStyles.Bold);
+            var exitLabel = MakeTMP(exitBg.transform, "Label", _theme.BtnDangerFg, "EXIT", 18, FontStyles.Bold);
             Stretch(exitLabel.rectTransform, 0, 0, 0, 0);
             exitLabel.alignment = TextAlignmentOptions.Center;
 

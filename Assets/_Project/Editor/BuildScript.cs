@@ -63,6 +63,14 @@ namespace PushStars.Editor
                     string.Join(", ", omitted) + "; missing files: " + string.Join(", ", missing));
             if (AppScenes[0] != BootSceneSetup.ScenePath || AppScenes.Distinct().Count() != AppScenes.Length)
                 throw new BuildFailedException("[Build] Boot must be first and shipping scenes must be unique.");
+            foreach (var boss in PushStars.Core.BossCatalog.Bosses)
+            {
+                string path = "Assets/_Project/Resources/Bosses/" + boss.PrefabId;
+                var prefab = AssetDatabase.LoadAssetAtPath<GameObject>(path + ".prefab");
+                if (prefab == null || prefab.GetComponentInChildren<Animator>() == null ||
+                    prefab.GetComponent<PushStars.Fight.BossAvatarPresentation>() == null)
+                    throw new BuildFailedException("[Build] Missing boss model, animation or presentation: " + boss.Id);
+            }
             Debug.Log("[Build] Validated shipping scenes: " +
                       string.Join(", ", AppScenes.Select(Path.GetFileNameWithoutExtension)));
         }
@@ -97,7 +105,7 @@ namespace PushStars.Editor
             EnableMediaPipeDefine(NamedBuildTarget.iOS);
             CopyModelToStreamingAssets();
             ConfigureIOS();
-            OtaSetup.BuildFullContent();
+            FontSetup.BakeGlyphs();
 
             string outDir = GetArg("-buildOutput") ?? "ios_build";
             Directory.CreateDirectory(outDir);
@@ -138,7 +146,7 @@ namespace PushStars.Editor
             CopyModelToStreamingAssets();
             ConfigureIOS();
 
-            // Before the scenes, because every one of them is full of Russian copy. The Rubik
+            // Bake all UI glyphs before building the scenes. The Rubik
             // atlases are dynamic SDF32; a character missing from them is rendered by the player,
             // on the main thread, the first time it appears — which cost a 195-second frame on
             // device. Baking here moves that back to where it was always assumed to happen.
@@ -181,10 +189,8 @@ namespace PushStars.Editor
             OnboardingSceneSetup.BuildScene();
             Debug.Log("[Build] Boot + Onboarding ready; existing scenes preserved.");
 
-            // Teach this transition player about the remote catalog. Main/Fight also remain in
-            // Build Settings, so the app is still usable before the first OTA download or offline.
+            // Every route ships as an authored, embedded scene on all platforms.
             ValidateAppScenes();
-            OtaSetup.BuildFullContent();
 
             // Ship the real app: Boot (index 0) initializes Firebase and routes by onboarding
             // state; testCV stays in the list as a debug scene reachable via SceneManager.LoadScene.
@@ -219,7 +225,7 @@ namespace PushStars.Editor
                 }
                 else
                 {
-                    Debug.LogError($"[Build] Model not found at {src} — was the MediaPipe plugin imported first?");
+                    throw new BuildFailedException($"[Build] Required camera model missing: {src}. Import the MediaPipe plugin before building.");
                 }
             }
             AssetDatabase.Refresh();
@@ -230,7 +236,7 @@ namespace PushStars.Editor
         private static void ConfigureIOS()
         {
             PlayerSettings.iOS.cameraUsageDescription = "Push Stars uses the camera to count your push-ups and check your form.";
-            PlayerSettings.iOS.targetOSVersionString  = "13.0";
+            PlayerSettings.iOS.targetOSVersionString  = "15.0";
             PlayerSettings.SetApplicationIdentifier(NamedBuildTarget.iOS, BundleId);
 
             // Bake the Apple Team ID into the Xcode project so ALL targets (incl. Firebase's SPM

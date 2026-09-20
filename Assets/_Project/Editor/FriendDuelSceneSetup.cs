@@ -57,7 +57,7 @@ namespace PushStars.Editor
             badge.type = Image.Type.Sliced;
             Text(badge.transform, "Initial", "A", 28, 0, 0, 50, 50, TextAlignmentOptions.Center);
             controller.FriendBadge = badge.gameObject; badge.gameObject.SetActive(false);
-            controller.SlotName = Text(controller.Slot.transform, "FriendName", "С другом", 13, 0, 56, 102, 23, TextAlignmentOptions.Center);
+            controller.SlotName = Text(controller.Slot.transform, "FriendName", "With a friend", 13, 0, 56, 102, 23, TextAlignmentOptions.Center);
             controller.SlotName.richText = false; controller.SlotName.overflowMode = TextOverflowModes.Ellipsis;
             controller.SlotStatus = Text(controller.Slot.transform, "FriendStatus", "", 10, 0, 80, 102, 18, TextAlignmentOptions.Center);
             controller.SlotStatus.color = new Color32(156, 239, 164, 255);
@@ -77,10 +77,10 @@ namespace PushStars.Editor
             rt.anchorMin = rt.anchorMax = rt.pivot = new Vector2(.5f, 0);
             rt.anchoredPosition = Vector2.zero; controller.Sheet = rt;
             Picture(rt, "Handle", Pill, new Color(1, 1, 1, .2f), 170, 12, 50, 4).type = Image.Type.Sliced;
-            controller.Title = Text(rt, "Title", "ДУЭЛЬ С ДРУГОМ", 24, 24, 41, 296, 34);
+            controller.Title = Text(rt, "Title", "FRIEND DUEL", 24, 24, 41, 296, 34);
             controller.Title.enableAutoSizing = true; controller.Title.fontSizeMin = 20;
             controller.Close = Button(rt, "Close", "×", 335, 32, 42, 46, Color.clear);
-            controller.Subtitle = Text(rt, "Subtitle", "Брось вызов знакомому. Один на один.", 15, 24, 86, 342, 46);
+            controller.Subtitle = Text(rt, "Subtitle", "Challenge a friend. One on one.", 15, 24, 86, 342, 46);
             controller.Subtitle.color = new Color32(198, 202, 224, 255);
             controller.Body = Text(rt, "Body", "", 17, 24, 144, 342, 225);
             controller.Body.font = AssetDatabase.LoadAssetAtPath<TMP_FontAsset>(FontSetup.RegularAsset);
@@ -111,21 +111,21 @@ namespace PushStars.Editor
             Player(players, "Me", 0, out controller.MeLabel, out controller.MeStatus);
             Player(players, "Friend", 86, out controller.FriendLabel, out controller.FriendStatus);
 
-            controller.Primary = Button(rt, "Primary", "ПРИГЛАСИТЬ ДРУГА", 24, 418, 342, 52, Gold);
+            controller.Primary = Button(rt, "Primary", "INVITE FRIEND", 24, 418, 342, 52, Gold);
             controller.PrimaryLabel = controller.Primary.GetComponentInChildren<TextMeshProUGUI>();
             controller.PrimaryLabel.color = new Color32(27, 25, 40, 255);
-            controller.Secondary = Button(rt, "Secondary", "ВВЕСТИ КОД", 24, 481, 342, 46, Surface);
+            controller.Secondary = Button(rt, "Secondary", "ENTER CODE", 24, 481, 342, 46, Surface);
             controller.SecondaryLabel = controller.Secondary.GetComponentInChildren<TextMeshProUGUI>();
-            controller.Tertiary = Button(rt, "Tertiary", "ВЫЙТИ ИЗ КОМНАТЫ", 24, 538, 342, 32, Color.clear);
+            controller.Tertiary = Button(rt, "Tertiary", "LEAVE ROOM", 24, 538, 342, 32, Color.clear);
             controller.TertiaryLabel = controller.Tertiary.GetComponentInChildren<TextMeshProUGUI>();
             controller.TertiaryLabel.color = new Color32(255, 148, 151, 255); controller.TertiaryLabel.fontSize = 13;
-            controller.Help = Button(rt, "Help", "Как это работает?", 24, 575, 342, 32, Color.clear);
+            controller.Help = Button(rt, "Help", "How does it work?", 24, 575, 342, 32, Color.clear);
             controller.Help.GetComponentInChildren<TextMeshProUGUI>().fontSize = 13;
-            controller.DemoAction = Button(rt, "DemoAdvance", "Демо: друг вошёл", 24, 615, 166, 28, Surface);
+            controller.DemoAction = Button(rt, "DemoAdvance", "Demo: friend joined", 24, 615, 166, 28, Surface);
             controller.DemoLabel = controller.DemoAction.GetComponentInChildren<TextMeshProUGUI>(); controller.DemoLabel.fontSize = 10;
-            controller.DemoConnection = Button(rt, "DemoConnection", "Демо: обрыв связи", 200, 615, 166, 28, Surface);
+            controller.DemoConnection = Button(rt, "DemoConnection", "Demo: disconnect", 200, 615, 166, 28, Surface);
             controller.DemoConnection.GetComponentInChildren<TextMeshProUGUI>().fontSize = 10;
-            var preview = Text(rt, "PreviewBadge", "ПРЕДПРОСМОТР · БЕЗ СЕТИ", 9, 24, 651, 342, 16, TextAlignmentOptions.Center);
+            var preview = Text(rt, "PreviewBadge", "PREVIEW · OFFLINE", 9, 24, 651, 342, 16, TextAlignmentOptions.Center);
             preview.color = Gold; controller.PreviewBadge = preview.gameObject;
             // This label is enabled only by Editor preview; device builds never display fake room state.
             preview.gameObject.SetActive(false);
@@ -249,7 +249,7 @@ namespace PushStars.Editor
             label = Text(card.transform, "Name", name, 20, 18, 10, 306, 30);
             label.richText = false; label.overflowMode = TextOverflowModes.Ellipsis;
             label.enableAutoSizing = true; label.fontSizeMin = 12;
-            status = Text(card.transform, "Status", "В комнате", 13, 18, 44, 306, 23);
+            status = Text(card.transform, "Status", "In room", 13, 18, 44, 306, 23);
             status.color = new Color32(132, 240, 161, 255);
         }
 

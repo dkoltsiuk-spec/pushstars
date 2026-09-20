@@ -15,7 +15,7 @@ namespace PushStars.Core
         public bool PlayerWins => BossHp == 0 && PlayerHp > 0 || !Knockout && PlayerHp > BossHp;
         public bool Draw => PlayerHp == BossHp;
         public event Action<bool, int> Damaged;
-        public BossCombatState(string bossId) { BossMaxHp = bossId == "novice" ? 450 : 1000; BossHp = BossMaxHp; }
+        public BossCombatState(string bossId) { BossMaxHp = BossCatalog.Find(bossId)?.MaxHp ?? 1000; BossHp = BossMaxHp; }
         public static int RepDamage(float form)
             => 70 + Mathf.RoundToInt(30 * Mathf.Clamp01(float.IsNaN(form) || float.IsInfinity(form) ? 0 : form / 100));
         public void PlayerRep(float form)

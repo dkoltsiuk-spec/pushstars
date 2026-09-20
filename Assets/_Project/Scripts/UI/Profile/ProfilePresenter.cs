@@ -83,11 +83,11 @@ namespace PushStars.UI
         {
             if (_nameText   != null) _nameText.text   = p.DisplayName;
             if (_rankText   != null) _rankText.text   = RankLabel(p.Rank);
-            if (_streakText != null) _streakText.text = $"СЕРИЯ ПОБЕД: {p.WinStreak}";
+            if (_streakText != null) _streakText.text = $"WIN STREAK: {p.WinStreak}";
 
-            if (_winsBadge    != null) _winsBadge.SetStat(p.TotalWins.ToString("N0"), "ПОБЕДЫ");
-            if (_winRateBadge != null) _winRateBadge.SetStat($"{p.WinRatePercent}%", "ВИНРЕЙТ");
-            if (_repsBadge    != null) _repsBadge.SetStat(p.TotalReps.ToString("N0"), "ВСЕГО");
+            if (_winsBadge    != null) _winsBadge.SetStat(p.TotalWins.ToString("N0"), "WINS");
+            if (_winRateBadge != null) _winRateBadge.SetStat($"{p.WinRatePercent}%", "WIN RATE");
+            if (_repsBadge    != null) _repsBadge.SetStat(p.TotalReps.ToString("N0"), "TOTAL");
         }
 
         private void ApplyFilter()
@@ -121,10 +121,10 @@ namespace PushStars.UI
 
         private static string RankLabel(string rank) => rank switch
         {
-            "silver"  => "СЕРЕБРО",
-            "gold"    => "ЗОЛОТО",
-            "diamond" => "АЛМАЗ",
-            _         => "БРОНЗА",
+            "silver"  => "SILVER",
+            "gold"    => "GOLD",
+            "diamond" => "DIAMOND",
+            _         => "BRONZE",
         };
 
         // Demo history (matches the design cards) — replaced once real matches exist (phases 12–14).

@@ -48,6 +48,8 @@ namespace PushStars.Fight
         // Retained only so the one-time scene migration can read older authored assets.
         [SerializeField, HideInInspector] private FightResultScreen _result;
         [SerializeField, HideInInspector] private DuelReadyPanel _readyPanel;
+        [SerializeField, HideInInspector] private UnityEngine.UI.Image _baseBackground;
+        [SerializeField, HideInInspector] private Sprite _duelBackground;
         [SerializeField] private UnityEngine.UI.Button _exitButton;
 
         [Header("Level test controls")]
@@ -56,7 +58,7 @@ namespace PushStars.Fight
         [SerializeField] private UnityEngine.UI.Button _soloResumeButton;
         [SerializeField] private UnityEngine.UI.Button _soloFinishButton;
         [SerializeField] private TMPro.TextMeshProUGUI _soloFinishLabel;
-        [Tooltip("Label on the exit button. Relabelled to ПРОПУСТИТЬ when a level test cannot start.")]
+        [Tooltip("Label on the exit button. Relabelled to SKIP when a level test cannot start.")]
         [SerializeField] private TMPro.TextMeshProUGUI _exitLabel;
 
         [Header("Debug")]
@@ -68,7 +70,7 @@ namespace PushStars.Fight
         private Phase _phase = Phase.WaitPlank;
         /// <summary>The player's own label on the duel screens. A nickname system
         /// arrives with PvP; until then the second fighter is simply "you".</summary>
-        private const string PlayerLabel = "ТЫ";
+        private const string PlayerLabel = "YOU";
         private FightMode _mode;
         private IOpponentFeed _opponent;   // null in the level test
 
@@ -122,6 +124,7 @@ namespace PushStars.Fight
             if (TryStartScreenPreview()) return;
             _sceneStartTime = Time.time;
             _mode = ResolveMode();
+            ApplyBackgroundForMode();
             if (_mode == FightMode.Boss)
             {
                 BossHealth = new BossCombatState(FightRequest.BossId ?? BossCatalog.Current.Id);
@@ -148,6 +151,16 @@ namespace PushStars.Fight
             if (_mode == FightMode.Training) InitializeTrainingScreen();
             if (_debugButton != null) _debugButton.onClick.AddListener(ToggleDebugHud);
             SetDebugPanels(false);
+        }
+
+        private void ApplyBackgroundForMode()
+        {
+            if (_baseBackground == null || _duelBackground == null) return;
+            if (_mode == FightMode.Ghost)
+            {
+                _baseBackground.sprite = _duelBackground;
+                _baseBackground.color = Color.white;
+            }
         }
 
         private void OnDestroy()
@@ -200,7 +213,7 @@ namespace PushStars.Fight
         {
             if (_mode == FightMode.LevelTest || _mode == FightMode.Training)
             {
-                _hud.ConfigureSolo(_mode == FightMode.Training ? TrainingCaption : "ЗАМЕР");
+                _hud.ConfigureSolo(_mode == FightMode.Training ? TrainingCaption : "ASSESSMENT");
                 // The solo layout carries its own way out, top-left, where a screen that is not a
                 // duel expects one. Leaving the duel's pill up as well puts two of them on screen,
                 // one of them over the title.
@@ -314,6 +327,15 @@ namespace PushStars.Fight
             _hud.SetPaused(true);
         }
 
+        private void OnApplicationPause(bool paused)
+        {
+            // A call or screen lock pauses solo exercise, requiring an explicit resume.
+            // Never credit reps while the app and camera are in the background.
+            if (!paused || _screenPreview || _hud == null || _paused) return;
+            if (_mode == FightMode.Training && _trainingScreen != null) ToggleTrainingPause();
+            else if (_mode == FightMode.LevelTest || _mode == FightMode.Training) PauseSet();
+        }
+
         private void ResumeSet()
         {
             if (_phase == Phase.Rest) { if (_training.Continue()) BeginNextTrainingSet(); return; }
@@ -351,13 +373,13 @@ namespace PushStars.Fight
         {
             if (_mode == FightMode.Boss && !BossReady)
             {
-                _hud.ShowBanner("НАЖМИ READY И ВСТАНЬ В ПЛАНКУ", FightHud.BannerTone.Warn);
+                _hud.ShowBanner("TAP READY AND GET INTO A PLANK", FightHud.BannerTone.Warn);
                 return;
             }
             var armer = _session.Armer;
             if (armer == null)
             {
-                _hud.ShowBanner("ИНИЦИАЛИЗАЦИЯ…", FightHud.BannerTone.Warn);
+                _hud.ShowBanner("INITIALIZING…", FightHud.BannerTone.Warn);
                 return;
             }
 
@@ -374,10 +396,10 @@ namespace PushStars.Fight
             OfferSkipIfStuck();
 
             if (armer.State == PlankArmerState.Arming)
-                _hud.ShowBanner($"ДЕРЖИ ПЛАНКУ…  {armer.ArmingProgress01 * 100f:0}%", FightHud.BannerTone.Good);
+                _hud.ShowBanner($"HOLD A PLANK…  {armer.ArmingProgress01 * 100f:0}%", FightHud.BannerTone.Good);
             else
                 _hud.ShowBanner(_skipOffered
-                    ? HintFor(armer.LastRejectReason) + "\nили нажми ПРОПУСТИТЬ"
+                    ? HintFor(armer.LastRejectReason) + "\nor tap SKIP"
                     : HintFor(armer.LastRejectReason), FightHud.BannerTone.Warn);
         }
 
@@ -387,12 +409,12 @@ namespace PushStars.Fight
             if (Time.time - _sceneStartTime < LevelTestStuckSec) return;
 
             _skipOffered = true;
-            if (_exitLabel != null) _exitLabel.text = "ПРОПУСТИТЬ";
+            if (_exitLabel != null) _exitLabel.text = "SKIP";
             // The solo layout hides that pill and carries an icon where it used to sit, so the
             // offer goes on the button this screen actually has at the bottom. FINISH means
             // nothing before a set has started; on a test that never armed, leaving is the only
             // thing that button could honestly do.
-            if (_soloFinishLabel != null) _soloFinishLabel.text = "ПРОПУСТИТЬ";
+            if (_soloFinishLabel != null) _soloFinishLabel.text = "SKIP";
             Debug.LogWarning("[Fight] Level test never armed — offering a skip.");
         }
 
@@ -453,10 +475,10 @@ namespace PushStars.Fight
             var armer = _session.Armer;
             if (armer != null && !armer.IsArmed)
                 _hud.ShowBanner(armer.State == PlankArmerState.Arming
-                    ? $"ДЕРЖИ ПЛАНКУ…  {armer.ArmingProgress01 * 100f:0}%"
-                    : "ВЕРНИСЬ В ПЛАНКУ — СЧЁТ НА ПАУЗЕ", FightHud.BannerTone.Warn);
+                    ? $"HOLD A PLANK…  {armer.ArmingProgress01 * 100f:0}%"
+                    : "RETURN TO A PLANK — COUNT PAUSED", FightHud.BannerTone.Warn);
             else if (_session.WristAnchor.LastVerdict == AnchorVerdict.Airborne)
-                _hud.ShowBanner("СЧЁТ НА ПАУЗЕ — ладони на пол", FightHud.BannerTone.Warn);
+                _hud.ShowBanner("COUNT PAUSED — palms on the floor", FightHud.BannerTone.Warn);
             else
                 _hud.HideBanner();
 
@@ -592,18 +614,18 @@ namespace PushStars.Fight
         /// <summary>Same wording the on-device debug HUD converged on (phase 08.1).</summary>
         private static string HintFor(PlankRejectReason reason) => reason switch
         {
-            PlankRejectReason.TrackingLost        => "НЕ ВИЖУ ТЕБЯ — отойди на 1.5–2 метра",
-            PlankRejectReason.TooCloseOrFar       => "ВСТАНЬ В 1.5–2 МЕТРАХ ОТ ТЕЛЕФОНА",
-            PlankRejectReason.BadFraming          => "ПОМЕСТИСЬ В КАДР — голова и обе ладони видны",
-            PlankRejectReason.PhoneTilted         => "ПОСТАВЬ ТЕЛЕФОН РОВНЕЕ",
-            PlankRejectReason.HipNotVisible       => "НЕ ВИДНО КОРПУС — поправь кадр",
-            PlankRejectReason.BodyIncline         => "ПРИМИ УПОР ЛЁЖА",
-            PlankRejectReason.LowerBodyNotVisible => "ОТОЙДИ — НЕ ВИДНО НОГ",
-            PlankRejectReason.BodySagging         => "ВЫПРЯМИ ТЕЛО",
-            PlankRejectReason.KneesBent           => "ВЫТЯНИ ТЕЛО — колени не под собой",
-            PlankRejectReason.NotAtTop            => "ВЫПРЯМИ РУКИ",
-            PlankRejectReason.WristsAirborne      => "ПОСТАВЬ ЛАДОНИ НА ПОЛ",
-            _                                     => "ВСТАНЬ В ПЛАНКУ ПЕРЕД КАМЕРОЙ",
+            PlankRejectReason.TrackingLost        => "CAN'T SEE YOU — step back 1.5–2 meters",
+            PlankRejectReason.TooCloseOrFar       => "STAND 1.5–2 METERS FROM YOUR PHONE",
+            PlankRejectReason.BadFraming          => "FIT IN FRAME — show your head and both palms",
+            PlankRejectReason.PhoneTilted         => "KEEP YOUR PHONE LEVEL",
+            PlankRejectReason.HipNotVisible       => "TORSO NOT VISIBLE — adjust the camera",
+            PlankRejectReason.BodyIncline         => "GET INTO A PUSH-UP POSITION",
+            PlankRejectReason.LowerBodyNotVisible => "STEP BACK — LEGS NOT VISIBLE",
+            PlankRejectReason.BodySagging         => "KEEP YOUR BODY STRAIGHT",
+            PlankRejectReason.KneesBent           => "EXTEND YOUR BODY — move knees back",
+            PlankRejectReason.NotAtTop            => "STRAIGHTEN YOUR ARMS",
+            PlankRejectReason.WristsAirborne      => "PLACE YOUR PALMS ON THE FLOOR",
+            _                                     => "GET INTO A PLANK IN FRONT OF THE CAMERA",
         };
     }
 }

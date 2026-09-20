@@ -12,6 +12,7 @@ namespace PushStars.Fight
 {
     /// <summary>Fills and animates one authored scene. UI and button routes are serialized;
     /// runtime code never creates the hierarchy or restores authored group positions.</summary>
+    [DefaultExecutionOrder(350)]
     public sealed class RewardScreen : MonoBehaviour
     {
         [Serializable] public sealed class SummaryElements
@@ -20,6 +21,7 @@ namespace PushStars.Fight
             public RectTransform TrophyContent, XpContent, AuraContent;
             public GameObject AuraGroup;
             public RawImage Portrait;
+            public FightAvatar Avatar;
             public Texture2D MalePortrait, FemalePortrait;
             public Button CaseAwardButton;
         }
@@ -28,6 +30,8 @@ namespace PushStars.Fight
             public TextMeshProUGUI Rarity, Source, Status, Hint, ActionLabel;
             public Image Artwork, Glow;
             public RectTransform Content, StarsContent;
+            public RectTransform Rays;
+            public CanvasGroup TapHint;
             public Button TapButton, ActionButton;
             public RewardStarGraphic[] Stars = new RewardStarGraphic[0];
             public GameObject[] RarityStarGroups = new GameObject[0];
@@ -37,7 +41,7 @@ namespace PushStars.Fight
         [Serializable] public sealed class PrizeElements
         {
             public TextMeshProUGUI Amount, Rarity, Note, ClaimLabel;
-            public RectTransform Content;
+            public RectTransform Content, Rays;
             public Image Glow;
             public Button ClaimButton;
         }
@@ -61,13 +65,17 @@ namespace PushStars.Fight
 
         private struct Pose { public Vector3 Scale; public Quaternion Rotation; }
         private readonly Dictionary<RectTransform, Pose> _poses = new Dictionary<RectTransform, Pose>();
-        private static readonly string[] CaseNames = { "ОБЫЧНЫЙ", "РЕДКИЙ", "ЭПИЧЕСКИЙ", "ЛЕГЕНДАРНЫЙ" };
+        private static readonly string[] CaseNames = { "COMMON", "RARE", "EPIC", "LEGENDARY" };
         private static readonly Color Gold = new Color32(255, 214, 17, 255);
         private string _caseId;
         private CaseRarity _rarity;
         private int _tapsUsed, _gems;
         private bool _opened, _available, _busy;
         private Color _glowColor;
+        private bool _summaryPortraitFramed;
+        private Vector2 _summaryPortraitSize;
+        private float _caseInactiveSeconds, _caseIdleSeconds, _caseRaysAngle, _caseIdleSince;
+        private const float CaseHintDelay = 5f;
 
         public FightScreen Screen => _screen;
         public SummaryElements SummaryUi => _summaryUi;
@@ -79,6 +87,13 @@ namespace PushStars.Fight
         {
             Capture(_summaryUi.TrophyContent); Capture(_summaryUi.XpContent); Capture(_summaryUi.AuraContent);
             Capture(_caseUi.Content); Capture(_caseUi.StarsContent); Capture(_prizeUi.Content);
+            Capture(_caseUi.Rays);
+            Capture(_prizeUi.Rays);
+            if (_caseUi.TapHint != null)
+            {
+                Capture((RectTransform)_caseUi.TapHint.transform);
+                _caseUi.TapHint.alpha = 0;
+            }
             if (_caseUi.Glow != null) Capture(_caseUi.Glow.rectTransform);
             if (_prizeUi.Glow != null) Capture(_prizeUi.Glow.rectTransform);
             switch (_screen)
@@ -93,6 +108,7 @@ namespace PushStars.Fight
         private void OnDisable()
         {
             StopAllCoroutines(); _busy = false;
+            ResetCaseAttention();
             foreach (var item in _poses)
                 if (item.Key != null)
                 {
@@ -103,16 +119,74 @@ namespace PushStars.Fight
 
         private void Update()
         {
-            if (ScreenLayoutRoot.IsAnyEditing) return;
+            if (ScreenLayoutRoot.IsAnyEditing)
+            {
+                if (_screen == FightScreen.CaseOpening) ResetCaseAttention();
+                return;
+            }
             float pulse = 1f + 0.045f * Mathf.Sin(Time.unscaledTime * 1.8f);
             if (_caseUi.Glow != null) Scale(_caseUi.Glow.rectTransform, pulse);
             if (_prizeUi.Glow != null) Scale(_prizeUi.Glow.rectTransform, pulse);
+            if (_screen == FightScreen.CaseOpening) UpdateCaseAttention(Time.unscaledDeltaTime);
+            if (_screen == FightScreen.CaseReward)
+            {
+                _caseRaysAngle = Mathf.Repeat(_caseRaysAngle + Time.unscaledDeltaTime * 3, 360);
+                Rotate(_prizeUi.Rays, _caseRaysAngle);
+            }
+        }
+
+        private void UpdateCaseAttention(float deltaTime)
+        {
+            _caseRaysAngle = Mathf.Repeat(_caseRaysAngle + deltaTime * 3f, 360f);
+            Rotate(_caseUi.Rays, _caseRaysAngle);
+            Scale(_caseUi.Rays, 1f + .025f * Mathf.Sin(Time.unscaledTime * .7f));
+
+            // Also dismiss the help cue when the player touches outside the chest.
+            bool interacting = Input.GetMouseButton(0) || Input.touchCount > 0 || Input.anyKeyDown;
+            if (_busy || !_available || interacting)
+            {
+                ResetCaseAttention();
+                return;
+            }
+            // Use an absolute timestamp so a long frame cannot count time from before a tap.
+            _caseInactiveSeconds = _caseIdleSeconds = Time.realtimeSinceStartup - _caseIdleSince;
+
+            // A short, restrained rattle followed by a pause. Only the artwork moves;
+            // the hit target and rarity row stay still. Tap/reveal coroutines own it while busy.
+            float phase = Mathf.Repeat(_caseIdleSeconds, 3f);
+            float envelope = phase < .7f ? Mathf.Sin(phase / .7f * Mathf.PI) : 0f;
+            Rotate(_caseUi.Content, Mathf.Sin(phase / .7f * Mathf.PI * 6f) * envelope * 1.8f);
+            Scale(_caseUi.Content, 1f + .012f * envelope);
+            if (_caseUi.TapHint != null)
+            {
+                float target = _caseInactiveSeconds >= CaseHintDelay ? 1f : 0f;
+                _caseUi.TapHint.alpha = Mathf.MoveTowards(_caseUi.TapHint.alpha, target, deltaTime * 5f);
+                Scale((RectTransform)_caseUi.TapHint.transform,
+                    1f - .045f * (.5f + .5f * Mathf.Sin((_caseInactiveSeconds - CaseHintDelay) * 5f)));
+            }
+        }
+
+        private void ResetCaseAttention()
+        {
+            _caseInactiveSeconds = _caseIdleSeconds = 0;
+            _caseIdleSince = Time.realtimeSinceStartup;
+            if (_caseUi.TapHint != null)
+            {
+                _caseUi.TapHint.alpha = 0;
+                Scale((RectTransform)_caseUi.TapHint.transform, 1);
+            }
+            if (!_busy)
+            {
+                Scale(_caseUi.Content, 1);
+                Rotate(_caseUi.Content, 0);
+            }
         }
 
         private void FillSummary()
         {
             var data = FightScreenNavigation.IsPreview ? _sampleSummary : FightScreenNavigation.RewardSummary;
-            Set(_summaryUi.PlayerName, string.IsNullOrWhiteSpace(data.PlayerName) ? "ТВОЙ РЕЗУЛЬТАТ" : data.PlayerName);
+            HomeRewardFlight.QueueSummary(data);
+            Set(_summaryUi.PlayerName, string.IsNullOrWhiteSpace(data.PlayerName) ? "YOUR RESULT" : data.PlayerName);
             Set(_summaryUi.TotalReps, Mathf.Max(0, data.TotalReps).ToString());
             Set(_summaryUi.Technique, $"{Mathf.Clamp01(data.Technique) * 100f:0}%");
             if (_summaryUi.AuraGroup != null) _summaryUi.AuraGroup.SetActive(data.Aura > 0);
@@ -120,19 +194,48 @@ namespace PushStars.Fight
                 _summaryUi.Trophies.color = new Color32(255, 107, 95, 255);
             bool hasAward = FightScreenNavigation.IsPreview || !string.IsNullOrEmpty(FightScreenNavigation.AwardedCaseId);
             if (_summaryUi.CaseAwardButton != null) _summaryUi.CaseAwardButton.gameObject.SetActive(hasAward);
-            // The authored standing portrait survives the preceding battle scene unloading.
+            // Keep the baked image for Edit Mode/fallback; this scene owns a live idle stage.
             if (_summaryUi.Portrait != null)
             {
                 var portrait = CharacterRoster.SavedGender == CharacterGender.Female ?
                     _summaryUi.FemalePortrait : _summaryUi.MalePortrait;
                 if (portrait != null) _summaryUi.Portrait.texture = portrait;
             }
-            if (_summaryUi.Portrait != null && data.AvatarSource != null && data.AvatarSource.texture != null)
+            if (_summaryUi.Avatar != null)
             {
-                _summaryUi.Portrait.texture = data.AvatarSource.texture;
-                _summaryUi.Portrait.uvRect = data.AvatarSource.uvRect;
+                _summaryUi.Avatar.SetPreparationPresentation(true);
+                var animator = _summaryUi.Avatar.Character != null ?
+                    _summaryUi.Avatar.Character.GetComponentInChildren<Animator>() : null;
+                if (animator != null) animator.updateMode = AnimatorUpdateMode.UnscaledTime;
+                if (_summaryUi.Avatar.StageCamera != null) _summaryUi.Avatar.StageCamera.enabled = true;
+                _summaryPortraitFramed = false;
             }
             StartCoroutine(CountSummary(data));
+        }
+
+        private void LateUpdate()
+        {
+            if (_screen != FightScreen.RewardSummary) return;
+            var avatar = _summaryUi.Avatar;
+            var portrait = _summaryUi.Portrait;
+            if (avatar == null || portrait == null || avatar.StageCamera == null) return;
+            var texture = avatar.StageCamera.targetTexture;
+            if (texture == null) return;
+            portrait.texture = texture;
+            var size = portrait.rectTransform.rect.size;
+            // Once framed, let the idle move inside a fixed crop instead of chasing each breath.
+            if (_summaryPortraitFramed && size == _summaryPortraitSize) return;
+            if (!avatar.IsPreparationFramed || !avatar.TryGetBodyViewport(out var body)) return;
+            float textureAspect = (float)texture.width / texture.height;
+            float boxAspect = size.x / Mathf.Max(1, size.y);
+            float height = Mathf.Min(1, body.height / .94f);
+            float width = Mathf.Min(1, height * boxAspect / textureAspect);
+            height = Mathf.Min(height, width * textureAspect / boxAspect);
+            portrait.uvRect = new Rect(
+                Mathf.Clamp(body.center.x - width * .5f, 0, 1 - width),
+                Mathf.Clamp(body.yMin - (height - body.height) * .1f, 0, 1 - height), width, height);
+            _summaryPortraitFramed = true;
+            _summaryPortraitSize = size;
         }
 
         private IEnumerator CountSummary(FightRewardFlow.Summary data)
@@ -186,15 +289,15 @@ namespace PushStars.Fight
         {
             if (!ReadCase())
             {
-                Set(_caseUi.Status, "Кейс недоступен"); Set(_caseUi.Hint, "Открой другой кейс из инвентаря");
+                Set(_caseUi.Status, "Case unavailable"); Set(_caseUi.Hint, "Open another case from your inventory");
                 SetCaseInteractable(false); return;
             }
             UpdateCaseLabels();
-            Set(_caseUi.Status, _screen == FightScreen.CaseAward ? "КЕЙС СОХРАНЁН В ИНВЕНТАРЕ" : "");
+            Set(_caseUi.Status, _screen == FightScreen.CaseAward ? "CASE SAVED TO INVENTORY" : "");
             if (_screen == FightScreen.CaseAward)
             {
-                Set(_caseUi.Hint, "Открой сейчас или вернись к нему позже");
-                Set(_caseUi.ActionLabel, "ОТКРЫТЬ СЕЙЧАС");
+                Set(_caseUi.Hint, "Open it now or come back later");
+                Set(_caseUi.ActionLabel, "OPEN NOW");
             }
             _busy = true; SetCaseInteractable(false); StartCoroutine(EnterCase());
         }
@@ -207,6 +310,7 @@ namespace PushStars.Fight
         private void UpdateCaseLabels()
         {
             int rarity = Mathf.Clamp((int)_rarity, 0, 3);
+            GetComponent<CaseRarityPresentation>()?.Apply(rarity);
             Set(_caseUi.Rarity, CaseNames[rarity]);
             if (_caseUi.Rarity != null) _caseUi.Rarity.color = RarityColor(_rarity);
             if (_caseUi.Artwork != null && rarity < _caseUi.RarityArtwork.Length)
@@ -222,13 +326,15 @@ namespace PushStars.Fight
             for (int i = 0; i < _caseUi.TapPips.Length; i++)
                 if (_caseUi.TapPips[i] != null) _caseUi.TapPips[i].color = i < _tapsUsed ? Gold : new Color(1, 1, 1, 0.2f);
             bool canOpen = _opened || _tapsUsed >= CaseRewards.UpgradeTapCount;
-            Set(_caseUi.ActionLabel, canOpen ? "ОТКРЫТЬ" : $"УЛУЧШИТЬ  {_tapsUsed + 1}/3");
-            Set(_caseUi.Hint, canOpen ? "Нажми на кейс, чтобы получить награду" :
-                "Нажимай на кейс — каждый тап\nдаёт шанс повысить редкость");
+            Set(_caseUi.ActionLabel, canOpen ? "OPEN" : $"UPGRADE  {_tapsUsed + 1}/3");
+            Set(_caseUi.Hint, _screen == FightScreen.CaseOpening ? "Tap to open case" :
+                canOpen ? "Tap the case to reveal your reward" :
+                "Tap the case — each tap gives you\na chance to upgrade its rarity");
         }
 
         public void TapCase()
         {
+            ResetCaseAttention();
             if (_busy || !_available || ScreenLayoutRoot.IsAnyEditing) return;
             if (_screen == FightScreen.CaseAward) { OpenNow(); return; }
             if (_opened || _tapsUsed >= CaseRewards.UpgradeTapCount) { OpenCase(); return; }
@@ -249,7 +355,7 @@ namespace PushStars.Fight
             }
             _busy = true; SetCaseInteractable(false); UpdateCaseLabels();
             bool upgraded = _rarity != before;
-            Set(_caseUi.Status, upgraded ? "РЕДКОСТЬ ПОВЫШЕНА!" : _tapsUsed >= 3 ? "КЕЙС ГОТОВ К ОТКРЫТИЮ" : "ЕЩЁ ЕСТЬ ШАНС!");
+            Set(_caseUi.Status, upgraded ? "RARITY UPGRADED!" : _tapsUsed >= 3 ? "CASE READY TO OPEN" : "ONE MORE CHANCE!");
             if (_caseUi.Status != null) _caseUi.Status.color = upgraded ? RarityColor(_rarity) : Color.white;
             StartCoroutine(AnimateTap(upgraded));
         }
@@ -291,7 +397,7 @@ namespace PushStars.Fight
                 }
                 catch (Exception exception) { Debug.LogException(exception, this); SaveFailed(); return; }
             }
-            _busy = true; SetCaseInteractable(false); Set(_caseUi.Status, "ОТКРЫВАЕМ…");
+            _busy = true; SetCaseInteractable(false); Set(_caseUi.Status, "OPENING…");
             StartCoroutine(RevealCase());
         }
         private IEnumerator RevealCase()
@@ -315,33 +421,49 @@ namespace PushStars.Fight
         {
             if (!ReadCase() || !_opened)
             {
-                Set(_prizeUi.Note, "Сначала открой кейс из инвентаря");
-                if (_prizeUi.ClaimButton != null) _prizeUi.ClaimButton.interactable = false;
+                ShowPrizeError("Open a case from your inventory first\nTap anywhere to return home");
                 return;
             }
             GameAudio.Play(SoundCue.CaseReveal, .9f + .05f * (int)_rarity);
-            Set(_prizeUi.Rarity, CaseNames[Mathf.Clamp((int)_rarity, 0, 3)] + " КЕЙС");
-            Set(_prizeUi.Amount, "×" + _gems); Set(_prizeUi.Note, "Кристаллы пополнят твой баланс");
-            Set(_prizeUi.ClaimLabel, "ЗАБРАТЬ И ДОМОЙ"); StartCoroutine(PopIn(_prizeUi.Content, 0.65f));
+            Set(_prizeUi.Rarity, CaseNames[Mathf.Clamp((int)_rarity, 0, 3)] + " CASE");
+            Set(_prizeUi.Amount, "×" + _gems); Set(_prizeUi.Note, "Crystals will be added to your balance");
+            Set(_prizeUi.ClaimLabel, "CLAIM & HOME");
+            _busy = true;
+            if (_prizeUi.ClaimButton != null) _prizeUi.ClaimButton.interactable = false;
+            StartCoroutine(EnterPrize());
+        }
+        private IEnumerator EnterPrize()
+        {
+            yield return PopIn(_prizeUi.Content, .65f);
+            _busy = false;
+            if (_prizeUi.ClaimButton != null) _prizeUi.ClaimButton.interactable = true;
+        }
+        private void ShowPrizeError(string message)
+        {
+            if (_prizeUi.Note != null) _prizeUi.Note.gameObject.SetActive(true);
+            Set(_prizeUi.Note, message);
         }
         public void ClaimPrize()
         {
-            if (_busy || !_available || !_opened || ScreenLayoutRoot.IsAnyEditing) return;
+            if (_busy || ScreenLayoutRoot.IsAnyEditing) return;
+            if (!_available || !_opened) { Home(); return; }
             if (!FightScreenNavigation.IsPreview)
             {
                 try
                 {
-                    if (!CaseRewards.TryClaim(_caseId, out _)) { Set(_prizeUi.Note, "Не удалось сохранить. Попробуй ещё раз."); return; }
+                    if (!CaseRewards.TryClaim(_caseId, out var claimedGems)) { ShowPrizeError("Couldn't save. Tap to retry."); return; }
+                    HomeRewardFlight.QueueGems(claimedGems);
                 }
                 catch (Exception exception)
                 {
-                    Debug.LogException(exception, this); Set(_prizeUi.Note, "Не удалось сохранить. Попробуй ещё раз."); return;
+                    Debug.LogException(exception, this); ShowPrizeError("Couldn't save. Tap to retry."); return;
                 }
             }
+            if (FightScreenNavigation.IsPreview) HomeRewardFlight.QueueGems(_gems);
             _busy = true;
             if (_prizeUi.ClaimButton != null) _prizeUi.ClaimButton.interactable = false;
-            Set(_prizeUi.ClaimLabel, "ПОЛУЧЕНО");
-            Set(_prizeUi.Note, FightScreenNavigation.IsPreview ? "Награда в режиме просмотра" : "Кристаллы зачислены!");
+            Set(_prizeUi.ClaimLabel, "CLAIMED");
+            Set(_prizeUi.Note, FightScreenNavigation.IsPreview ? "Reward preview" : "Crystals added!");
             GameAudio.Play(SoundCue.RewardComplete);
             StartCoroutine(FinishClaim());
         }
@@ -358,7 +480,21 @@ namespace PushStars.Fight
         }
         public void Home()
         {
-            if (!ScreenLayoutRoot.IsAnyEditing) FightScreenNavigation.Navigate(_homeDestination);
+            if (ScreenLayoutRoot.IsAnyEditing) return;
+            if (_screen == FightScreen.RewardSummary)
+            {
+                bool hasAward = FightScreenNavigation.IsPreview ? _sampleSummary.HasCase :
+                    !string.IsNullOrEmpty(FightScreenNavigation.AwardedCaseId);
+                if (hasAward)
+                {
+                    // Only this result's award, never an unrelated pending inventory case.
+                    // Navigation validates the receipt and resumes an already opened prize.
+                    FightScreenNavigation.CaseId = FightScreenNavigation.AwardedCaseId;
+                    FightScreenNavigation.Navigate(_openDestination);
+                    return;
+                }
+            }
+            FightScreenNavigation.Navigate(_homeDestination);
         }
         public void InspectCaseAward()
         {
@@ -366,7 +502,7 @@ namespace PushStars.Fight
             if (!FightScreenNavigation.IsPreview && string.IsNullOrEmpty(FightScreenNavigation.AwardedCaseId)) return;
             FightScreenNavigation.Navigate(_awardDestination);
         }
-        private void SaveFailed() => Set(_caseUi.Status, "Не удалось сохранить. Нажми ещё раз.");
+        private void SaveFailed() => Set(_caseUi.Status, "Couldn't save. Tap to retry.");
         private void SetCaseInteractable(bool value)
         {
             if (_caseUi.TapButton != null) _caseUi.TapButton.interactable = value;

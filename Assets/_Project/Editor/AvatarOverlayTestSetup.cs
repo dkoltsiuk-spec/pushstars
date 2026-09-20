@@ -369,6 +369,9 @@ namespace PushStars.Editor
             var stand = standClip != null ? sm.AddState(StandIdleState) : null;
             if (stand != null) stand.motion = standClip;
 
+            var sadClip = LoadClip(SadIdleSetup.ClipPath);
+            if (sadClip != null) sm.AddState("SadIdle").motion = sadClip;
+
             // No transitions — the drivers play states by name.
             sm.defaultState = stand ?? idle;
             EditorUtility.SetDirty(controller);

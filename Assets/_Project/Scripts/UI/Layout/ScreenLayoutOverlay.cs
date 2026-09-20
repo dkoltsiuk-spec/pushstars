@@ -40,7 +40,7 @@ namespace PushStars.UI.Layout
 
         public static GameObject CreateLauncher(ScreenLayoutRoot owner)
         {
-            var button = MakeButton(owner.transform, "__LayoutEditButton", "ДВИГАТЬ UI", owner.BeginEditing,
+            var button = MakeButton(owner.transform, "__LayoutEditButton", "EDIT UI", owner.BeginEditing,
                 new Color(0.07f, 0.09f, 0.17f, 0.86f));
             var rect = (RectTransform)button.transform;
             rect.anchorMin = rect.anchorMax = new Vector2(1f, 0f);
@@ -78,19 +78,19 @@ namespace PushStars.UI.Layout
             toolbar.anchoredPosition = new Vector2(0f, -Mathf.Max(10f, safeTop));
             toolbarObject.GetComponent<Image>().color = new Color(0.025f, 0.035f, 0.09f, 0.96f);
 
-            _caption = MakeText(toolbar, "Caption", "Нажми на элемент и перетащи", 14f);
+            _caption = MakeText(toolbar, "Caption", "Tap an element and drag", 14f);
             _caption.rectTransform.anchorMin = new Vector2(0f, 1f);
             _caption.rectTransform.anchorMax = Vector2.one;
             _caption.rectTransform.pivot = new Vector2(0.5f, 1f);
             _caption.rectTransform.anchoredPosition = new Vector2(0f, -6f);
             _caption.rectTransform.sizeDelta = new Vector2(-16f, 27f);
 
-            PlaceButton(MakeButton(toolbar, "Save", "СОХРАНИТЬ", _owner.SaveLayout, new Color(0.94f, 0.74f, 0.03f)), 0f, 0.36f, -38f, 36f);
-            PlaceButton(MakeButton(toolbar, "Cancel", "ОТМЕНА", _owner.CancelEditing, new Color(0.18f, 0.22f, 0.34f)), 0.36f, 0.68f, -38f, 36f);
-            PlaceButton(MakeButton(toolbar, "Reset", "СБРОС", _owner.ResetToDefaults, new Color(0.18f, 0.22f, 0.34f)), 0.68f, 1f, -38f, 36f);
-            PlaceButton(MakeButton(toolbar, "Smaller", "− РАЗМЕР", () => Resize(0.95f), new Color(0.12f, 0.16f, 0.26f)), 0f, 0.34f, -82f, 34f);
-            PlaceButton(MakeButton(toolbar, "Next", "ЭЛЕМЕНТ →", SelectNext, new Color(0.12f, 0.16f, 0.26f)), 0.34f, 0.68f, -82f, 34f);
-            PlaceButton(MakeButton(toolbar, "Larger", "+ РАЗМЕР", () => Resize(1.05f), new Color(0.12f, 0.16f, 0.26f)), 0.68f, 1f, -82f, 34f);
+            PlaceButton(MakeButton(toolbar, "Save", "SAVE", _owner.SaveLayout, new Color(0.94f, 0.74f, 0.03f)), 0f, 0.36f, -38f, 36f);
+            PlaceButton(MakeButton(toolbar, "Cancel", "CANCEL", _owner.CancelEditing, new Color(0.18f, 0.22f, 0.34f)), 0.36f, 0.68f, -38f, 36f);
+            PlaceButton(MakeButton(toolbar, "Reset", "RESET", _owner.ResetToDefaults, new Color(0.18f, 0.22f, 0.34f)), 0.68f, 1f, -38f, 36f);
+            PlaceButton(MakeButton(toolbar, "Smaller", "− SIZE", () => Resize(0.95f), new Color(0.12f, 0.16f, 0.26f)), 0f, 0.34f, -82f, 34f);
+            PlaceButton(MakeButton(toolbar, "Next", "ELEMENT →", SelectNext, new Color(0.12f, 0.16f, 0.26f)), 0.34f, 0.68f, -82f, 34f);
+            PlaceButton(MakeButton(toolbar, "Larger", "+ SIZE", () => Resize(1.05f), new Color(0.12f, 0.16f, 0.26f)), 0.68f, 1f, -82f, 34f);
         }
 
         private static void PlaceButton(Button button, float left, float right, float y, float height)
@@ -186,7 +186,7 @@ namespace PushStars.UI.Layout
         private void Select(RectTransform target)
         {
             _selected = target;
-            _caption.text = target != null ? target.name + " • перетащи / измени размер" : "Нажми на элемент и перетащи";
+            _caption.text = target != null ? target.name + " • drag / resize" : "Tap an element and drag";
             _outline.gameObject.SetActive(target != null);
         }
 

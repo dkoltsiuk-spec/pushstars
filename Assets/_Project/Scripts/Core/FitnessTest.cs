@@ -52,21 +52,21 @@ namespace PushStars.Core
 
         public static string DisplayName(FitnessTier tier) => tier switch
         {
-            FitnessTier.Amateur  => "ЛЮБИТЕЛЬ",
-            FitnessTier.Athlete  => "АТЛЕТ",
-            FitnessTier.Champion => "ЧЕМПИОН",
-            FitnessTier.Elite    => "ЭЛИТА",
-            _                    => "НОВИЧОК",
+            FitnessTier.Amateur  => "AMATEUR",
+            FitnessTier.Athlete  => "ATHLETE",
+            FitnessTier.Champion => "CHAMPION",
+            FitnessTier.Elite    => "ELITE",
+            _                    => "BEGINNER",
         };
 
         /// <summary>One line of context under the tier name on the result screen.</summary>
         public static string Blurb(FitnessTier tier) => tier switch
         {
-            FitnessTier.Amateur  => "Хорошая база. Есть куда расти.",
-            FitnessTier.Athlete  => "Крепкий результат — выше среднего.",
-            FitnessTier.Champion => "Сильный уровень. Мало кто так может.",
-            FitnessTier.Elite    => "Верхний эшелон. Ищи соперников под стать.",
-            _                    => "Каждый с чего-то начинает. Дальше — только вверх.",
+            FitnessTier.Amateur  => "A solid start. Keep building on it.",
+            FitnessTier.Athlete  => "Strong performance — above average.",
+            FitnessTier.Champion => "An impressive level. Few get this far.",
+            FitnessTier.Elite    => "Top tier. Find a worthy challenger.",
+            _                    => "Everyone starts somewhere. Keep moving up.",
         };
 
         private static int Index(FitnessTier tier)

@@ -25,14 +25,18 @@ namespace PushStars.Editor
             Directory.CreateDirectory("output/first-boss");
             try
             {
-                PlayerPrefs.SetInt("boss_progress", 0);
-                FightRequest.Boss();
-                PlayerPrefs.SetInt("boss_progress", 1);
-                Require(FightRequest.BossId == "novice", "Selected boss survives ladder advancement");
-                foreach (var name in new[] { "FightPreparation", "Fight", "FightResults" }) CheckScene(name, true);
+                BuildScript.ValidateAppScenes();
+                for (int i = 0; i < BossCatalog.Bosses.Count; i++)
+                {
+                    PlayerPrefs.SetInt("boss_progress", i);
+                    FightRequest.Boss();
+                    PlayerPrefs.SetInt("boss_progress", Mathf.Min(i + 1, BossCatalog.Bosses.Count - 1));
+                    Require(FightRequest.BossId == BossCatalog.Bosses[i].Id, "Selected boss survives ladder advancement");
+                    foreach (var name in new[] { "FightPreparation", "Fight", "FightResults" }) CheckScene(name, true);
+                }
                 FightRequest.Ghost();
                 CheckScene("FightPreparation", false);
-                File.WriteAllText("output/first-boss/integration.txt", "PASS: first orc on opponent stage in preparation, battle and results; original player preserved; hero lighting and toon shader; ten animator states; victory then laugh then idle; ghost driver not bound to boss; selected boss survives ladder advancement; PVP unchanged.\n");
+                File.WriteAllText("output/first-boss/integration.txt", "PASS: all ladder bosses on opponent stage in preparation, battle and results; original player preserved; shipping routes and boss resources; hero lighting and toon shader; ten animator states; victory then laugh then idle; ghost driver not bound to boss; selected boss survives ladder advancement; ghost presentation unchanged.\n");
             }
             catch (Exception e)
             { File.WriteAllText("output/first-boss/integration.txt", "FAIL: " + e); throw; }
@@ -59,6 +63,8 @@ namespace PushStars.Editor
                     var presentation = avatar.Character.GetComponent<BossAvatarPresentation>();
                     Require((presentation != null) == (opponent && boss), "Boss only replaces opponent in boss mode");
                     if (presentation == null) continue;
+                    var expected = Resources.Load<GameObject>("Bosses/" + BossCatalog.Find(FightRequest.BossId).PrefabId);
+                    Require(expected != null && avatar.Character.name == expected.name, "Selected boss model in " + name);
                     var animator = avatar.Character.GetComponent<Animator>();
                     Require(animator.avatar.isValid && animator.isHuman, "Valid boss humanoid");
                     foreach (string state in new[] { "StandIdle", "BattleIdle", "WarmUp", "Punch", "Kick", "Hit", "Reaction", "Defeat", "Victory", "Laugh" })
@@ -82,7 +88,7 @@ namespace PushStars.Editor
                     camera.Render(); RenderTexture.active = rt;
                     var image = new Texture2D(720, 1024, TextureFormat.RGBA32, false);
                     image.ReadPixels(new Rect(0, 0, 720, 1024), 0, 0); image.Apply();
-                    File.WriteAllBytes("output/first-boss/" + name + ".png", image.EncodeToPNG());
+                    File.WriteAllBytes("output/first-boss/" + FightRequest.BossId + "-" + name + ".png", image.EncodeToPNG());
                     Object.DestroyImmediate(image); camera.targetTexture = null; RenderTexture.active = previous; rt.Release(); Object.DestroyImmediate(rt);
                 }
             }

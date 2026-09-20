@@ -53,9 +53,7 @@ namespace PushStars.Editor
             SessionState.SetInt(Key + ".sets", PlayerPrefs.GetInt("training.sets", -100));
             SessionState.SetInt(Key + ".rest", PlayerPrefs.GetInt("training.rest", -100));
             TrainingSettingsRegression.Run();
-            ModeSelectionSceneSetup.Run();
-            BattleSettingsSceneSetup.Run();
-            TrainingSettingsSceneSetup.Run();
+            // Exercise the shipped scene as authored; validation must not rebuild or save it.
             EditorSceneManager.OpenScene(AuthoredScenes.MainPath);
             SessionState.SetBool(Key, true);
             EditorApplication.isPlaying = true;
@@ -91,7 +89,7 @@ namespace PushStars.Editor
                         Click("bossInfo");
                         break;
                     case 3:
-                        Require(Find("Description").GetComponent<TextMeshProUGUI>().text.Contains("босса"), "Boss has its own description");
+                        Require(Find("Description").GetComponent<TextMeshProUGUI>().text.Contains("boss"), "Boss has its own description");
                         _controller.CloseInfo();
                         Click("bossCard");
                         Require(SelectedGameMode.Current == GameMode.Boss, "Boss selection is persisted");
@@ -103,7 +101,7 @@ namespace PushStars.Editor
                         break;
                     case 5:
                         Click("trainingInfo");
-                        Require(Find("Description").GetComponent<TextMeshProUGUI>().text.Contains("без соперника"), "Training has its own description");
+                        Require(Find("Description").GetComponent<TextMeshProUGUI>().text.Contains("without an opponent"), "Training has its own description");
                         _controller.CloseInfo();
                         Click("trainingCard");
                         Require(SelectedGameMode.Current == GameMode.Training, "Training selectable");
@@ -159,9 +157,9 @@ namespace PushStars.Editor
                     case 14:
                         Require(Find("SettingsSkull_0_1").GetComponent<RectTransform>().anchoredPosition != _skullPosition, "Settings skulls drift");
                         Click("PushupExercise");
-                        Require(!_settings.IsOpen && !FightRequest.HasRequest, "Selecting pushups closes settings without starting a battle");
                         break;
                     case 15:
+                        Require(!_settings.IsOpen && !FightRequest.HasRequest, "Selecting pushups closes settings after the press animation without starting a battle");
                         SelectedGameMode.Current = GameMode.Pvp;
                         Click("PushupButton");
                         break;
@@ -193,7 +191,7 @@ namespace PushStars.Editor
                     case 22:
                         Require(!_settings.IsOpen, "Settings backdrop closes sheet");
                         new TrainingPlan(3, 60).Save();
-                        _controller.Select(GameMode.Training);
+                        SelectedGameMode.Current = GameMode.Training;
                         _trainingSettings = Object.FindObjectOfType<TrainingSettingsController>();
                         Click("PushupButton");
                         break;
@@ -269,6 +267,17 @@ namespace PushStars.Editor
                         Require(Mathf.Abs(_workout.RestRemaining - _pausedRest) < .01f, "Pause freezes actual rest countdown");
                         Click("Resume"); Click("StartSet");
                         Require(!_workout.IsResting && _workout.CurrentSet == 2, "START SET resumes the next actual set");
+                        var controller = Object.FindObjectOfType<PushStars.Fight.FightController>();
+                        var privateFlags = System.Reflection.BindingFlags.Instance | System.Reflection.BindingFlags.NonPublic;
+                        var pauseCallback = controller.GetType().GetMethod("OnApplicationPause", privateFlags);
+                        pauseCallback.Invoke(controller, new object[] { true });
+                        pauseCallback.Invoke(controller, new object[] { true });
+                        Require((bool)controller.GetType().GetField("_paused", privateFlags).GetValue(controller), "Backgrounding pauses a solo workout");
+                        Require(!((Behaviour)controller.GetType().GetField("_session", privateFlags).GetValue(controller)).enabled, "Background pause stops rep counting");
+                        pauseCallback.Invoke(controller, new object[] { false });
+                        Require((bool)controller.GetType().GetField("_paused", privateFlags).GetValue(controller), "Returning from background waits for explicit resume");
+                        controller.GetType().GetMethod("ToggleTrainingPause", privateFlags).Invoke(controller, null);
+                        Require(!(bool)controller.GetType().GetField("_paused", privateFlags).GetValue(controller), "Workout resumes after background pause");
                         Finish(0); return;
                 }
                 _due = EditorApplication.timeSinceStartup + .65;
@@ -293,7 +302,13 @@ namespace PushStars.Editor
             }
         }
 
-        private static GameObject Find(string name) => _canvas.GetComponentsInChildren<Transform>(true).First(t => t.name == name).gameObject;
+        private static GameObject Find(string name)
+        {
+            // Profile and friend dialogs also have a Dimmer. Use the mode selector's binding.
+            if (name == "Dimmer")
+                return ((Button)new SerializedObject(_controller).FindProperty("_backdropButton").objectReferenceValue).gameObject;
+            return _canvas.GetComponentsInChildren<Transform>(true).First(t => t.name == name).gameObject;
+        }
         private static void Click(string name)
         {
             var go = Find(name);
@@ -356,7 +371,8 @@ namespace PushStars.Editor
             }
             PlayerPrefs.Save();
             File.AppendAllText(Output + "/validation.txt", "RESULT: " + (code == 0 ? "PASS" : "FAIL") + "\n");
-            EditorApplication.Exit(code);
+            if (Application.isBatchMode) EditorApplication.Exit(code);
+            else EditorApplication.isPlaying = false;
         }
 
         private static void CaptureError(string message, string stack, LogType type)

@@ -162,7 +162,7 @@ namespace PushStars.Fight
             if (_sounds) GameAudio.Play(SoundCue.RepRejected);
             // Short loud toast through the banner — the phase-14 reject UX in miniature.
             _vetoToastUntil = Time.time + 1.4f;
-            SetBanner("ПОВТОР НЕ ЗАСЧИТАН", VetoColor);
+            SetBanner("REP NOT COUNTED", VetoColor);
         }
 
         private void Update()
@@ -301,14 +301,14 @@ namespace PushStars.Fight
             _soloPaused = paused;
             GameAudio.SetWorkoutPaused(paused);
             if (_soloPauseOverlay != null) _soloPauseOverlay.SetActive(paused);
-            if (paused) SetPauseCopy("ПАУЗА", "Нажми, чтобы продолжить");
+            if (paused) SetPauseCopy("PAUSED", "Tap to continue");
         }
 
         public void ShowTrainingRest(int nextSet, int total, float seconds)
         {
             if (_soloPauseOverlay != null) _soloPauseOverlay.SetActive(true);
-            string time = seconds < 0 ? "Без таймера" : $"{Mathf.CeilToInt(seconds)} сек.";
-            SetPauseCopy("ОТДЫХ", $"{time} • Далее подход {nextSet}/{total}\nНажми, чтобы продолжить");
+            string time = seconds < 0 ? "No timer" : $"{Mathf.CeilToInt(seconds)} sec";
+            SetPauseCopy("REST", $"{time} • Next set {nextSet}/{total}\nTap to continue");
         }
 
         private void SetPauseCopy(string title, string hint)
@@ -349,7 +349,7 @@ namespace PushStars.Fight
                                   : "—");
 
         public void SetOpponentTempo(float secondsPerRep) =>
-            SetText(_opponentTempo, secondsPerRep > 0.01f ? $"{secondsPerRep:0.0}с" : "—");
+            SetText(_opponentTempo, secondsPerRep > 0.01f ? $"{secondsPerRep:0.0}s" : "—");
 
         public void SetTimer(int seconds)
         {
@@ -402,7 +402,7 @@ namespace PushStars.Fight
             if (_sounds) GameAudio.Play(SoundCue.Confirm);
             if (_countdown == null) return;
             _countdown.gameObject.SetActive(true);
-            _countdown.text = "ВПЕРЁД!";
+            _countdown.text = "GO!";
             _goFlashUntil = Time.time + 0.8f;
         }
 

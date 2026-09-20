@@ -72,14 +72,14 @@ namespace PushStars.App
 
         private async void Start()
         {
-            Report(0.05f, "Запуск…");
+            Report(0.05f, "Starting…");
 
             // The backend is started beside the launch, never in front of it. Where it runs at all
             // is decided by _initializeBackend; either way the router below only reads local state.
             if (_initializeBackend) InitServicesAsync().Forget();
 
             string next = ResolveNextScene();
-            Report(0.65f, next == FightConfig.FightSceneName ? "Готовим замер…" : "Почти готово…");
+            Report(0.65f, next == FightConfig.FightSceneName ? "Preparing assessment…" : "Almost ready…");
             await LoadNextSceneAsync(next);
         }
 
@@ -92,7 +92,7 @@ namespace PushStars.App
             // (the final scene load must run on the main thread).
             try
             {
-                Report(0.12f, "Соединение…");
+                Report(0.12f, "Connecting…");
                 var firebase = new FirebaseService();
                 bool inTime = await WithTimeout(firebase.InitializeAsync());
                 await UniTask.SwitchToMainThread();
@@ -104,23 +104,23 @@ namespace PushStars.App
                     Debug.LogError(inTime
                         ? "[AppBootstrap] Firebase unavailable — continuing without backend."
                         : $"[AppBootstrap] Firebase did not answer in {_serviceTimeoutSec}s — continuing without backend.");
-                    Report(0.6f, "Офлайн-режим");
+                    Report(0.6f, "Offline mode");
                     return;
                 }
                 ServiceLocator.Register(firebase);
 
-                Report(0.32f, "Вход…");
+                Report(0.32f, "Signing in…");
                 var auth = new FirebaseAuthService();
                 if (!await WithTimeout(auth.SignInAnonymouslyAsync()))
                 {
                     Debug.LogError($"[AppBootstrap] Sign-in did not answer in {_serviceTimeoutSec}s — continuing without backend.");
-                    Report(0.6f, "Офлайн-режим");
+                    Report(0.6f, "Offline mode");
                     return;
                 }
                 await UniTask.SwitchToMainThread();
                 ServiceLocator.Register(auth);
 
-                Report(0.5f, "Профиль…");
+                Report(0.5f, "Loading profile…");
                 var firestore = new FirestoreService();
                 firestore.Configure();
                 ServiceLocator.Register(firestore);
@@ -133,7 +133,7 @@ namespace PushStars.App
             catch (Exception e)
             {
                 Debug.LogError($"[AppBootstrap] Service init failed: {e}");
-                Report(0.6f, "Офлайн-режим");
+                Report(0.6f, "Offline mode");
             }
             finally
             {
@@ -181,11 +181,10 @@ namespace PushStars.App
 
         private async UniTask LoadNextSceneAsync(string sceneName)
         {
-            // Download a newer remote scene when one exists. A failed or slow network is harmless:
-            // OtaSceneLoader falls back to the copy embedded in this player build.
+            // All platforms use the same embedded scenes; no remote content is needed at boot.
             await OtaSceneLoader.PrepareAsync(sceneName, p => Report(0.65f + 0.3f * p));
 
-            Report(1f, "Поехали");
+            Report(1f, "Let's go");
 
             // Hold for the minimum display time AND until the bar has visibly filled.
             while (Time.realtimeSinceStartup - _startTime < _minVisibleSec ||

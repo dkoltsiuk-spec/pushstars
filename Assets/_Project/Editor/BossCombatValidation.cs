@@ -16,7 +16,13 @@ namespace PushStars.Editor
     public static class BossCombatValidation
     {
         private const BindingFlags Private = BindingFlags.Instance | BindingFlags.NonPublic;
-        private const string Output = "output/boss-combat/";
+        private static int _bossIndex;
+        private static string Output => _bossIndex == 4 ? "output/goblin-king/combat/" : "output/boss-combat/";
+        public static void RunFinalBoss()
+        {
+            _bossIndex = 4;
+            try { Run(); } finally { _bossIndex = 0; }
+        }
         private static bool _standingPreview;
         public static void RunStandingPreview()
         {
@@ -34,7 +40,7 @@ namespace PushStars.Editor
             try
             {
                 CheckHealth();
-                PlayerPrefs.SetInt("boss_progress", 0); FightRequest.Boss();
+                PlayerPrefs.SetInt("boss_progress", _bossIndex); FightRequest.Boss();
                 CheckScene("FightPreparation"); CheckScene("Fight");
                 File.WriteAllText(Output + "validation.txt", "PASS: 5 perfect / 7 minimum-form reps; deterministic damage and clamping; 14 boss hits defeat player; no damage after KO; win/loss/draw; both scene bindings, real avatars, HP animation and damage labels; 390x844 and 320x568 renders. No CV camera or rewards started.\n");
             }
@@ -64,7 +70,7 @@ namespace PushStars.Editor
             for (int i = 0; i < 13; i++) loss.BossAttack();
             Require(loss.PlayerHp == 25 && !loss.Knockout, "Boss attack cadence damage");
             loss.BossAttack(); Require(loss.PlayerHp == 0 && !loss.PlayerWins && !loss.Draw, "Boss KO victory");
-            var timeout = new BossCombatState("athlete"); Require(timeout.Draw, "Equal HP draws");
+            var timeout = new BossCombatState("unknown"); Require(timeout.Draw, "Equal HP draws");
             timeout.PlayerRep(100); Require(timeout.PlayerWins, "Higher HP wins on timeout");
             timeout.BossAttack(); timeout.BossAttack(); Require(!timeout.PlayerWins && !timeout.Draw, "Lower HP loses on timeout");
         }
@@ -91,6 +97,13 @@ namespace PushStars.Editor
                     string pose = avatar == c.BossStage ? "StandIdle" : "WarriorIdle";
                     if (!c.Preparation && avatar == c.PlayerStage) pose = _standingPreview ? "StandIdle" : "PushUp";
                     if (animator.HasState(0, Animator.StringToHash(pose))) { animator.Play(pose, 0, .12f); animator.Update(0); }
+                    if (!c.Preparation && avatar == c.PlayerStage && !_standingPreview)
+                    {
+                        PushStars.CV.PushupPoseCorrection.Bind(animator).Apply(0f);
+                        var mirror = avatar.GetComponent<PushStars.CV.PoseMirrorRetargeter>();
+                        if (mirror != null) typeof(PushStars.CV.PoseMirrorRetargeter).GetMethod("SetPhase", Private)
+                            .Invoke(mirror, new object[] { true, Time.unscaledTime });
+                    }
                     var stage = avatar.StageCamera; stage.scene = scene;
                     var rt = new RenderTexture(720, 1024, 24); textures.Add(rt); stage.targetTexture = rt; stage.ResetAspect();
                     typeof(FightAvatar).GetMethod("FrameCharacter", Private).Invoke(avatar, null);
@@ -98,19 +111,49 @@ namespace PushStars.Editor
                 }
                 c.Configure(true); Canvas.ForceUpdateCanvases(); c.Refresh(1);
                 Require(c.Legacy.All(x => x == null || !x.activeSelf), "Old HUD hidden");
-                Require(c.BossHpText.text == "450 / 450" && c.PlayerHpText.text == "1000 / 1000", "Starting HP labels");
+                int maxHp = BossCatalog.Bosses[_bossIndex].MaxHp;
+                Require(c.BossHpText.text == maxHp + " / " + maxHp && c.PlayerHpText.text == "1000 / 1000", "Starting HP labels");
                 var camera = new GameObject("BossCombatValidationCamera").AddComponent<Camera>(); SceneManager.MoveGameObjectToScene(camera.gameObject, scene);
                 camera.scene = scene; camera.transform.position = new Vector3(0,0,-50); camera.orthographic = true;
                 camera.orthographicSize = 422; camera.cullingMask = ~0; camera.clearFlags = CameraClearFlags.SolidColor;
                 camera.backgroundColor = Color.black; canvas.worldCamera = camera;
                 var output = new RenderTexture(780,1688,24); textures.Add(output); camera.targetTexture = output;
                 Capture(camera,output,name);
+                if (!c.Preparation && !_standingPreview)
+                {
+                    Require(c.PlayerPortrait is PortraitImage && c.BossPortrait is PortraitImage, "Portraits clip out-of-frame texture edges");
+                    var animator = c.PlayerStage.Character.GetComponentInChildren<Animator>();
+                    var correction = PushStars.CV.PushupPoseCorrection.Bind(animator);
+                    Rect topCrop = c.PlayerPortrait.uvRect;
+                    var snapshots = c.PlayerStage.Character.GetComponentsInChildren<SkinnedMeshRenderer>()
+                        .Where(s => s.enabled && s.sharedMesh != null).Select(s => new PushupPosePreview.PreviewSkin(s)).ToArray();
+                    try
+                    {
+                        foreach (float depth in new[] { 0f, .5f, 1f })
+                        {
+                            correction.Apply(depth);
+                            foreach (var skin in snapshots) skin.UpdateGeometry();
+                            c.PlayerStage.StageCamera.Render(); c.Refresh(0);
+                            Require(c.PlayerPortrait.uvRect == topCrop, "Push-up crop follows the chest instead of staying planted");
+                            foreach (var hand in new[] { HumanBodyBones.LeftHand, HumanBodyBones.RightHand,
+                                HumanBodyBones.LeftMiddleDistal, HumanBodyBones.RightMiddleDistal })
+                            {
+                                var point = c.PlayerStage.StageCamera.WorldToViewportPoint(animator.GetBoneTransform(hand).position);
+                                Require(point.x > 0f && point.x < 1f && point.y > 0f && point.y < 1f, "Stage camera cuts off " + hand);
+                                Require(topCrop.Contains(point), "Portrait crop cuts off " + hand);
+                            }
+                            Capture(camera, output, "Fight-pushup-" + depth.ToString("0.0", System.Globalization.CultureInfo.InvariantCulture));
+                        }
+                    }
+                    finally { foreach (var skin in snapshots) skin.Dispose(); }
+                    correction.Apply(0f); c.PlayerStage.StageCamera.Render();
+                }
                 if (!c.Preparation && c.Forest != null) GoblinForestValidation.Check(c,camera,output,Capture);
                 if (!c.Preparation)
                 {
                     var health = (BossCombatState)typeof(BossCombatScreen).GetField("_health",Private).GetValue(c);
                     health.PlayerRep(100); health.BossAttack(); c.Refresh(1);
-                    Require(Mathf.Abs(c.BossHpFill.FillAmount-350f/450)<.001f && c.PlayerHpFill.FillAmount==.925f, "Actual HP drives fills");
+                    Require(Mathf.Abs(c.BossHpFill.FillAmount-(maxHp-100f)/maxHp)<.001f && c.PlayerHpFill.FillAmount==.925f, "Actual HP drives fills");
                     Require(c.DamageLabels.Count(x => x.gameObject.activeSelf)==2, "Both damage numbers shown");
                     Capture(camera,output,name+"-damage");
                     if (c.Forest != null && c.Forest.Effects != null)

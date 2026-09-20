@@ -18,8 +18,8 @@ namespace PushStars.Editor
         };
         private static readonly string[] Labels =
         {
-            "Подготовка к бою", "Бой", "Результаты боя", "Начисление награды",
-            "Получение кейса", "Открытие кейса", "Награда из кейса"
+            "Battle preparation", "Battle", "Battle results", "Reward summary",
+            "Case award", "Case opening", "Case reward"
         };
         private int _index;
         private Vector2 _scroll;
@@ -29,13 +29,13 @@ namespace PushStars.Editor
 
         private void OnGUI()
         {
-            EditorGUILayout.LabelField("Сцены игры", EditorStyles.boldLabel);
-            EditorGUILayout.HelpBox("Открой сцену, двигай элементы инструментом Rect (T) и сохраняй Ctrl+S. " +
-                "Переходы на другие экраны настраиваются в компоненте экрана в Inspector.", MessageType.Info);
-            _index = EditorGUILayout.Popup("Сцена", _index, Labels);
+            EditorGUILayout.LabelField("Game scenes", EditorStyles.boldLabel);
+            EditorGUILayout.HelpBox("Open a scene, move elements with the Rect tool (T), and save with Ctrl+S. " +
+                "Configure navigation to other screens in the screen component in the Inspector.", MessageType.Info);
+            _index = EditorGUILayout.Popup("Scene", _index, Labels);
             using (new EditorGUI.DisabledScope(EditorApplication.isPlayingOrWillChangePlaymode))
             {
-                if (GUILayout.Button("Открыть сцену", GUILayout.Height(32)))
+                if (GUILayout.Button("Open scene", GUILayout.Height(32)))
                 {
                     if (EditorSceneManager.SaveCurrentModifiedScenesIfUserWantsTo())
                     {
@@ -43,13 +43,13 @@ namespace PushStars.Editor
                         EditorSceneManager.OpenScene(FightScreenNavigation.ScenePath(Screens[_index]));
                     }
                 }
-                if (GUILayout.Button("Сохранить сцену", GUILayout.Height(28))) EditorSceneManager.SaveOpenScenes();
+                if (GUILayout.Button("Save scene", GUILayout.Height(28))) EditorSceneManager.SaveOpenScenes();
             }
             if (EditorApplication.isPlayingOrWillChangePlaymode)
-                EditorGUILayout.HelpBox("Для сохранения элементов в сцене останови Play Mode.", MessageType.Info);
+                EditorGUILayout.HelpBox("Stop Play Mode before saving scene elements.", MessageType.Info);
 
             var active = UnityEngine.SceneManagement.SceneManager.GetActiveScene();
-            EditorGUILayout.LabelField("Открыта", active.name);
+            EditorGUILayout.LabelField("Open", active.name);
             _scroll = EditorGUILayout.BeginScrollView(_scroll);
             foreach (var root in Resources.FindObjectsOfTypeAll<ScreenLayoutRoot>().Where(item => item.gameObject.scene == active))
             {

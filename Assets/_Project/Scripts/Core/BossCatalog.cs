@@ -16,14 +16,18 @@ namespace PushStars.Core
         public string Id { get; }
         /// <summary>Never shown as "bot" — the boss is an explicit PvE character.</summary>
         public string DisplayName { get; }
+        public int MaxHp { get; }
+        public string PrefabId { get; }
         /// <summary>Rep timestamps in seconds from duel start, ascending, all &lt; duel duration.</summary>
         public IReadOnlyList<float> RepTimes { get; }
 
-        public BossProfile(string id, string displayName, IReadOnlyList<float> repTimes)
+        public BossProfile(string id, string displayName, IReadOnlyList<float> repTimes, int maxHp = 1000, string prefabId = null)
         {
             Id = id;
             DisplayName = displayName;
             RepTimes = repTimes;
+            MaxHp = maxHp;
+            PrefabId = prefabId ?? id;
         }
 
         /// <summary>Builds a timeline from bursts: (start, reps, secondsBetweenReps). Reps that would
@@ -52,16 +56,28 @@ namespace PushStars.Core
     {
         private const string ProgressKey = "boss_progress";
 
-        /// <summary>Ordered easy → hard. Tempos per docs/plan/phase-08.9-boss-fight.md:
-        /// ~15 / ~25 / ~35 reps over the 60s duel.</summary>
+        private static BossProfile Goblin(string id, int hp, bool final = false)
+        {
+            var timeline = BossProfile.FromBursts(id, "", FightConfig.DuelDurationSec,
+                (3f, 4, 2.2f), (18f, 4, 2.4f), (34f, 3, 2.6f), (49f, 4, 2.5f));
+            return new BossProfile(id, final ? "BOSS GOBLIN KING" : "BOSS GOBLIN ARCH",
+                timeline.RepTimes, hp, final ? "goblin-king" : "novice");
+        }
+
+        public static BossProfile Find(string id)
+        {
+            foreach (var boss in Bosses) if (boss.Id == id) return boss;
+            return null;
+        }
+
+        /// <summary>Five forest fights. +125 HP adds 1–2 reps; the finale adds 200 HP (2–3 reps).</summary>
         public static readonly IReadOnlyList<BossProfile> Bosses = new[]
         {
-            BossProfile.FromBursts("novice", "BOSS GOBLIN ARCH", FightConfig.DuelDurationSec,
-                (3f, 4, 2.2f), (18f, 4, 2.4f), (34f, 3, 2.6f), (49f, 4, 2.5f)),          // 15
-            BossProfile.FromBursts("athlete", "АТЛЕТ", FightConfig.DuelDurationSec,
-                (2f, 7, 1.8f), (18f, 7, 1.9f), (34f, 6, 2.0f), (48f, 5, 2.1f)),          // 25
-            BossProfile.FromBursts("champion", "ЧЕМПИОН", FightConfig.DuelDurationSec,
-                (1.5f, 10, 1.5f), (18f, 10, 1.6f), (35f, 9, 1.7f), (51f, 6, 1.8f)),      // ~35
+            Goblin("novice", 450),
+            Goblin("athlete", 575),
+            Goblin("champion", 700),
+            Goblin("goblin-guard", 825),
+            Goblin("goblin-king", 1025, true),
         };
 
         public static int CurrentIndex

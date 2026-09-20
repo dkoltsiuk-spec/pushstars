@@ -83,15 +83,8 @@ namespace PushStars.Editor
             var screen = canvas.gameObject.AddComponent<TrainingScreen>();
             var root = Rect(canvas.transform, "TrainingScreen"); Stretch(root);
             var background = Image(root, "Background", SpriteImporter.Load(TrainingBackgroundSprite)); Stretch(background.rectTransform);
-            var decor = Rect(root, "LightningPattern"); Stretch(decor);
-            var bolts = new RectTransform[40];
-            for (int i = 0; i < bolts.Length; i++)
-            {
-                var bolt = Image(decor, "Bolt" + i, Sprite(Sprites + "icon_lightning_BG.png"));
-                bolt.color = new Color(1, 1, 1, .28f);
-                Place(bolt.rectTransform, -60 + i % 5 * 105 + (i / 5 % 2) * 30, i / 5 * 160 - 100, 83, 110);
-                bolts[i] = bolt.rectTransform;
-            }
+            PushStars.UI.LightningField.Build(root, Sprite(Sprites + "icon_lightning_BG.png"));
+            var bolts = System.Array.Empty<RectTransform>();
             var content = Rect(root, "Content"); content.anchorMin = content.anchorMax = content.pivot = new Vector2(.5f, .5f); content.sizeDelta = new Vector2(390, 844);
             // A design canvas scales uniformly, preserving the composition on phones and short windows.
             var scaler = canvas.GetComponent<CanvasScaler>(); scaler.uiScaleMode = CanvasScaler.ScaleMode.ScaleWithScreenSize;

@@ -7,9 +7,24 @@ namespace PushStars.Fight
     [RequireComponent(typeof(CanvasRenderer))]
     public sealed class RewardStarGraphic : MaskableGraphic
     {
+        public Texture2D Artwork;
+        public override Texture mainTexture => Artwork != null ? Artwork : base.mainTexture;
+
         protected override void OnPopulateMesh(VertexHelper vh)
         {
             vh.Clear();
+            if (Artwork != null)
+            {
+                Rect r = rectTransform.rect;
+                float size = Mathf.Min(r.width, r.height);
+                Vector2 min = r.center - Vector2.one * size * .5f;
+                vh.AddVert(min, Color.white, Vector2.zero);
+                vh.AddVert(min + new Vector2(size, 0), Color.white, Vector2.right);
+                vh.AddVert(min + Vector2.one * size, Color.white, Vector2.one);
+                vh.AddVert(min + new Vector2(0, size), Color.white, Vector2.up);
+                vh.AddTriangle(0, 1, 2); vh.AddTriangle(0, 2, 3);
+                return;
+            }
             Star(vh, 1f, new Color32(8, 12, 20, 255));
             Star(vh, 0.78f, color);
         }

@@ -112,7 +112,7 @@ namespace PushStars.Editor
                 UiBuilder.Place(word.rectTransform, new Vector2(0.5f, 0.5f), new Vector2(0f, 104f), new Vector2(340f, 72f));
 
                 var tagline = UiBuilder.Text(safe, "Tagline", AppColors.TextSecondary,
-                                             "ОТЖИМАНИЯ · ДУЭЛИ · РЕЙТИНГ", 13, FontStyles.Bold);
+                                             "PUSH-UPS · DUELS · RANKINGS", 13, FontStyles.Bold);
                 tagline.characterSpacing = 4f;
                 tagline.enableWordWrapping = false;
                 UiBuilder.Place(tagline.rectTransform, new Vector2(0.5f, 0.5f), new Vector2(0f, 46f), new Vector2(360f, 20f));
@@ -155,7 +155,7 @@ namespace PushStars.Editor
             // Not in the comp, and deliberately quiet: the status line is the only thing that says
             // WHICH startup step is the slow one when a launch stalls, and it starts counting
             // seconds out loud after one. Dim enough to read as part of the art until it matters.
-            var status = UiBuilder.Text(safe, "Status", new Color(1f, 1f, 1f, 0.42f), "Запуск…", 11, FontStyles.Normal);
+            var status = UiBuilder.Text(safe, "Status", new Color(1f, 1f, 1f, 0.42f), "Starting…", 11, FontStyles.Normal);
             UiBuilder.Place(status.rectTransform, new Vector2(0.5f, 0f), new Vector2(0f, StatusY), new Vector2(320f, 18f));
 
             var version = UiBuilder.Text(safe, "Version", new Color(1f, 1f, 1f, 0.25f), "v0.1", 9, FontStyles.Normal);

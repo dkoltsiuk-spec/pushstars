@@ -128,9 +128,9 @@ namespace PushStars.Fight
         private float _distance;
         private float _distanceVelocity;
         private bool _framed;
-        private bool _wasMirroring;
         private float _settleUntil;
         private bool _preparation;
+        private bool _resultLost;
         private Vector3 _bodyRestPos;
         private Quaternion _bodyRestRot;
         private Vector3 _bodyRestScale = Vector3.one;
@@ -181,7 +181,6 @@ namespace PushStars.Fight
             _distance = Vector3.Distance(_stageCamera.transform.position, _avatarRoot.position + Vector3.up);
             _focus = _stageCamera.transform.position + _stageCamera.transform.forward * _distance;
             _framed = true;
-            _wasMirroring = IsMirroring;
             _settleUntil = Time.time + _settleSeconds;
         }
         private readonly System.Collections.Generic.List<(Material material, string property, Color original)> _shadowColors
@@ -199,7 +198,12 @@ namespace PushStars.Fight
         /// </summary>
         public void SetPreparationPresentation(bool preparation)
         {
+            _resultLost = false;
             _preparation = preparation;
+            // A completed training set may have forced the seated rest pose. Any later return to
+            // a preparation/result card must release that override before showing StandIdle.
+            if (_driverBehaviour is PushupAvatarDriver pushupDriver)
+                pushupDriver.SetRestPresentation(false);
             // Each phase frames itself once, from where the body is now — the card cannot inherit
             // a shot aimed at a plank, and the duel cannot inherit one locked on a standing figure.
             _framed = false;
@@ -228,6 +232,52 @@ namespace PushStars.Fight
                     body.localScale = _bodyRestScale;
                 }
                 _animator.enabled = true;
+                _animator.speed = 1f;
+                // StandIdle uses the main screen's relaxed standing clip. Start it
+                // here so preparation works even without an active exercise driver.
+                int idle = Animator.StringToHash("StandIdle");
+                if (_animator.HasState(0, idle))
+                {
+                    if (!_animator.GetCurrentAnimatorStateInfo(0).IsName("StandIdle")
+                        || _animator.IsInTransition(0))
+                        _animator.Play(idle, 0, 0f);
+                    _animator.Update(0f);
+                }
+            }
+        }
+
+        /// <summary>Shows the seated rest pose during the training pause between sets. This is
+        /// separate from preparation: the latter is a standing card state, while rest is a
+        /// deliberate seated presentation and must remain active while the session is disabled.</summary>
+        public void SetRestPresentation(bool resting)
+        {
+            if (_driverBehaviour is PushupAvatarDriver pushupDriver)
+            {
+                pushupDriver.SetRestPresentation(resting);
+                return;
+            }
+
+            if (!resting || _animator == null) return;
+            int rest = Animator.StringToHash("SittingIdle");
+            if (_animator.HasState(0, rest))
+            {
+                _animator.enabled = true;
+                _animator.speed = 1f;
+                _animator.CrossFadeInFixedTime(rest, .25f, 0);
+            }
+        }
+
+        /// <summary>Uses the losing idle on either side of a duel, including a delayed body build.</summary>
+        public void SetResultPresentation(bool lost)
+        {
+            SetPreparationPresentation(true);
+            _resultLost = lost;
+            if (!lost || _animator == null) return;
+            foreach (var accent in Character.GetComponentsInChildren<CharacterIdleAccent>()) accent.enabled = false;
+            if (_animator.HasState(0, Animator.StringToHash("SadIdle")))
+            {
+                _animator.Play("SadIdle", 0, 0f);
+                _animator.Update(0f);
             }
         }
 
@@ -238,6 +288,7 @@ namespace PushStars.Fight
         /// that texture — the ready card's portraits — tell which of the two stages it is looking
         /// at without a second serialized reference.</summary>
         public Camera StageCamera => _stageCamera;
+        public bool IsPreparationFramed => _preparation && _framed;
         public bool IsMirroring => _holdFramingWhileMirroring != null && _holdFramingWhileMirroring.MirrorPhase;
         public bool IsFramingSettled => _framed && !IsMirroring && Time.time >= _settleUntil;
 
@@ -332,17 +383,11 @@ namespace PushStars.Fight
                 _stageCamera.GetComponentInParent<CharacterStage>()?.MatchDisplayAspect();
             if (_animator == null || _stageCamera == null) return;
 
-            // The ready card. The shot settles onto the standing body and then holds, which is
-            // the fixed framing the menu stage gives its hero — and the reason that figure reads
-            // as standing still. The aim rides between the body's centre and its head, and both
-            // of those breathe with the idle, so a camera left easing after them tows the whole
-            // figure around inside its own frame. On a card where each fighter now stands on a
-            // plate, that is the difference between standing on it and drifting over it. The
-            // settle is there because the idle needs a moment to cross-fade in; framing on the
-            // first frame would lock the shot onto a bind pose.
+            // Preparation evaluates its idle before the first framing pass. Keep the
+            // camera fixed afterwards; following breathing would make the floor drift.
             if (_preparation)
             {
-                if (!_framed || Time.time < _settleUntil) FrameCharacter();
+                if (!_framed) FrameCharacter();
                 return;
             }
 
@@ -354,27 +399,10 @@ namespace PushStars.Fight
                 return;
             }
 
-            // Framed once regardless, so the shot starts on the body rather than wherever the
-            // scene's camera was authored — then held for the whole mirror phase. The phase, not
-            // the limb weight: the anchor is moving the body from the moment it locks on, long
-            // before the limbs join, and a camera re-centring through that is the one thing that
-            // cancels the anchor.
-            bool mirroring = _holdFramingWhileMirroring.MirrorPhase;
-            if (mirroring != _wasMirroring)
-            {
-                _wasMirroring = mirroring;
-                // Leaving the mirror phase means the plank just armed: let the shot pull in for a
-                // moment, then stop.
-                if (!mirroring) _settleUntil = Time.time + _settleSeconds;
-            }
-
-            // Locked for the set, and this is the point of it. The aim rides between the body's
-            // centre and its head, both of which travel through a rep — so a shot that keeps
-            // re-framing slides down as the chest goes down and back up on the way up, and what
-            // the eye reads is the floor moving under a body that is standing still. It also
-            // unpins the hands, which the clip has planted. One pull-in, then the ground stays
-            // where it is.
-            if (_framed && (mirroring || Time.time >= _settleUntil)) return;
+            // The live anchor already matches the person's camera position and size.
+            // Keep that camera through the animation handoff as well: fitting the
+            // plank again would enlarge a distant player and undo the measured scale.
+            if (_framed) return;
 
             FrameCharacter();
         }
@@ -387,8 +415,15 @@ namespace PushStars.Fight
             bool bossBody = false;
             if (_opponentStage && FightRequest.HasRequest && FightRequest.Mode == FightMode.Boss)
             {
-                var bossPrefab = Resources.Load<GameObject>("Bosses/" + (FightRequest.BossId ?? BossCatalog.Current.Id));
-                if (bossPrefab != null) { prefab = bossPrefab; bossBody = true; }
+                string bossId = FightRequest.BossId ?? BossCatalog.Current.Id;
+                var bossPrefab = Resources.Load<GameObject>("Bosses/" + (BossCatalog.Find(bossId)?.PrefabId ?? bossId));
+                if (bossPrefab == null)
+                {
+                    Debug.LogError($"[FightAvatar] Missing boss prefab for '{bossId}'. Check BossCatalog and Resources/Bosses.");
+                    return;
+                }
+                prefab = bossPrefab;
+                bossBody = true;
             }
             if (prefab == null)
             {
@@ -457,7 +492,8 @@ namespace PushStars.Fight
                 }
 
             // The card may have asked for the standing-idle presentation before this body existed.
-            if (_preparation) SetPreparationPresentation(true);
+            if (_resultLost) SetResultPresentation(true);
+            else if (_preparation) SetPreparationPresentation(true);
         }
 
         /// <summary>Darkens this body's materials on the instance only. <c>renderer.materials</c>

@@ -46,6 +46,7 @@ namespace PushStars.Editor
         private static Canvas _canvas;
         private static RenderTexture _texture;
         private static StringBuilder _report;
+        private static float _summaryIdleTime;
 
         static FightScreensPlayValidation() => EditorApplication.playModeStateChanged += StateChanged;
 
@@ -125,12 +126,30 @@ namespace PushStars.Editor
             {
                 RequireScene(screen);
                 Require(FightScreenNavigation.IsPreview, "Direct scene preview activated real gameplay.");
+                if (screen == FightScreen.Battle)
+                {
+                    var controller = new SerializedObject(Object.FindFirstObjectByType<FightController>());
+                    var background = controller.FindProperty("_baseBackground").objectReferenceValue as Image;
+                    var arena = controller.FindProperty("_duelBackground").objectReferenceValue as Sprite;
+                    Require(arena != null && background != null && background.sprite == arena &&
+                        background.color == Color.white && background.isActiveAndEnabled,
+                        "PvP preview must show the assigned arena, not the legacy red/blue background.");
+                    _report.AppendLine("PASS: PvP preview uses the same arena background as gameplay.");
+                }
+                if (screen == FightScreen.RewardSummary)
+                    _summaryIdleTime = SummaryAnimator().GetCurrentAnimatorStateInfo(0).normalizedTime;
                 PrepareCapture();
                 _stage = 2;
                 Delay(.4);
             }
             else
             {
+                if (screen == FightScreen.RewardSummary)
+                {
+                    Require(SummaryAnimator().GetCurrentAnimatorStateInfo(0).normalizedTime > _summaryIdleTime,
+                        "Summary idle did not advance between rendered frames.");
+                    _report.AppendLine("PASS: summary renders its own live StandIdle animation.");
+                }
                 Capture(Names[_screenIndex]);
                 AssertPreferencesUnchanged();
                 _screenIndex++;
@@ -151,18 +170,22 @@ namespace PushStars.Editor
                     Delay(1.5);
                     break;
                 case 2:
-                    RequireScene(FightScreen.Home);
-                    _report.AppendLine("PASS: summary can return home without visiting a case scene.");
-                    FightScreenNavigation.Preview(FightScreen.CaseAward);
+                    RequireScene(FightScreen.CaseOpening);
+                    _report.AppendLine("PASS: summary HOME opens the awarded case directly.");
+                    FightScreenNavigation.Preview(FightScreen.RewardSummary);
                     Delay(1);
                     break;
                 case 3:
-                    RequireRewardScreen(FightScreen.CaseAward).Home();
+                    var noCase = RequireRewardScreen(FightScreen.RewardSummary);
+                    var serialized = new SerializedObject(noCase);
+                    serialized.FindProperty("_sampleSummary.HasCase").boolValue = false;
+                    serialized.ApplyModifiedPropertiesWithoutUndo();
+                    noCase.Home();
                     Delay(1.5);
                     break;
                 case 4:
                     RequireScene(FightScreen.Home);
-                    _report.AppendLine("PASS: awarded case can be left for later without forced opening.");
+                    _report.AppendLine("PASS: summary without a case returns home directly.");
                     FightScreenNavigation.Preview(FightScreen.CaseOpening);
                     Delay(1);
                     break;
@@ -176,7 +199,7 @@ namespace PushStars.Editor
                     Delay(.85);
                     break;
                 case 8:
-                    Invoke(RequireRewardScreen(FightScreen.CaseOpening).CaseUi.ActionButton, "open case");
+                    Invoke(RequireRewardScreen(FightScreen.CaseOpening).CaseUi.TapButton, "open case");
                     Delay(1.5);
                     break;
                 case 9:
@@ -215,6 +238,19 @@ namespace PushStars.Editor
                 .SingleOrDefault(item => item.gameObject.scene == SceneManager.GetActiveScene());
             Require(reward != null && reward.Screen == screen, "Missing active authored RewardScreen: " + screen);
             return reward;
+        }
+
+        private static Animator SummaryAnimator()
+        {
+            var ui = RequireRewardScreen(FightScreen.RewardSummary).SummaryUi;
+            Require(ui.Avatar != null && ui.Avatar.Character != null && ui.Avatar.StageCamera.enabled,
+                "Summary has no active character stage.");
+            Require(ui.Portrait.texture is RenderTexture && ui.Portrait.texture == ui.Avatar.StageCamera.targetTexture,
+                "Summary portrait is still a static image or points at another stage.");
+            var animator = ui.Avatar.Character.GetComponentInChildren<Animator>();
+            Require(animator != null && animator.enabled && animator.GetCurrentAnimatorStateInfo(0).IsName("StandIdle"),
+                "Summary character is not playing StandIdle.");
+            return animator;
         }
 
         private static void RequireScene(FightScreen screen)

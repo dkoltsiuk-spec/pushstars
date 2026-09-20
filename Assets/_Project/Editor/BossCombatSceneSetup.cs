@@ -174,7 +174,16 @@ namespace PushStars.Editor
         private static Image Picture(Transform p,string n,string sprite,float x,float y,float w,float h)
         {var i=Get<Image>(Rect(p,n,x,y,w,h));i.sprite=AssetDatabase.LoadAssetAtPath<Sprite>(Sprites+sprite+".png");i.preserveAspect=true;i.raycastTarget=false;return i;}
         private static RawImage Raw(Transform p,string n,float x,float y,float w,float h)
-        {var i=Get<RawImage>(Rect(p,n,x,y,w,h));i.raycastTarget=false;return i;}
+        {
+            var rect = Rect(p,n,x,y,w,h);
+            var previous = rect.GetComponent<RawImage>();
+            string data = previous != null ? EditorJsonUtility.ToJson(previous) : null;
+            if (previous != null && !(previous is PortraitImage)) UnityEngine.Object.DestroyImmediate(previous);
+            var image = Get<PortraitImage>(rect);
+            if (data != null) EditorJsonUtility.FromJsonOverwrite(data, image);
+            image.raycastTarget = false;
+            return image;
+        }
         private static TMP_Text Label(Transform p,string n,float x,float y,float w,float h,int size,Color color,bool italic=false)
         {
             var t=Get<TextMeshProUGUI>(Rect(p,n,x,y,w,h));

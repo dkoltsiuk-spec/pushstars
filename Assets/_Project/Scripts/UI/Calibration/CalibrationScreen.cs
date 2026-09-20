@@ -83,20 +83,20 @@ namespace PushStars.UI
             switch (quality)
             {
                 case TrackingQuality.Good:
-                    status = "ТРЕКИНГ ОК"; color = Green;
-                    hint   = "Отлично видно — можно начинать.";
+                    status = "TRACKING GOOD"; color = Green;
+                    hint   = "You're clearly visible — ready to start.";
                     break;
                 case TrackingQuality.LowVisibility:
-                    status = "СЛАБЫЙ ТРЕКИНГ"; color = Yellow;
-                    hint   = "Добавьте света и убедитесь, что тело целиком в кадре.";
+                    status = "WEAK TRACKING"; color = Yellow;
+                    hint   = "Add more light and keep your whole body in frame.";
                     break;
                 case TrackingQuality.Lost:
-                    status = "СКЕЛЕТ НЕ НАЙДЕН"; color = Red;
-                    hint   = "Отойдите от камеры так, чтобы в кадр попало всё тело.";
+                    status = "BODY NOT FOUND"; color = Red;
+                    hint   = "Step back until your whole body fits in frame.";
                     break;
                 default:
-                    status = "ИНИЦИАЛИЗАЦИЯ…"; color = Gray;
-                    hint   = "Наводим камеру…";
+                    status = "INITIALIZING…"; color = Gray;
+                    hint   = "Setting up camera…";
                     break;
             }
 

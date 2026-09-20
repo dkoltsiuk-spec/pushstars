@@ -13,7 +13,7 @@ namespace PushStars.Fight
         private BossProfile _profile;
         private int _nextRepIndex;
 
-        public string DisplayName => _profile != null ? _profile.DisplayName : "БОСС";
+        public string DisplayName => _profile != null ? _profile.DisplayName : "BOSS";
         public int Reps { get; private set; }
 
         public int ExpectedReps => _profile != null ? _profile.RepTimes.Count : 0;

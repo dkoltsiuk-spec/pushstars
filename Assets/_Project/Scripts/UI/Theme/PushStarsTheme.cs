@@ -195,7 +195,7 @@ namespace PushStars.UI
         public Color ChipSelectedFg     = new Color32(245, 200,  66, 255);
         public Color ChipNormalFg       = new Color32(200, 200, 220, 255); // #C8C8DC
 
-        [Header("Exit Button (ВЫЙТИ — search opponent screen)")]
+        [Header("Exit Button (EXIT — search opponent screen)")]
         /// <summary>Vivid coral-red neon border stroke. Figma: border on ВЫЙТИ pill.</summary>
         public Color BtnExitBorder = new Color32(255,  60,  90, 255); // #FF3C5A — neon coral
         /// <summary>Dark maroon fill — visible dark red, not near-black.</summary>
@@ -203,7 +203,7 @@ namespace PushStars.UI
         /// <summary>Label colour on the exit button. Figma: #FF021B</summary>
         public Color BtnExitFg     = new Color32(255,   2,  27, 255); // #FF021B — bright red text
 
-        [Header("Ready Button (ГОТОВ — success confirm screen)")]
+        [Header("Ready Button (READY — success confirm screen)")]
         /// <summary>Neon lime border — reuses AccentLime (#6BFF4A).</summary>
         public Color BtnReadyBorder = new Color32(107, 255,  74, 255); // #6BFF4A — neon lime (= AccentLime)
         /// <summary>Dark forest-green fill — visible dark green, not near-black.</summary>

@@ -6,7 +6,7 @@ namespace PushStars.Core
     /// <see cref="ISettingsStore"/> backed by Unity <see cref="PlayerPrefs"/>. Every setter writes
     /// through immediately (and calls <see cref="PlayerPrefs.Save"/>) so toggles persist even if the
     /// app is killed before a graceful quit. Defaults: sound/vibration/notifications on, language
-    /// follows the device (RU when the system language is Russian, otherwise EN).
+    /// is English, the supported interface language.
     /// </summary>
     public sealed class PlayerPrefsSettingsStore : ISettingsStore
     {
@@ -38,16 +38,13 @@ namespace PushStars.Core
 
         public string Language
         {
-            get => PlayerPrefs.GetString(KeyLanguage, DefaultLanguage());
+            get => LangEn;
             set
             {
-                PlayerPrefs.SetString(KeyLanguage, value == LangEn ? LangEn : LangRu);
+                PlayerPrefs.SetString(KeyLanguage, LangEn);
                 PlayerPrefs.Save();
             }
         }
-
-        private static string DefaultLanguage() =>
-            Application.systemLanguage == SystemLanguage.Russian ? LangRu : LangEn;
 
         private static bool GetBool(string key, bool fallback) =>
             PlayerPrefs.GetInt(key, fallback ? 1 : 0) != 0;

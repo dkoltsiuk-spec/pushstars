@@ -1,6 +1,5 @@
 using System;
 using PushStars.Core;
-using PushStars.OTA;
 using UnityEngine;
 using UnityEngine.SceneManagement;
 
@@ -76,6 +75,7 @@ namespace PushStars.Fight
 
         public static void BeginPreparation()
         {
+            HomeRewardFlight.Clear();
             IsPreview = !FightRequest.HasRequest;
             ReturnScene = FightRequest.ReturnScene;
             CaseId = AwardedCaseId = null;
@@ -132,6 +132,7 @@ namespace PushStars.Fight
 
         public static void Preview(FightScreen screen)
         {
+            HomeRewardFlight.Clear();
             FightRequest.Clear();
             IsPreview = true;
             Result = DemoResult();
@@ -170,12 +171,10 @@ namespace PushStars.Fight
             _loading = true;
             if (screen == FightScreen.Home)
             {
+                HomeRewardFlight.ReturnTo(destination);
                 PreparedOpponent = null;
                 FightRequest.Clear();
-                // Editor Play mode must return to the authored scene, not the generated OTA
-                // snapshot, which can lag behind current UI work. Player builds still use OTA.
-                if (Application.isEditor || IsPreview) SceneManager.LoadScene(destination);
-                else OtaSceneLoader.LoadScene(destination);
+                SceneManager.LoadScene(destination);
             }
             else SceneManager.LoadScene(destination);
         }

@@ -109,6 +109,8 @@ namespace PushStars.CV
         private TextureFramePool  _framePool;
         private int _framePoolWidth, _framePoolHeight;
         private Coroutine         _loop;
+        private bool _trackingRequested;
+        private bool _resumeTracking;
         private readonly Stopwatch _clock = new Stopwatch();
         private long _lastTimestamp = -1;
 
@@ -151,8 +153,25 @@ namespace PushStars.CV
         private void OnEnable()  => StartTracking();
         private void OnDisable() => StopTracking();
 
+        private void OnApplicationPause(bool paused)
+        {
+            if (paused)
+            {
+                if (_resumeTracking) return;
+                bool requested = _trackingRequested;
+                StopTracking();
+                _resumeTracking = requested;
+            }
+            else if (_resumeTracking && isActiveAndEnabled)
+            {
+                _resumeTracking = false;
+                StartTracking();
+            }
+        }
+
         public void StartTracking()
         {
+            _trackingRequested = true;
             if (IsRunning) return;
             IsRunning = true;
             ResetFrameDelivery();
@@ -165,6 +184,8 @@ namespace PushStars.CV
 
         public void StopTracking()
         {
+            _trackingRequested = false;
+            _resumeTracking = false;
             IsRunning = false;
             // Invalidate callbacks before closing native resources; Close can finish old work.
             ResetFrameDelivery();
@@ -186,7 +207,8 @@ namespace PushStars.CV
             _framePoolWidth = _framePoolHeight = 0;
 
             SetQuality(TrackingQuality.None);
-            _clock.Reset();
+            // Keep capture time monotonic across camera restarts. Avatar filters also consume
+            // these timestamps and must never receive a frame that jumps back to zero.
             _lastTimestamp = -1;
         }
 
@@ -340,7 +362,7 @@ namespace PushStars.CV
                 }
             }
 
-            _clock.Restart();
+            _clock.Start();
 
             // ── 4) Capture loop. If the landmarker failed, we still keep the camera preview alive. ──
             var waitForEndOfFrame = new WaitForEndOfFrame();

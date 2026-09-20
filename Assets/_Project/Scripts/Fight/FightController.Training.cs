@@ -12,7 +12,7 @@ namespace PushStars.Fight
         private bool _trainingRecord;
         private TrainingScreen _trainingScreen;
         private float _trainingElapsed;
-        private string TrainingCaption => $"ПОДХОД {_training.CurrentSet}/{_training.Plan.Sets}";
+        private string TrainingCaption => $"SET {_training.CurrentSet}/{_training.Plan.Sets}";
 
         private void FinishTrainingSet(int reps, long xp)
         {
@@ -27,6 +27,8 @@ namespace PushStars.Fight
             if (!_training.IsComplete)
             {
                 _phase = Phase.Rest;
+                foreach (var avatar in FindObjectsByType<FightAvatar>(FindObjectsSortMode.None))
+                    avatar.SetRestPresentation(true);
                 _hud.SetScoresVisible(true);
                 _hud.ShowTrainingRest(_training.CurrentSet, _training.Plan.Sets, _training.RestRemaining);
                 return;
@@ -61,7 +63,10 @@ namespace PushStars.Fight
             _hud.SetScoresVisible(true);
             _hud.SetTimer(TrainingPlan.SetSeconds);
             foreach (var avatar in FindObjectsByType<FightAvatar>(FindObjectsSortMode.None))
+            {
+                avatar.SetRestPresentation(false);
                 avatar.SetPreparationPresentation(false);
+            }
         }
 
         private void InitializeTrainingScreen()

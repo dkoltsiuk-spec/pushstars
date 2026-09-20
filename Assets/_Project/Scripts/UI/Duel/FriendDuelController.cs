@@ -85,7 +85,7 @@ namespace PushStars.UI
 
         private void ExplainLockedMode()
         {
-            if (HasRoom) ModeHint?.Show("С друзьями доступна только дуэль PvP");
+            if (HasRoom) ModeHint?.Show("Only PvP duels support friends");
         }
 
         private void SetModeAppearance(bool locked)
@@ -129,12 +129,12 @@ namespace PushStars.UI
                     Session.Create("736482", Time.realtimeSinceStartupAsDouble); Show(Page.Room); break;
                 case Page.Join:
                     if (!FriendDuelSession.TryCode(CodeInput.text, out _candidateCode))
-                    { Message.text = "Нужен код из 6 цифр. Проверь ввод."; return; }
+                    { Message.text = "Enter a 6-digit code. Check your input."; return; }
                     if (!RequirePreview()) return;
-                    if (_candidateCode == "000000") { Message.text = "Срок кода истёк. Попроси новый у друга."; return; }
-                    if (_candidateCode == "111111") { Message.text = "Комната уже заполнена."; return; }
-                    if (_candidateCode == "736482") { Message.text = "Это твой код приглашения."; return; }
-                    if (_candidateCode != "482731") { Message.text = "Комната не найдена. Проверь код."; return; }
+                    if (_candidateCode == "000000") { Message.text = "Code expired. Ask your friend for a new one."; return; }
+                    if (_candidateCode == "111111") { Message.text = "This room is already full."; return; }
+                    if (_candidateCode == "736482") { Message.text = "This is your own invitation code."; return; }
+                    if (_candidateCode != "482731") { Message.text = "Room not found. Check the code."; return; }
                     Show(Page.ConfirmJoin); break;
                 case Page.ConfirmJoin:
                     if (!RequirePreview()) return;
@@ -144,13 +144,13 @@ namespace PushStars.UI
                 case Page.Info: Back(); break;
                 case Page.Room:
                     if (Session.State == FriendDuelSession.Phase.Waiting)
-                    { GUIUtility.systemCopyBuffer = Session.Code; Message.text = "Код скопирован. Передай его другу."; }
+                    { GUIUtility.systemCopyBuffer = Session.Code; Message.text = "Code copied. Share it with your friend."; }
                     else if (Session.State == FriendDuelSession.Phase.Expired)
                     { Session.Reset(); Show(Page.Menu); }
                     else if (Session.State == FriendDuelSession.Phase.ReadyCheck && Session.LocalReady)
                     { Session.CancelReady(); Refresh(); }
                     else if (Session.State == FriendDuelSession.Phase.Preparing)
-                    { Message.text = "Предпросмотр завершён: оба подтвердили бой.\nКамеры и общий старт подключаются с live-PvP."; }
+                    { Message.text = "Preview complete: both players confirmed.\nCameras and a shared start will arrive with live PvP."; }
                     else HandleBattle();
                     break;
             }
@@ -173,7 +173,7 @@ namespace PushStars.UI
         private bool RequirePreview()
         {
             if (IsPreview) return true;
-            Message.text = "Онлайн-приглашения пока недоступны.\nПопробуй обычную дуэль или тренировку.";
+            Message.text = "Online invitations aren't available yet.\nTry a regular duel or training.";
             return false;
         }
 
@@ -230,13 +230,13 @@ namespace PushStars.UI
             PlusIcon.gameObject.SetActive(!friend); FriendBadge.SetActive(friend && !hasPortrait);
             bool showHomeEntry = room || PushStars.Core.SelectedGameMode.Current != PushStars.Core.GameMode.Boss;
             Slot.transform.parent.gameObject.SetActive(showHomeEntry && (!friend || !hasPortrait));
-            SlotName.text = friend ? Session.FriendName : room ? "Приглашение" : "С другом";
-            SlotStatus.text = friend ? phase == FriendDuelSession.Phase.Reconnecting ? "Нет связи" : "В комнате" : room ? "Ждём друга" : "";
+            SlotName.text = friend ? Session.FriendName : room ? "Invitation" : "With a friend";
+            SlotStatus.text = friend ? phase == FriendDuelSession.Phase.Reconnecting ? "Disconnected" : "In room" : room ? "Waiting for friend" : "";
             // Keep the locked mode tappable so its restriction can be explained.
             ModeButton.interactable = ExerciseButton.interactable = true;
             BattleButton.interactable = !room || phase == FriendDuelSession.Phase.Joined
                 || phase == FriendDuelSession.Phase.ReadyCheck && !Session.LocalReady;
-            BattleCaption.text = room ? friend ? "VS " + Session.FriendName : "ЖДЁМ ДРУГА" : "";
+            BattleCaption.text = room ? friend ? "VS " + Session.FriendName : "WAITING FOR FRIEND" : "";
             ModeSelector?.SetFriendDuelActive(room);
             ExerciseSettings?.SetFriendDuelActive(room);
             SetModeAppearance(room);
@@ -248,35 +248,35 @@ namespace PushStars.UI
             DemoAction.gameObject.SetActive(IsPreview && _page == Page.Room && (phase == FriendDuelSession.Phase.Waiting
                 || phase == FriendDuelSession.Phase.Joined || phase == FriendDuelSession.Phase.ReadyCheck && !Session.FriendReady));
             DemoConnection.gameObject.SetActive(IsPreview && _page == Page.Room && room);
-            DemoLabel.text = phase == FriendDuelSession.Phase.Waiting ? "Демо: друг вошёл" : "Демо: друг готов";
-            DemoConnection.GetComponentInChildren<TextMeshProUGUI>().text = phase == FriendDuelSession.Phase.Reconnecting ? "Демо: вернуть связь" : "Демо: обрыв связи";
+            DemoLabel.text = phase == FriendDuelSession.Phase.Waiting ? "Demo: friend joined" : "Demo: friend ready";
+            DemoConnection.GetComponentInChildren<TextMeshProUGUI>().text = phase == FriendDuelSession.Phase.Reconnecting ? "Demo: reconnect" : "Demo: disconnect";
             Body.text = "";
             LayoutBody(144, 225);
             switch (_page)
             {
                 case Page.Menu:
-                    Title.text = "ДУЭЛЬ С ДРУГОМ"; Subtitle.text = "Брось вызов знакомому. Один на один.";
-                    Body.text = "01  Создай приглашение и передай код.\n\n02  Друг вводит его на своей главной.\n\n03  Подтвердите бой и настройте камеры.\n\nОтжимания · 60 секунд\nБез рейтинговых кубков";
-                    PrimaryLabel.text = "ПРИГЛАСИТЬ ДРУГА"; SecondaryLabel.text = "ВВЕСТИ КОД"; break;
+                    Title.text = "FRIEND DUEL"; Subtitle.text = "Challenge a friend. One on one.";
+                    Body.text = "01  Create an invitation and share the code.\n\n02  Your friend enters it on their home screen.\n\n03  Confirm the duel and set up your cameras.\n\nPush-ups · 60 seconds\nNo ranked trophies";
+                    PrimaryLabel.text = "INVITE FRIEND"; SecondaryLabel.text = "ENTER CODE"; break;
                 case Page.Join:
-                    Title.text = "ВВЕСТИ КОД"; Subtitle.text = "Попроси друга создать приглашение\nи отправить тебе 6 цифр.";
+                    Title.text = "ENTER CODE"; Subtitle.text = "Ask your friend to create an invitation\nand send you the 6-digit code.";
                     InputGroup.SetActive(true);
                     LayoutBody(265, 100);
-                    Body.text = "Сначала покажем, кто тебя приглашает.\nВ комнату войдёшь после подтверждения.";
-                    PrimaryLabel.text = "НАЙТИ КОМНАТУ"; SecondaryLabel.text = "НАЗАД"; break;
+                    Body.text = "You'll see who invited you first.\nJoin the room after confirming.";
+                    PrimaryLabel.text = "FIND ROOM"; SecondaryLabel.text = "BACK"; break;
                 case Page.ConfirmJoin:
-                    Title.text = "ТЕБЯ ПРИГЛАШАЕТ"; Subtitle.text = "ALEX_M";
-                    Body.text = "Личная дуэль 1 × 1\n\nОтжимания · 60 секунд\nБез рейтинговых кубков\n\nБой начнётся только после согласия\nи подготовки камер у обоих.";
-                    PrimaryLabel.text = "ПРИСОЕДИНИТЬСЯ"; SecondaryLabel.text = "ОТМЕНА"; break;
+                    Title.text = "INVITED BY"; Subtitle.text = "ALEX_M";
+                    Body.text = "Private 1 × 1 duel\n\nPush-ups · 60 seconds\nNo ranked trophies\n\nThe duel starts when both players confirm\nand finish setting up their cameras.";
+                    PrimaryLabel.text = "JOIN"; SecondaryLabel.text = "CANCEL"; break;
                 case Page.Info:
                     LayoutBody(140, 265); Body.fontSize = 16;
-                    Title.text = "КАК ИГРАТЬ ВДВОЁМ"; Subtitle.text = "Не нужно искать друга по имени.";
-                    Body.text = "Приглашаешь ты?\nСоздай приглашение и передай код другу.\nОн действует 5 минут.\n\nПриглашают тебя?\nНажми плюс слева, затем «Ввести код».\nВведи 6 цифр, проверь имя и подтверди вход.\n\nКогда вы вместе, оба нажмите BATTLE.\nПоставьте телефоны и настройте камеры.\nОбщий отсчёт начнётся, когда готовы оба.";
-                    PrimaryLabel.text = "ПОНЯТНО"; Secondary.gameObject.SetActive(false); break;
+                    Title.text = "HOW TO PLAY TOGETHER"; Subtitle.text = "No need to search for your friend's name.";
+                    Body.text = "Inviting a friend?\nCreate an invitation and share the code.\nIt lasts for 5 minutes.\n\nGot an invitation?\nTap the plus on the left, then ENTER CODE.\nEnter 6 digits, check the name, and confirm.\n\nOnce you're together, both tap BATTLE.\nPosition your phones and set up the cameras.\nThe countdown starts when both are ready.";
+                    PrimaryLabel.text = "GOT IT"; Secondary.gameObject.SetActive(false); break;
                 case Page.Leave:
-                    Title.text = "ВЫЙТИ ИЗ КОМНАТЫ?"; Subtitle.text = "Друг увидит, что ты вышел.";
-                    Body.text = "Приглашение и готовность отменятся.\n\nЧтобы сыграть позже, создайте новый код.\n\nРейтинговые кубки не изменятся.";
-                    PrimaryLabel.text = "ВЫЙТИ"; SecondaryLabel.text = "ОСТАТЬСЯ"; break;
+                    Title.text = "LEAVE ROOM?"; Subtitle.text = "Your friend will see that you left.";
+                    Body.text = "Your invitation and ready status will be reset.\n\nCreate a new code to play again later.\n\nYour ranked trophies won't change.";
+                    PrimaryLabel.text = "EXIT"; SecondaryLabel.text = "STAY"; break;
                 case Page.Room: RefreshRoom(); break;
             }
         }
@@ -284,42 +284,42 @@ namespace PushStars.UI
         private void RefreshRoom()
         {
             var phase = Session.State;
-            Title.text = phase == FriendDuelSession.Phase.Waiting ? "ПРИГЛАШЕНИЕ" : phase == FriendDuelSession.Phase.Expired ? "КОМНАТА ЗАКРЫТА" : "ДУЭЛЬ С ДРУГОМ";
-            Subtitle.text = "Отжимания · 60 секунд · Без кубков";
-            SecondaryLabel.text = "НА ГЛАВНУЮ";
+            Title.text = phase == FriendDuelSession.Phase.Waiting ? "INVITATION" : phase == FriendDuelSession.Phase.Expired ? "ROOM CLOSED" : "FRIEND DUEL";
+            Subtitle.text = "Push-ups · 60 seconds · No trophies";
+            SecondaryLabel.text = "HOME";
             Tertiary.gameObject.SetActive(HasRoom);
-            TertiaryLabel.text = phase == FriendDuelSession.Phase.Waiting ? "ОТМЕНИТЬ ПРИГЛАШЕНИЕ" : "ВЫЙТИ ИЗ КОМНАТЫ";
+            TertiaryLabel.text = phase == FriendDuelSession.Phase.Waiting ? "CANCEL INVITATION" : "LEAVE ROOM";
             int left = Mathf.Max(0, (int)System.Math.Ceiling(Session.Deadline - Time.realtimeSinceStartupAsDouble));
             if (phase == FriendDuelSession.Phase.Waiting)
             {
                 CodeGroup.SetActive(true); CodeLabel.text = Session.Code.Substring(0, 3) + " " + Session.Code.Substring(3);
                 LayoutBody(246, 125);
-                Body.text = $"Код действует ещё {left / 60}:{left % 60:00}\n\nУ друга: плюс, затем «Ввести код».\nОкно можно закрыть — мы продолжим ждать.";
-                PrimaryLabel.text = "СКОПИРОВАТЬ КОД"; return;
+                Body.text = $"Code expires in {left / 60}:{left % 60:00}\n\nYour friend taps plus, then ENTER CODE.\nYou can close this window while we wait.";
+                PrimaryLabel.text = "COPY CODE"; return;
             }
             if (phase == FriendDuelSession.Phase.Expired)
-            { Body.text = Session.Notice; PrimaryLabel.text = "НОВОЕ ПРИГЛАШЕНИЕ"; return; }
+            { Body.text = Session.Notice; PrimaryLabel.text = "NEW INVITATION"; return; }
             PlayersGroup.SetActive(true);
             LayoutBody(319, 55); Body.fontSize = 14;
-            MeLabel.text = Session.IsHost ? "ТЫ · ХОЗЯИН" : "ТЫ · ГОСТЬ";
+            MeLabel.text = Session.IsHost ? "YOU · HOST" : "YOU · GUEST";
             FriendLabel.text = Session.FriendName;
-            MeStatus.text = Session.LocalReady ? "Готов к бою" : "В комнате";
-            FriendStatus.text = Session.FriendReady ? "Готов к бою" : "В комнате";
+            MeStatus.text = Session.LocalReady ? "Ready to battle" : "In room";
+            FriendStatus.text = Session.FriendReady ? "Ready to battle" : "In room";
             if (phase == FriendDuelSession.Phase.Reconnecting)
             {
-                MeStatus.text = FriendStatus.text = "Нет связи";
-                Body.text = $"Восстанавливаем связь… {left} сек.\nПосле подключения подтвердите бой снова.";
-                PrimaryLabel.text = "ВОССТАНОВЛЕНИЕ…"; Primary.interactable = false;
+                MeStatus.text = FriendStatus.text = "Disconnected";
+                Body.text = $"Reconnecting… {left} sec\nConfirm the duel again once connected.";
+                PrimaryLabel.text = "RECONNECTING…"; Primary.interactable = false;
             }
             else if (phase == FriendDuelSession.Phase.Preparing)
             {
-                Body.text = "Оба согласились на бой!\nДалее — камеры и общий отсчёт 3–2–1.";
-                PrimaryLabel.text = "К ПОДГОТОВКЕ";
+                Body.text = "Both players confirmed!\nNext: cameras and a shared 3–2–1 countdown.";
+                PrimaryLabel.text = "GET READY";
             }
             else
             {
-                Body.text = Session.LocalReady ? $"Ждём подтверждения друга · {left} сек." : Session.FriendReady ? $"Друг готов! Подтверди бой · {left} сек." : "Нажмите BATTLE, когда готовы играть.";
-                PrimaryLabel.text = Session.LocalReady ? "ОТМЕНИТЬ ГОТОВНОСТЬ" : "BATTLE";
+                Body.text = Session.LocalReady ? $"Waiting for your friend · {left} sec" : Session.FriendReady ? $"Your friend is ready! Confirm · {left} sec" : "Tap BATTLE when you're ready to play.";
+                PrimaryLabel.text = Session.LocalReady ? "CANCEL READY" : "BATTLE";
                 if (!string.IsNullOrEmpty(Session.Notice)) Body.text += "\n" + Session.Notice;
             }
         }

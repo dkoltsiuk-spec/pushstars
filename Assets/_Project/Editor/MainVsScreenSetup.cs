@@ -73,7 +73,7 @@ namespace PushStars.Editor
                 "  renders into CharacterStageRT). If it looks blank, press Play\n" +
                 "  once or move the Game view to force a repaint.\n\n" +
                 "The models come from MainMan.prefab / MainWoman.prefab, and the\n" +
-                "М/Ж button beside the character swaps between them on Play.\n" +
+                "M/F button beside the character swaps between them on Play.\n" +
                 "Not imported yet? Run Tools ▸ Push Stars ▸ Character ▸ Import\n" +
                 "Main Characters, then assign the imported prefabs in the scene.",
                 "OK");
@@ -277,7 +277,7 @@ namespace PushStars.Editor
             // CharacterStage swaps in a fresh runtime RT on Play.
             characterImage.texture = _previewRt;
             characterImage.color   = Color.white;
-            BuildPlaceholderPanel(leaguePanel,  "ЛИГА",    "[Фаза 11]");
+            BuildPlaceholderPanel(leaguePanel,  "LEAGUE",    "[Phase 11]");
             BuildProfilePanel(profilePanel);
 
             // Duel is the default tab — hide the others so edit mode shows one screen, not all
@@ -947,16 +947,16 @@ namespace PushStars.Editor
             }
 
             // ── Name / rank / streak ────────────────────────────────────────────────────
-            var name   = ContentLabel(content, "Name",   "Игрок",          26, FontStyles.Bold, _theme.TextPrimary,   34);
-            var rank   = ContentLabel(content, "Rank",   "БРОНЗА",         15, FontStyles.Bold, _theme.TrophyGold,    22);
-            var streak = ContentLabel(content, "Streak", "СЕРИЯ ПОБЕД: 0", 13, FontStyles.Bold, _theme.TextSecondary, 20);
+            var name   = ContentLabel(content, "Name",   "Player",          26, FontStyles.Bold, _theme.TextPrimary,   34);
+            var rank   = ContentLabel(content, "Rank",   "BRONZE",         15, FontStyles.Bold, _theme.TrophyGold,    22);
+            var streak = ContentLabel(content, "Streak", "WIN STREAK: 0", 13, FontStyles.Bold, _theme.TextSecondary, 20);
 
             // ── Wardrobe button (centered in a row) ─────────────────────────────────────
             var wardRow  = ContentRow(content, "WardrobeRow", 54);
             var wardrobe = Spawn(Load("SecondaryChip"), wardRow);
             if (wardrobe != null)
             {
-                wardrobe.GetComponent<SecondaryChip>()?.SetLabel("ГАРДЕРОБ");
+                wardrobe.GetComponent<SecondaryChip>()?.SetLabel("WARDROBE");
                 var wrt = (RectTransform)wardrobe.transform;
                 Anchor(wrt, new Vector2(0.5f, 0.5f), new Vector2(0.5f, 0.5f), new Vector2(0.5f, 0.5f));
                 wrt.anchoredPosition = Vector2.zero;
@@ -976,9 +976,9 @@ namespace PushStars.Editor
             kHL.childControlHeight    = false;
             kHL.childForceExpandWidth = false;
 
-            var winsBadge    = SpawnStat(kpis, "0",   "ПОБЕДЫ");
-            var winRateBadge = SpawnStat(kpis, "0%",  "ВИНРЕЙТ");
-            var repsBadge    = SpawnStat(kpis, "0",   "ВСЕГО");
+            var winsBadge    = SpawnStat(kpis, "0",   "WINS");
+            var winRateBadge = SpawnStat(kpis, "0%",  "WIN RATE");
+            var repsBadge    = SpawnStat(kpis, "0",   "TOTAL");
 
             // ── History header row: "RECENT MATCHES" + cycle filters (TYPE / MODE) ──────
             var head = ContentRow(content, "HistoryHeader", 30);
@@ -990,14 +990,14 @@ namespace PushStars.Editor
             histTitle.characterSpacing = 3f;
 
             var typeFilter = BuildCycleFilter(head, "TYPE", -84,
-                new (string, string)[] { ("ВСЕ", ""), ("ОТЖИМ.", "pushups") });
+                new (string, string)[] { ("ALL", ""), ("PUSH-UPS", "pushups") });
             var modeFilter = BuildCycleFilter(head, "MODE", 0,
-                new (string, string)[] { ("ВСЕ", ""), ("ДУЭЛЬ", "pvp"), ("ГОСТ", "ghost") });
+                new (string, string)[] { ("ALL", ""), ("DUEL", "pvp"), ("GHOST", "ghost") });
 
             // ── Match cards (prefab template; the presenter clones it per match) ────────
             var template = BuildMatchRowTemplate(content);
 
-            var empty = ContentLabel(content, "HistoryEmpty", "Пока нет сыгранных матчей",
+            var empty = ContentLabel(content, "HistoryEmpty", "No matches played yet",
                                      14, FontStyles.Normal, _theme.TextSecondary, 40);
             empty.gameObject.SetActive(false);
 
@@ -1319,7 +1319,7 @@ namespace PushStars.Editor
             Stretch(content, 0, 0, 0, 0);
 
             // ── Title ───────────────────────────────────────────────────────────────────
-            var title = MakeTMP(content, "Title", _theme.TextPrimary, "ПОИСК СОПЕРНИКА", 22, FontStyles.Bold);
+            var title = MakeTMP(content, "Title", _theme.TextPrimary, "FINDING OPPONENT", 22, FontStyles.Bold);
             Anchor(title.rectTransform, new Vector2(0f, 1f), new Vector2(1f, 1f), new Vector2(0.5f, 1f));
             title.rectTransform.anchoredPosition = new Vector2(0f, -80f);
             title.rectTransform.sizeDelta        = new Vector2(-32f, 32f);
@@ -1365,12 +1365,12 @@ namespace PushStars.Editor
             tipVL.childControlHeight    = true;
             tipVL.childForceExpandWidth = true;
 
-            var tipHeader = MakeTMP(tip, "Header", _theme.TextPrimary, "СОВЕТ:", 15, FontStyles.Bold);
+            var tipHeader = MakeTMP(tip, "Header", _theme.TextPrimary, "TIP:", 15, FontStyles.Bold);
             tipHeader.alignment = TextAlignmentOptions.Center;
             tipHeader.gameObject.AddComponent<LayoutElement>().preferredHeight = 22;
 
             var tipBody = MakeTMP(tip, "Body", _theme.TextSecondary,
-                "Ауру вы можете использовать\nдля покупки уникальных анимаций\nв магазине.",
+                "Use Aura to buy\nunique animations\nin the shop.",
                 14, FontStyles.Normal);
             tipBody.alignment = TextAlignmentOptions.Center;
             tipBody.gameObject.AddComponent<LayoutElement>().preferredHeight = 72;
@@ -1380,7 +1380,7 @@ namespace PushStars.Editor
             RectTransform exitRT = null;
             if (exitGO != null)
             {
-                exitGO.GetComponent<ExitButton>()?.SetLabel("ВЫЙТИ");
+                exitGO.GetComponent<ExitButton>()?.SetLabel("EXIT");
                 exitRT = (RectTransform)exitGO.transform;
                 Anchor(exitRT, new Vector2(0.5f, 0f), new Vector2(0.5f, 0f), new Vector2(0.5f, 0f));
                 exitRT.anchoredPosition = new Vector2(0f, 86f);
@@ -1467,12 +1467,12 @@ namespace PushStars.Editor
             Stretch(content, 0, 0, 0, 0);
 
             // ── Header: back button (left) + title ───────────────────────────────────────
-            var backBtn = MakePillButton(content, "BackButton", "НАЗАД", _theme.BtnSecondaryBg, _theme.TextPrimary, 92, 40, out _);
+            var backBtn = MakePillButton(content, "BackButton", "BACK", _theme.BtnSecondaryBg, _theme.TextPrimary, 92, 40, out _);
             var backRT  = (RectTransform)backBtn.transform;
             Anchor(backRT, new Vector2(0f, 1f), new Vector2(0f, 1f), new Vector2(0f, 1f));
             backRT.anchoredPosition = new Vector2(16f, -26f);
 
-            var title = MakeTMP(content, "Title", _theme.TextPrimary, "НАСТРОЙКИ", 22, FontStyles.Bold);
+            var title = MakeTMP(content, "Title", _theme.TextPrimary, "SETTINGS", 22, FontStyles.Bold);
             Anchor(title.rectTransform, new Vector2(0f, 1f), new Vector2(1f, 1f), new Vector2(0.5f, 1f));
             title.rectTransform.anchoredPosition = new Vector2(0f, -30f);
             title.rectTransform.sizeDelta        = new Vector2(-32f, 32f);
@@ -1495,17 +1495,17 @@ namespace PushStars.Editor
             list.gameObject.AddComponent<ContentSizeFitter>().verticalFit = ContentSizeFitter.FitMode.PreferredSize;
 
             // Toggles (persisted via PlayerPrefsSettingsStore in SettingsScreen) ──────────
-            var soundRow = MakeCardRow(list, "Row_Sound", "Звук", out _, out _);
+            var soundRow = MakeCardRow(list, "Row_Sound", "Sound", out _, out _);
             var soundToggle = MakeSwitch(soundRow);
 
-            var vibrationRow = MakeCardRow(list, "Row_Vibration", "Вибрация", out _, out _);
+            var vibrationRow = MakeCardRow(list, "Row_Vibration", "Vibration", out _, out _);
             var vibrationToggle = MakeSwitch(vibrationRow);
 
-            var notificationsRow = MakeCardRow(list, "Row_Notifications", "Уведомления", out _, out _);
+            var notificationsRow = MakeCardRow(list, "Row_Notifications", "Notifications", out _, out _);
             var notificationsToggle = MakeSwitch(notificationsRow);
 
             // Language RU / EN ───────────────────────────────────────────────────────────
-            var langRow = MakeCardRow(list, "Row_Language", "Язык", out _, out _);
+            var langRow = MakeCardRow(list, "Row_Language", "Language", out _, out _);
             var langGroup = MakeRect(langRow, "LangGroup");
             var lgLE = langGroup.gameObject.AddComponent<LayoutElement>();
             lgLE.preferredWidth = 132; lgLE.preferredHeight = 40; lgLE.flexibleWidth = 0;
@@ -1516,11 +1516,11 @@ namespace PushStars.Editor
             var enBtn = MakePillButton(langGroup, "LangEn", "EN", _theme.BtnSecondaryBg, _theme.TextSecondary, 60, 40, out var enLbl);
 
             // Legal links (open in browser) ───────────────────────────────────────────────
-            var privacyBtn = MakeLinkRow(list, "Row_Privacy", "Политика конфиденциальности");
-            var termsBtn   = MakeLinkRow(list, "Row_Terms",   "Условия использования");
+            var privacyBtn = MakeLinkRow(list, "Row_Privacy", "Privacy Policy");
+            var termsBtn   = MakeLinkRow(list, "Row_Terms",   "Terms of Use");
 
             // App version (read-only) ──────────────────────────────────────────────────────
-            var versionRow = MakeCardRow(list, "Row_Version", "Версия", out _, out _);
+            var versionRow = MakeCardRow(list, "Row_Version", "Version", out _, out _);
             var versionText = MakeTMP(versionRow, "Value", _theme.TextSecondary, "v—", 15, FontStyles.Bold);
             versionText.alignment = TextAlignmentOptions.MidlineRight;
             versionText.raycastTarget = false;
@@ -1528,7 +1528,7 @@ namespace PushStars.Editor
             verLE.preferredWidth = 96; verLE.preferredHeight = 24; verLE.flexibleWidth = 0;
 
             // Delete account (danger, full width) ────────────────────────────────────────
-            var deleteBtn = MakePillButton(list, "DeleteButton", "УДАЛИТЬ АККАУНТ", _theme.BtnDangerBg, _theme.BtnDangerFg, 0, 54, out _);
+            var deleteBtn = MakePillButton(list, "DeleteButton", "DELETE ACCOUNT", _theme.BtnDangerBg, _theme.BtnDangerFg, 0, 54, out _);
             var delLE = deleteBtn.GetComponent<LayoutElement>();
             delLE.preferredHeight = 54; delLE.flexibleWidth = 1;
 
@@ -1545,7 +1545,7 @@ namespace PushStars.Editor
             var cardBg = MakeImage(card, "Bg", _theme.NavBg, ProcSprite("pill_24"));
             cardBg.type = Image.Type.Sliced; Stretch(cardBg.rectTransform, 0, 0, 0, 0);
 
-            var cTitle = MakeTMP(card, "Title", _theme.TextPrimary, "Удалить аккаунт?", 20, FontStyles.Bold);
+            var cTitle = MakeTMP(card, "Title", _theme.TextPrimary, "Delete account?", 20, FontStyles.Bold);
             Anchor(cTitle.rectTransform, new Vector2(0f, 1f), new Vector2(1f, 1f), new Vector2(0.5f, 1f));
             cTitle.rectTransform.anchoredPosition = new Vector2(0f, -26f);
             cTitle.rectTransform.sizeDelta        = new Vector2(-32f, 28f);
@@ -1553,7 +1553,7 @@ namespace PushStars.Editor
             cTitle.raycastTarget = false;
 
             var cBody = MakeTMP(card, "Body", _theme.TextSecondary,
-                "Это действие необратимо. Весь прогресс,\nтрофеи и история матчей будут удалены.",
+                "This cannot be undone. All progress,\ntrophies, and match history will be deleted.",
                 14, FontStyles.Normal);
             Anchor(cBody.rectTransform, new Vector2(0.5f, 0.5f), new Vector2(0.5f, 0.5f), new Vector2(0.5f, 0.5f));
             cBody.rectTransform.anchoredPosition = new Vector2(0f, 14f);
@@ -1561,12 +1561,12 @@ namespace PushStars.Editor
             cBody.alignment = TextAlignmentOptions.Center;
             cBody.raycastTarget = false;
 
-            var noBtn = MakePillButton(card, "ConfirmNo", "ОТМЕНА", _theme.BtnSecondaryBg, _theme.TextPrimary, 130, 46, out _);
+            var noBtn = MakePillButton(card, "ConfirmNo", "CANCEL", _theme.BtnSecondaryBg, _theme.TextPrimary, 130, 46, out _);
             var noRT = (RectTransform)noBtn.transform;
             Anchor(noRT, new Vector2(0f, 0f), new Vector2(0f, 0f), new Vector2(0f, 0f));
             noRT.anchoredPosition = new Vector2(20f, 22f);
 
-            var yesBtn = MakePillButton(card, "ConfirmYes", "УДАЛИТЬ", _theme.BtnDangerBg, _theme.BtnDangerFg, 130, 46, out _);
+            var yesBtn = MakePillButton(card, "ConfirmYes", "DELETE", _theme.BtnDangerBg, _theme.BtnDangerFg, 130, 46, out _);
             var yesRT = (RectTransform)yesBtn.transform;
             Anchor(yesRT, new Vector2(1f, 0f), new Vector2(1f, 0f), new Vector2(1f, 0f));
             yesRT.anchoredPosition = new Vector2(-20f, 22f);
@@ -2049,7 +2049,7 @@ namespace PushStars.Editor
             var btn = go.AddComponent<Button>();
             btn.targetGraphic = img;
 
-            var lbl = MakeTMP(rt, "Label", _theme.TextPrimary, "М", 16, FontStyles.Bold);
+            var lbl = MakeTMP(rt, "Label", _theme.TextPrimary, "M", 16, FontStyles.Bold);
             lbl.alignment     = TextAlignmentOptions.Center;
             lbl.raycastTarget = false;
             Stretch(lbl.rectTransform, 0, 0, 0, 0);
