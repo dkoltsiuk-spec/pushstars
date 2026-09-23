@@ -232,6 +232,10 @@ namespace PushStars.UI
             Slot.transform.parent.gameObject.SetActive(showHomeEntry && (!friend || !hasPortrait));
             SlotName.text = friend ? Session.FriendName : room ? "Invitation" : "With a friend";
             SlotStatus.text = friend ? phase == FriendDuelSession.Phase.Reconnecting ? "Disconnected" : "In room" : room ? "Waiting for friend" : "";
+            // The home entry is icon-only. Room state is already shown in the duel sheet and
+            // Battle caption, so labels below this compact button only add visual noise.
+            SlotName.gameObject.SetActive(false);
+            SlotStatus.gameObject.SetActive(false);
             // Keep the locked mode tappable so its restriction can be explained.
             ModeButton.interactable = ExerciseButton.interactable = true;
             BattleButton.interactable = !room || phase == FriendDuelSession.Phase.Joined

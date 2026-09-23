@@ -90,6 +90,48 @@ namespace PushStars.Editor
 
                 switch (task)
                 {
+                    case "install-avatar-unlocks":
+                        AvatarUnlockSetup.Run();
+                        break;
+                    case "resume-avatar-unlocks":
+                        AvatarUnlockSetup.ResumeInterruptedInstall();
+                        break;
+                    case "validate-avatar-unlocks":
+                        AvatarUnlockRegression.Run();
+                        break;
+                    case "validate-avatar-unlocks-play":
+                        AvatarUnlockPlayValidation.Run();
+                        break;
+                    case "avatar-selection-polish":
+                        AvatarSelectionPolishSetup.Run();
+                        break;
+                    case "avatar-short-all-tab":
+                        AvatarSelectionPolishSetup.FixTabs();
+                        break;
+                    case "avatar-tactile":
+                        AvatarTactileSetup.Run();
+                        break;
+                    case "locked-robot-avatar":
+                        LockedAvatarSetup.Run();
+                        break;
+                    case "friend-button-polish":
+                        FriendButtonPolishSetup.Run();
+                        break;
+                    case "avatar-preview-page":
+                        AvatarPreviewPageSetup.RunAndValidate();
+                        break;
+                    case "fix-avatar-card-edges":
+                        AvatarCardEdgesSetup.RunAndValidate();
+                        break;
+                    case "animated-avatar-cards":
+                        AnimatedAvatarCardsSetup.RunAndValidate();
+                        break;
+                    case "import-robot-avatar":
+                        RobotAvatarSetup.RunAndValidate();
+                        break;
+                    case "stop-play-mode":
+                        if (EditorApplication.isPlaying) EditorApplication.isPlaying = false;
+                        break;
                     case "refresh-assets":
                         AssetDatabase.Refresh();
                         break;

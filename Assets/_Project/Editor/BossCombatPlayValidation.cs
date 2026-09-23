@@ -100,8 +100,15 @@ namespace PushStars.Editor
                         type.GetField("_screenPreview",Private).SetValue(fight,true);
                         var phase=type.GetField("_phase",Private);phase.SetValue(fight,Enum.Parse(phase.FieldType,"Live"));
                         type.GetField("_liveStartTime",Private).SetValue(fight,Time.time);
+                        screen.Refresh(0);
+                        Require(!fight.CanFinishEarly && !screen.Action.gameObject.activeSelf,
+                            "FINISH stays hidden before the first accepted rep");
                         var accepted=type.GetMethod("HandleRep",Private);
-                        for(int i=1;i<=7;i++)accepted.Invoke(fight,new object[]{i});
+                        accepted.Invoke(fight,new object[]{1});screen.Refresh(0);
+                        Require(fight.CanFinishEarly && screen.Action.gameObject.activeSelf &&
+                            screen.Action.interactable && screen.ActionLabel.text=="FINISH",
+                            "First accepted rep exposes the FINISH action");
+                        for(int i=2;i<=7;i++)accepted.Invoke(fight,new object[]{i});
                         Require(fight.BossHealth.BossHp==0 && fight.PlayerBattleReps==7,"Accepted reps damage boss and reach KO");
                         accepted.Invoke(fight,new object[]{8});
                         Require(fight.PlayerBattleReps==7,"Extra rep after KO is ignored");
@@ -120,7 +127,7 @@ namespace PushStars.Editor
                         FightRequest.Clear();SceneManager.LoadScene("Main");break;
                     }
                     case 5:
-                        File.WriteAllText("output/boss-combat/play-validation.txt","PASS: real preparation with 450 HP; new HOME returns to current boss island; real battle READY gate and countdown layer; seven accepted reps reach KO, extra rep ignored, HP UI reaches zero; CV disabled, no reward/progression side effects.\n");
+                        File.WriteAllText("output/boss-combat/play-validation.txt","PASS: real preparation with 450 HP; new HOME returns to current boss island; real battle READY gate, countdown layer and live FINISH action; seven accepted reps reach KO, extra rep ignored, HP UI reaches zero; CV disabled, no reward/progression side effects.\n");
                         Finish();break;
                 }
             }

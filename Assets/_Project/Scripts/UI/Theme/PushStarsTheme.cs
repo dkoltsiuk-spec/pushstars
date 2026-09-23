@@ -201,7 +201,7 @@ namespace PushStars.UI
         /// <summary>Dark maroon fill — visible dark red, not near-black.</summary>
         public Color BtnExitFill   = new Color32( 62,  10,  10, 255); // #3E0A0A — dark maroon
         /// <summary>Label colour on the exit button. Figma: #FF021B</summary>
-        public Color BtnExitFg     = new Color32(255,   2,  27, 255); // #FF021B — bright red text
+        public Color BtnExitFg     = Color.white;
 
         [Header("Ready Button (READY — success confirm screen)")]
         /// <summary>Neon lime border — reuses AccentLime (#6BFF4A).</summary>

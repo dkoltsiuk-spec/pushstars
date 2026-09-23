@@ -75,7 +75,7 @@
 | `KappaReliableMinSw` | `0.10f` | κ-проверки применяются только при sw ≥ этого (иначе κ — шум) |
 | `SetupMaxPhonePitchDeg` | `30f` | F0: IMU-гейт наклона телефона |
 | `FrontalArmingHipAvailabilityMin` | `0.7f` | F0: hip fail-closed на армировании |
-| `MinChestTravelFracHard` / `Soft` | `0.25f` / `0.40f` | FullRom v2: HardVeto ниже 0.25, SoftDock в [0.25, 0.40) |
+| `MinChestTravelFracHard` / `Soft` | `0.40f` / `0.45f` | FullRom v2: не засчитывать опускание ниже 0.40 длины корпуса/ширины плеч; в [0.40, 0.45) засчитать со штрафом формы |
 | `BodySwingWidthRatioMin` / `MaxTravelFrac` | `1.15f` / `0.30f` | BodySwing: рост ширины при малом y-ходе → veto |
 | `WristDriftAbsDeadband` | `0.008f` | абсолютный deadband дрейфа запястий |
 | `KneeDropDeltaDisarm` / `HardVeto` / `SoftDock` | `0.12f` / `0.15f` / `0.10f` | S-KNEE-1 |

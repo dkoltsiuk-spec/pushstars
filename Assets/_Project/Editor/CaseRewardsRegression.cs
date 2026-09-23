@@ -229,7 +229,7 @@ namespace PushStars.Editor
             f.Reload();
             Require(f.Ledger.Pending.Opened && f.Ledger.Pending.Gems == opened.Gems, "Reload discarded an opened prize.");
             Require(f.Ledger.TryOpen("a", out var replay) && replay.Gems == opened.Gems, "Reopening rerolled the prize.");
-            Require(!f.Ledger.TryUpgrade("a", 3, out _) && f.Draws == 4 && f.Writes == 5, "Opened case accepted another random transition.");
+            Require(!f.Ledger.TryUpgrade("a", 3, out _) && f.Draws == 6 && f.Writes == 5, "Opened case accepted another random transition.");
         }
 
         private static void ClaimPersistence()
@@ -249,7 +249,7 @@ namespace PushStars.Editor
 
         private static void Queue()
         {
-            var f = new Fixture(0, 0.99, 0.99, 0.99, 0, 0.99, 0.99, 0);
+            var f = new Fixture(0, 0.99, 0.99, 0.99, 0, 0.5, 0.5, 0.99, 0.99, 0);
             f.Ledger.TryGrantCase("a");
             f.Ledger.TryUpgrade("a", 0, out _);
             f.Ledger.TryGrantCase("b");

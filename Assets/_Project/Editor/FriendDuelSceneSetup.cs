@@ -47,20 +47,22 @@ namespace PushStars.Editor
 
             var entry = Rect(panel, "FriendSlot", 0, 0, 102, 100);
             entry.anchorMin = entry.anchorMax = entry.pivot = new Vector2(.5f, .5f);
-            entry.anchoredPosition = new Vector2(-118, 110);
+            entry.anchoredPosition = new Vector2(-118, 102);
             Undo.RegisterCreatedObjectUndo(entry.gameObject, "Add single friend slot");
             controller.Slot = Button(entry, "HitArea", "", 0, 0, 102, 100, Color.clear);
-            controller.PlusIcon = Picture(controller.Slot.transform, "PlusIcon", plus, Color.white, 29, 4, 44, 44);
+            controller.PlusIcon = Picture(controller.Slot.transform, "PlusIcon", plus, Color.white, 21, -2, 60, 60);
             controller.PlusIcon.preserveAspect = true;
             if (plus == null) Text(controller.PlusIcon.transform, "Plus", "+", 32, 0, 0, 44, 44, TextAlignmentOptions.Center);
             var badge = Picture(controller.Slot.transform, "FriendBadge", Pill, new Color32(93, 78, 180, 255), 26, 0, 50, 50);
             badge.type = Image.Type.Sliced;
             Text(badge.transform, "Initial", "A", 28, 0, 0, 50, 50, TextAlignmentOptions.Center);
             controller.FriendBadge = badge.gameObject; badge.gameObject.SetActive(false);
-            controller.SlotName = Text(controller.Slot.transform, "FriendName", "With a friend", 13, 0, 56, 102, 23, TextAlignmentOptions.Center);
+            controller.SlotName = Text(controller.Slot.transform, "FriendName", "", 13, 0, 56, 102, 23, TextAlignmentOptions.Center);
             controller.SlotName.richText = false; controller.SlotName.overflowMode = TextOverflowModes.Ellipsis;
             controller.SlotStatus = Text(controller.Slot.transform, "FriendStatus", "", 10, 0, 80, 102, 18, TextAlignmentOptions.Center);
             controller.SlotStatus.color = new Color32(156, 239, 164, 255);
+            controller.SlotName.gameObject.SetActive(false);
+            controller.SlotStatus.gameObject.SetActive(false);
             controller.BattleCaption = Text(battle.transform, "FriendBattleCaption", "", 11, 0, 85, 163, 21, TextAlignmentOptions.Center);
             controller.BattleCaption.richText = false; controller.BattleCaption.overflowMode = TextOverflowModes.Ellipsis;
 

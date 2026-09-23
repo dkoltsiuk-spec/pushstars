@@ -161,6 +161,7 @@ namespace PushStars.Editor
             Check("Training sets, rest timers and limits", TrainingSettingsRegression.Run);
             Check("Camera placement at 30/60/120 FPS and portrait clipping", CameraPresentationRegression.Run);
             Check("Avatar aspect ratios and zoom", FightAspectValidation.Run);
+            Check("Preparation and result avatar poses", PreparationStanceRegression.Run);
             Check("Friend room state and presentation", FriendDuelValidation.Run);
             Check("Boss battle", BossCombatValidation.Run);
             Check("Boss map", BossMapValidation.Run);

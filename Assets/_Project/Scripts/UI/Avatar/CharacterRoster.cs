@@ -2,6 +2,7 @@ using System;
 using TMPro;
 using UnityEngine;
 using UnityEngine.UI;
+using PushStars.Core;
 
 namespace PushStars.UI
 {
@@ -28,6 +29,14 @@ namespace PushStars.UI
         /// a settings-screen toggle, so it is not routed through ISettingsStore — one key, owned
         /// here, is the whole persistence story.</summary>
         private const string PrefsKey = "character.gender";
+        public const string HomeAvatarKey = "character.homeAvatar";
+        [SerializeField] private GameObject _sonicPrefab;
+        public bool IsSonic { get; private set; }
+        [SerializeField] private GameObject _gladiatorPrefab;
+        [SerializeField] private int _defaultHomeAvatar;
+        public bool IsGladiator { get; private set; }
+        [SerializeField] private GameObject _robotPrefab;
+        public bool IsRobot { get; private set; }
 
         [Header("Stage")]
         [Tooltip("Stage the character is seated on. Found on this GameObject when left empty.")]
@@ -73,6 +82,10 @@ namespace PushStars.UI
             if (_stage == null) _stage = GetComponentInChildren<CharacterStage>();
 
             Gender = Load();
+            int homeAvatar = PlayerPrefs.GetInt(HomeAvatarKey, _defaultHomeAvatar);
+            IsSonic = _sonicPrefab != null && homeAvatar == 1;
+            IsGladiator = _gladiatorPrefab != null && homeAvatar == 2 && CaseRewards.OwnsAvatar("gladiator");
+            IsRobot = _robotPrefab != null && homeAvatar == 3 && CaseRewards.OwnsAvatar("robot");
             if (_switchButton != null) _switchButton.onClick.AddListener(Toggle);
         }
 
@@ -94,11 +107,26 @@ namespace PushStars.UI
         /// already standing there, so a UI that re-asserts its state does not rebuild the model.</summary>
         public void SetGender(CharacterGender gender)
         {
-            if (gender == Gender && _current != null) return;
+            if (gender == Gender && !IsSonic && !IsGladiator && !IsRobot && _current != null) return;
 
+            IsRobot = false;
+            IsSonic = false;
+            IsGladiator = false;
+            PlayerPrefs.SetInt(HomeAvatarKey, 0);
             Gender = gender;
             Save(gender);
             Apply(gender);
+        }
+
+        public void SetSonic()
+        {
+            if (_sonicPrefab == null || (IsSonic && _current != null)) return;
+            IsSonic = true;
+            IsGladiator = false;
+            IsRobot = false;
+            PlayerPrefs.SetInt(HomeAvatarKey, 1);
+            PlayerPrefs.Save();
+            Apply(Gender);
         }
 
         /// <summary>The prefab for a body, falling back to the other one when that character is not
@@ -113,11 +141,32 @@ namespace PushStars.UI
             return gender == CharacterGender.Female ? _malePrefab : _femalePrefab;
         }
 
+        public void SetGladiator()
+        {
+            if (!CaseRewards.OwnsAvatar("gladiator") || _gladiatorPrefab == null || (IsGladiator && _current != null)) return;
+            IsGladiator = true;
+            IsSonic = false;
+            IsRobot = false;
+            PlayerPrefs.SetInt(HomeAvatarKey, 2);
+            PlayerPrefs.Save();
+            Apply(Gender);
+        }
+
+        public void SetRobot()
+        {
+            if (!CaseRewards.OwnsAvatar("robot") || _robotPrefab == null || (IsRobot && _current != null)) return;
+            IsRobot = true;
+            IsGladiator = IsSonic = false;
+            PlayerPrefs.SetInt(HomeAvatarKey, 3);
+            PlayerPrefs.Save();
+            Apply(Gender);
+        }
+
         private void Apply(CharacterGender gender)
         {
             RefreshSwitchLabel();
 
-            var prefab = PrefabFor(gender);
+            var prefab = IsRobot ? _robotPrefab : IsGladiator ? _gladiatorPrefab : IsSonic ? _sonicPrefab : PrefabFor(gender);
             if (prefab == null)
             {
                 // Neither body is in the project: leave whatever the scene was built with standing
@@ -146,6 +195,7 @@ namespace PushStars.UI
         /// components belong to the body they animate, and the body is replaced whole.</summary>
         private void AttachIdleBehaviour(GameObject character)
         {
+            if (character.GetComponentInChildren<SonicIdleBehaviour>() != null) return;
             var animator = character.GetComponentInChildren<Animator>();
             if (animator == null) return;
 

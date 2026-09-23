@@ -55,7 +55,7 @@ namespace PushStars.UI
         // ── Exit Button ───────────────────────────────────────────────────────────
         public static Color BtnExitBorder = new Color32(255,  60,  90, 255);
         public static Color BtnExitFill   = new Color32( 62,  10,  10, 255);
-        public static Color BtnExitFg     = new Color32(255,   2,  27, 255); // #FF021B
+        public static Color BtnExitFg     = Color.white;
 
         // ── Ready Button ──────────────────────────────────────────────────────────
         public static Color BtnReadyBorder = new Color32(107, 255,  74, 255);

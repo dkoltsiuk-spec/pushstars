@@ -15,7 +15,7 @@ namespace PushStars.Core
     public sealed class GameAudio : MonoBehaviour
     {
         public const string ResourceFolder = "Audio/";
-        public const string MusicName = "music_sport_loop_120bpm";
+        public const string MusicName = "music_action_groove";
         private const int VoiceCount = 8;
         private static GameAudio _instance;
         private static bool _quitting;

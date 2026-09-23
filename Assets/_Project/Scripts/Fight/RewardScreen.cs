@@ -43,6 +43,7 @@ namespace PushStars.Fight
             public TextMeshProUGUI Amount, Rarity, Note, ClaimLabel;
             public RectTransform Content, Rays;
             public Image Glow;
+            public Image AvatarCardIcon;
             public Button ClaimButton;
         }
 
@@ -426,7 +427,19 @@ namespace PushStars.Fight
             }
             GameAudio.Play(SoundCue.CaseReveal, .9f + .05f * (int)_rarity);
             Set(_prizeUi.Rarity, CaseNames[Mathf.Clamp((int)_rarity, 0, 3)] + " CASE");
-            Set(_prizeUi.Amount, "×" + _gems); Set(_prizeUi.Note, "Crystals will be added to your balance");
+            Set(_prizeUi.Amount, "×" + _gems);
+            var prize = FightScreenNavigation.IsPreview ? null : CaseRewards.Find(_caseId);
+            var avatar = prize != null ? AvatarCatalog.Find(prize.AvatarId) : null;
+            bool hasCards = avatar != null && prize.AvatarCards > 0;
+            if (_prizeUi.Note != null) _prizeUi.Note.gameObject.SetActive(hasCards);
+            if (_prizeUi.AvatarCardIcon != null)
+            {
+                _prizeUi.AvatarCardIcon.gameObject.SetActive(hasCards);
+                if (hasCards) _prizeUi.AvatarCardIcon.sprite = Resources.Load<Sprite>(avatar.HeadIcon);
+            }
+            Set(_prizeUi.Note, hasCards
+                ? $"+{prize.AvatarCards} {avatar.Name} CARDS\nCollect cards to unlock your avatar!"
+                : "Crystals will be added to your balance");
             Set(_prizeUi.ClaimLabel, "CLAIM & HOME");
             _busy = true;
             if (_prizeUi.ClaimButton != null) _prizeUi.ClaimButton.interactable = false;
@@ -463,7 +476,7 @@ namespace PushStars.Fight
             _busy = true;
             if (_prizeUi.ClaimButton != null) _prizeUi.ClaimButton.interactable = false;
             Set(_prizeUi.ClaimLabel, "CLAIMED");
-            Set(_prizeUi.Note, FightScreenNavigation.IsPreview ? "Reward preview" : "Crystals added!");
+            Set(_prizeUi.Note, FightScreenNavigation.IsPreview ? "Reward preview" : "Rewards added to your collection!");
             GameAudio.Play(SoundCue.RewardComplete);
             StartCoroutine(FinishClaim());
         }

@@ -82,6 +82,26 @@ namespace PushStars.Editor
                                 spineMotion = Mathf.Max(spineMotion, Quaternion.Angle(startSpine, spine.localRotation));
                             }
                             Require(spineMotion > .05f, "Idle was frozen.");
+                            if (results)
+                            {
+                                stage.SetResultPresentation(false, true);
+                                animator.Update(0f);
+                                Require(animator.GetCurrentAnimatorStateInfo(0).IsName("Victory"),
+                                    "Winner did not start the Victory animation.");
+                                var victory = animator.runtimeAnimatorController.animationClips
+                                    .FirstOrDefault(clip => clip.name == "Victory");
+                                Require(victory != null && !victory.isLooping,
+                                    "Victory must be an installed one-shot clip.");
+                                typeof(FightAvatar).GetField("_resultReturnAt", Private)
+                                    .SetValue(stage, Time.unscaledTime - .01f);
+                                Invoke(stage, "LateUpdate");
+                                animator.Update(.2f);
+                                var current = animator.GetCurrentAnimatorStateInfo(0);
+                                var next = animator.IsInTransition(0)
+                                    ? animator.GetNextAnimatorStateInfo(0) : current;
+                                Require(current.IsName("StandIdle") || next.IsName("StandIdle"),
+                                    "Winner did not return to StandIdle after Victory.");
+                            }
                             target.rectTransform.sizeDelta = new Vector2(240, 368);
                             copy.Invoke(panel, cropArguments);
                             Require(target.uvRect != crop, "Portrait did not adapt to resized layout.");
@@ -104,7 +124,7 @@ namespace PushStars.Editor
             Require(checkedBodies == 8, "Expected both fighters and both character rigs.");
             Directory.CreateDirectory("Logs");
             File.WriteAllText("Logs/preparation-stance-regression.txt",
-                "PASS: preparation and results, both fighters, both rigs; 360 idle frames each with fixed camera/crop, legs matching main-screen idle, responsive layout resize, and released preparation framing on READY.\n");
+                "PASS: preparation and results, both fighters, both rigs; 360 idle frames each with fixed camera/crop, legs matching main-screen idle, one-shot winner Victory returning to StandIdle, responsive layout resize, and released preparation framing on READY.\n");
         }
         private static void Invoke(object owner, string name) => owner.GetType().GetMethod(name, Private).Invoke(owner, null);
         private static void Require(bool condition, string message) { if (!condition) throw new InvalidOperationException(message); }

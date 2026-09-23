@@ -372,6 +372,9 @@ namespace PushStars.Editor
             var sadClip = LoadClip(SadIdleSetup.ClipPath);
             if (sadClip != null) sm.AddState("SadIdle").motion = sadClip;
 
+            var victoryClip = LoadClip(MainCharacterSetup.VictoryFbxPath);
+            if (victoryClip != null) sm.AddState("Victory").motion = victoryClip;
+
             // No transitions — the drivers play states by name.
             sm.defaultState = stand ?? idle;
             EditorUtility.SetDirty(controller);

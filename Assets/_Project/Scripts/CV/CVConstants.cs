@@ -301,10 +301,11 @@ namespace PushStars.CV
         public const float SetupMaxPhonePitchDeg = 30f;       // IMU gate
 
         // ── FullRomGate v2 ──
-        /// <summary>travelFrac below → HardVeto ChestNotLowered (0.25/0.45 conflict resolved).</summary>
-        public const float MinChestTravelFracHard = 0.25f;
-        /// <summary>travelFrac in [Hard, Soft) → SoftDock ShallowTravel.</summary>
-        public const float MinChestTravelFracSoft = 0.40f;
+        /// <summary>Minimum measured chest travel to credit a rep. A shallow dip must not
+        /// count even when the elbow-angle latch completes.</summary>
+        public const float MinChestTravelFracHard = 0.40f;
+        /// <summary>Travel in [Hard, Soft) still counts, with a shallow-form penalty.</summary>
+        public const float MinChestTravelFracSoft = 0.45f;
         /// <summary>BodySwing veto: shoulder-width growth ≥ this with travelFrac below
         /// BodySwingMaxTravelFrac = "approaching the camera without descending" signature.</summary>
         public const float BodySwingWidthRatioMin = 1.15f;

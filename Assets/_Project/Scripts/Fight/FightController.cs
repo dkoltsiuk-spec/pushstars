@@ -111,6 +111,7 @@ namespace PushStars.Fight
         private bool _bossEnding;
         public void ConfirmBossReady() { if (_mode == FightMode.Boss) BossReady = true; }
         public bool IsBossBattleLive => _mode == FightMode.Boss && _phase == Phase.Live && !_paused && !_layoutPaused;
+        public bool CanFinishEarly => _phase == Phase.Live && PlayerBattleReps > 0 && !_bossEnding && !_layoutPaused;
         private float _pausedAt;
 
         private const int DebugTapsToReset = 5;
@@ -354,7 +355,7 @@ namespace PushStars.Fight
         /// <summary>FINISH: the set ends here, with what has been counted so far. It is the honest
         /// end of a measurement someone has nothing left for — the alternative is holding a plank
         /// for the rest of the minute to make the screen go away.</summary>
-        private void FinishEarly()
+        public void FinishEarly()
         {
             if (_phase != Phase.Live)
             {

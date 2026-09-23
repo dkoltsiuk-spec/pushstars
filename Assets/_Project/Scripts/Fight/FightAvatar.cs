@@ -1,3 +1,4 @@
+using System.Linq;
 using UnityEngine;
 using PushStars.CV;
 using PushStars.UI;
@@ -128,9 +129,12 @@ namespace PushStars.Fight
         private float _distance;
         private float _distanceVelocity;
         private bool _framed;
+        private bool _wasMirroring;
         private float _settleUntil;
         private bool _preparation;
         private bool _resultLost;
+        private bool _resultWon;
+        private float _resultReturnAt;
         private Vector3 _bodyRestPos;
         private Quaternion _bodyRestRot;
         private Vector3 _bodyRestScale = Vector3.one;
@@ -181,6 +185,7 @@ namespace PushStars.Fight
             _distance = Vector3.Distance(_stageCamera.transform.position, _avatarRoot.position + Vector3.up);
             _focus = _stageCamera.transform.position + _stageCamera.transform.forward * _distance;
             _framed = true;
+            _wasMirroring = IsMirroring;
             _settleUntil = Time.time + _settleSeconds;
         }
         private readonly System.Collections.Generic.List<(Material material, string property, Color original)> _shadowColors
@@ -199,6 +204,8 @@ namespace PushStars.Fight
         public void SetPreparationPresentation(bool preparation)
         {
             _resultLost = false;
+            _resultWon = false;
+            _resultReturnAt = 0f;
             _preparation = preparation;
             // A completed training set may have forced the seated rest pose. Any later return to
             // a preparation/result card must release that override before showing StandIdle.
@@ -267,17 +274,43 @@ namespace PushStars.Fight
             }
         }
 
-        /// <summary>Uses the losing idle on either side of a duel, including a delayed body build.</summary>
-        public void SetResultPresentation(bool lost)
+        /// <summary>Plays the terminal pose on either side of a duel, including a delayed body
+        /// build. A winner celebrates once and then returns to the normal standing idle.</summary>
+        public void SetResultPresentation(bool lost, bool won = false)
         {
             SetPreparationPresentation(true);
             _resultLost = lost;
-            if (!lost || _animator == null) return;
+            _resultWon = won;
+            if (_animator == null) return;
+
+            // Bosses own their longer result sequence (Victory -> Laugh -> StandIdle).
+            if (Character.GetComponentInChildren<BossAvatarPresentation>() != null) return;
+
+            if (!lost && !won) return;
             foreach (var accent in Character.GetComponentsInChildren<CharacterIdleAccent>()) accent.enabled = false;
-            if (_animator.HasState(0, Animator.StringToHash("SadIdle")))
+            string state = lost ? "SadIdle" : "Victory";
+            if (_animator.HasState(0, Animator.StringToHash(state)))
             {
-                _animator.Play("SadIdle", 0, 0f);
+                _animator.Play(state, 0, 0f);
                 _animator.Update(0f);
+                if (won)
+                {
+                    var clip = _animator.runtimeAnimatorController.animationClips
+                        .FirstOrDefault(candidate => candidate.name == state);
+                    _resultReturnAt = Time.unscaledTime + (clip != null ? clip.length : 1f);
+                }
+            }
+        }
+
+        private void UpdateResultPresentation()
+        {
+            if (_resultReturnAt <= 0f || _animator == null || Time.unscaledTime < _resultReturnAt) return;
+            _resultReturnAt = 0f;
+            int idle = Animator.StringToHash("StandIdle");
+            if (_animator.HasState(0, idle))
+            {
+                _animator.speed = 1f;
+                _animator.CrossFadeInFixedTime(idle, .15f, 0, 0f);
             }
         }
 
@@ -363,6 +396,7 @@ namespace PushStars.Fight
 
         private void LateUpdate()
         {
+            UpdateResultPresentation();
             // Keep the selected idle's planted soles while the fight idle takes over.
             // Release these rotations as soon as live pose mirroring starts.
             bool guidedPoseReady = _holdFramingWhileMirroring != null && _holdFramingWhileMirroring.HasFreshPose;
@@ -399,12 +433,24 @@ namespace PushStars.Fight
                 return;
             }
 
-            // The live anchor already matches the person's camera position and size.
-            // Keep that camera through the animation handoff as well: fitting the
-            // plank again would enlarge a distant player and undo the measured scale.
-            if (_framed) return;
+            // Keep the live anchor's measured scale, but not its vertical placement once the
+            // canned push-up owns the body. The user's hips can be close to the bottom of the
+            // phone image in a valid plank; carrying that aim into the authored clip puts most
+            // of the avatar below the portrait. Re-centre only the aim through the handoff while
+            // preserving camera distance, then hold the shot for the set.
+            bool mirroring = _holdFramingWhileMirroring.MirrorPhase;
+            if (mirroring != _wasMirroring)
+            {
+                _wasMirroring = mirroring;
+                if (!mirroring)
+                {
+                    _focusVelocity = Vector3.zero;
+                    _settleUntil = Time.time + _settleSeconds;
+                }
+            }
 
-            FrameCharacter();
+            if (!_framed) FrameCharacter();
+            else if (!mirroring && Time.time < _settleUntil) RecenterCharacter();
         }
 
         private void Build()
@@ -492,7 +538,7 @@ namespace PushStars.Fight
                 }
 
             // The card may have asked for the standing-idle presentation before this body existed.
-            if (_resultLost) SetResultPresentation(true);
+            if (_resultLost || _resultWon) SetResultPresentation(_resultLost, _resultWon);
             else if (_preparation) SetPreparationPresentation(true);
         }
 
@@ -558,7 +604,11 @@ namespace PushStars.Fight
         }
 
         /// <summary>Fits the camera around the bones that are actually posed this frame.</summary>
-        private void FrameCharacter()
+        private void FrameCharacter() => FrameCharacterCore(false);
+
+        private void RecenterCharacter() => FrameCharacterCore(true);
+
+        private void FrameCharacterCore(bool preserveDistance)
         {
             if (_bones == null) return;
 
@@ -619,12 +669,13 @@ namespace PushStars.Fight
             else if (_easeTime > 0f)
             {
                 _focus = Vector3.SmoothDamp(_focus, aim, ref _focusVelocity, _easeTime);
-                _distance = Mathf.SmoothDamp(_distance, wanted, ref _distanceVelocity, _easeTime);
+                if (!preserveDistance)
+                    _distance = Mathf.SmoothDamp(_distance, wanted, ref _distanceVelocity, _easeTime);
             }
             else
             {
                 _focus = aim;
-                _distance = wanted;
+                if (!preserveDistance) _distance = wanted;
             }
 
             Vector3 dir = _viewDirection.sqrMagnitude < 1e-4f ? Vector3.forward : _viewDirection.normalized;

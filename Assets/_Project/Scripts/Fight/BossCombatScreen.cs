@@ -83,6 +83,7 @@ namespace PushStars.Fight
             Action.onClick.AddListener(() =>
             {
                 if (Preparation) FightScreenNavigation.Navigate(FightScreen.Battle);
+                else if (_fight != null && _fight.CanFinishEarly) _fight.FinishEarly();
                 else _fight?.ConfirmBossReady();
             });
             if (!Preparation && Guidance != null)
@@ -134,8 +135,11 @@ namespace PushStars.Fight
                 Form.text = _fight.PlayerBattleForm > 0 ? _fight.PlayerBattleForm.ToString("0") : "—";
                 Tempo.text = _fight.PlayerBattleTempo > .01f ? (60 / _fight.PlayerBattleTempo).ToString("0.0") + "s" : "—";
                 int seconds = Mathf.CeilToInt(_fight.BattleSecondsLeft); Timer.text = $"{seconds / 60}:{seconds % 60:00}";
-                Action.interactable = !_fight.BossReady;
-                ActionLabel.text = _fight.IsBossBattleLive ? "FIGHT" : "READY";
+                bool canFinish = _fight.CanFinishEarly;
+                bool canReady = !_fight.BossReady;
+                Action.gameObject.SetActive(canReady || canFinish);
+                Action.interactable = canReady || canFinish;
+                ActionLabel.text = canFinish ? "FINISH" : "READY";
             }
             CopyBody(PlayerPortrait, PlayerStage, Preparation, smoothPlayer: !Preparation);
             CopyBody(BossPortrait, BossStage, Preparation, !Preparation && _health.BossHp == 0);

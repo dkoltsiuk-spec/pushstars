@@ -173,8 +173,8 @@ namespace PushStars.Fight
 
             _opponentStage = AvatarBehind(_opponentAvatarSource);
             _playerStage = AvatarBehind(_playerAvatarSource);
-            _opponentStage?.SetResultPresentation(!draw && win);
-            _playerStage?.SetResultPresentation(!draw && !win);
+            _opponentStage?.SetResultPresentation(!draw && win, !draw && !win);
+            _playerStage?.SetResultPresentation(!draw && !win, !draw && win);
             CropPortrait(_opponentAvatarImage, _opponentAvatarSource, _opponentStage);
             CropPortrait(_playerAvatarImage, _playerAvatarSource, _playerStage);
 

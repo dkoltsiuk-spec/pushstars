@@ -118,6 +118,7 @@ namespace PushStars.Editor
         /// and the one they see on the pre-duel card are the same character, and it should be
         /// standing the same way in both.</summary>
         public static string IdleFbxPath => $"{AnimDir}/{Clips.First(c => c.state == IdleState).file}";
+        public static string VictoryFbxPath => $"{AnimDir}/{Clips.First(c => c.state == "Victory").file}";
 
         /// <summary>The stylised character shader (flat shading + inverted-hull outline), at
         /// Assets/_Project/Art/Shaders/CharacterToon.shader.</summary>
@@ -142,6 +143,7 @@ namespace PushStars.Editor
         {
             ("Standing W_Briefcase Idle.fbx", IdleState,   true),
             ("Sad Idle.fbx",                  "SadIdle", true),
+            ("Victory.fbx",                   "Victory", false),
             // Loop OFF: it is a one-shot break, and the accent scheduler waits for it to end.
             ("Warrior Idle.fbx",              AccentState, false),
         };
@@ -179,7 +181,7 @@ namespace PushStars.Editor
         /// <summary>Imports one character end to end. Deliberately not batched with
         /// StartAssetEditing: every step below reads back the result of the previous import
         /// (material names, the model's real height).</summary>
-        private static bool Import(CharacterDef def)
+        public static bool Import(CharacterDef def)
         {
             ConfigureBody(def);
             RepairAvatar(def);
