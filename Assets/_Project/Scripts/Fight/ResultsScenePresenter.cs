@@ -23,12 +23,8 @@ namespace PushStars.Fight
                 avatar.SetPreparationPresentation(true);
                 if (avatar.StageCamera != null) avatar.StageCamera.enabled = true;
             }
-            var result = FightScreenNavigation.Result ?? new FightResultData
-            {
-                Mode = FightMode.Ghost, Win = true, MyReps = 21, OppReps = 18,
-                MyForm = 90f, OppForm = 85f, MyRepsPerMinute = 33.3f, OppSecondsPerRep = 1.6f,
-                Xp = 570, Trophies = 21, PlayerName = "BEASTCORE_DEV", OpponentName = "OSKAT009"
-            };
+            var result = FightScreenNavigation.Result;
+            if (result == null) { Home(); return; }
             if (result.Mode == FightMode.Training)
                 _screen.ShowTraining(result.MyReps, result.TrainingSets, result.Xp, result.NewRecord);
             else if (result.Mode == FightMode.LevelTest)

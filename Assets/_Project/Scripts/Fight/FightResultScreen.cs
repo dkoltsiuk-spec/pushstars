@@ -316,12 +316,12 @@ namespace PushStars.Fight
                 return;
             }
 
-            SetText(_testTitle, "YOUR LEVEL", new Color(1f, 1f, 1f, 0.7f));
-            SetText(_testTier, FitnessTest.DisplayName(tier), DrawColor);
+            SetText(_testTitle, "ASSESSMENT COMPLETE!", DrawColor);
+            SetText(_testTier, "GREAT RESULT!", NeutralColor);
             SetText(_testScore, $"{reps} push-ups in 60 seconds", NeutralColor);
             SetText(_testRewards, xp > 0 ? $"+{xp} XP" : "", WinColor);
 
-            string note = FitnessTest.Blurb(tier);
+            string note = "Strong start. Keep getting stronger!";
             if (recorded) note += "\nRecording saved — your ghost is ready for a duel.";
             SetText(_testNote, note, new Color(1f, 1f, 1f, 0.55f));
 

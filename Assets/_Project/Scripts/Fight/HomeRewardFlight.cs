@@ -47,6 +47,7 @@ namespace PushStars.Fight
         }
 
         public static void QueueGems(int amount) => _gems += System.Math.Max(0, amount);
+        public static void QueueAura(int amount) => _aura += System.Math.Max(0, amount);
 
         public static void ReturnTo(string scene) => _destination = scene;
 

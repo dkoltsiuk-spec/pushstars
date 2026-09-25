@@ -23,7 +23,7 @@ namespace PushStars.UI
         public TextMeshProUGUI Title, Subtitle, Body, Message, CodeLabel;
         public TextMeshProUGUI PrimaryLabel, SecondaryLabel, TertiaryLabel, DemoLabel;
         public TextMeshProUGUI MeLabel, FriendLabel, MeStatus, FriendStatus;
-        public GameObject CodeGroup, InputGroup, PlayersGroup, PreviewBadge;
+        public GameObject CodeGroup, InputGroup, PlayersGroup, PreviewBadge, MenuArtwork;
         public TMP_InputField CodeInput;
         public FriendDuelSession Session { get; } = new FriendDuelSession();
         public bool HasRoom => Session.HasRoom;
@@ -217,7 +217,7 @@ namespace PushStars.UI
         private void Fit()
         {
             var size = ((RectTransform)Sheet.parent).rect.size;
-            Sheet.localScale = Vector3.one * Mathf.Min(size.x / 390f, size.y * .94f / 680f);
+            Sheet.localScale = Vector3.one * Mathf.Min(size.x / 390f, size.y * .94f / Sheet.sizeDelta.y);
         }
 
         public void Refresh()
@@ -248,38 +248,42 @@ namespace PushStars.UI
             CodeGroup.SetActive(false); InputGroup.SetActive(false); PlayersGroup.SetActive(false);
             Primary.gameObject.SetActive(true); Secondary.gameObject.SetActive(true); Tertiary.gameObject.SetActive(false);
             Primary.interactable = true; Help.gameObject.SetActive(_page != Page.Info && _page != Page.Leave);
-            PreviewBadge.SetActive(IsPreview);
+            PreviewBadge.SetActive(IsPreview && _page == Page.Room);
             DemoAction.gameObject.SetActive(IsPreview && _page == Page.Room && (phase == FriendDuelSession.Phase.Waiting
                 || phase == FriendDuelSession.Phase.Joined || phase == FriendDuelSession.Phase.ReadyCheck && !Session.FriendReady));
             DemoConnection.gameObject.SetActive(IsPreview && _page == Page.Room && room);
             DemoLabel.text = phase == FriendDuelSession.Phase.Waiting ? "Demo: friend joined" : "Demo: friend ready";
             DemoConnection.GetComponentInChildren<TextMeshProUGUI>().text = phase == FriendDuelSession.Phase.Reconnecting ? "Demo: reconnect" : "Demo: disconnect";
             Body.text = "";
+            LayoutPage();
             LayoutBody(144, 225);
             switch (_page)
             {
                 case Page.Menu:
-                    Title.text = "FRIEND DUEL"; Subtitle.text = "Challenge a friend. One on one.";
-                    Body.text = "01  Create an invitation and share the code.\n\n02  Your friend enters it on their home screen.\n\n03  Confirm the duel and set up your cameras.\n\nPush-ups · 60 seconds\nNo ranked trophies";
+                    Title.text = "FRIEND DUEL"; Subtitle.text = "1 VS 1  ·  PUSH-UPS  ·  60 SEC";
+                    LayoutBody(409, 22); Body.fontSize = 13;
+                    Body.text = "Friendly match · No trophies";
                     PrimaryLabel.text = "INVITE FRIEND"; SecondaryLabel.text = "ENTER CODE"; break;
                 case Page.Join:
-                    Title.text = "ENTER CODE"; Subtitle.text = "Ask your friend to create an invitation\nand send you the 6-digit code.";
+                    Title.text = "ENTER CODE"; Subtitle.text = "Enter your friend's 6-digit code.";
                     InputGroup.SetActive(true);
-                    LayoutBody(265, 100);
-                    Body.text = "You'll see who invited you first.\nJoin the room after confirming.";
+                    LayoutBody(242, 24); Body.fontSize = 14;
+                    Body.text = "Check the host, then join.";
                     PrimaryLabel.text = "FIND ROOM"; SecondaryLabel.text = "BACK"; break;
                 case Page.ConfirmJoin:
                     Title.text = "INVITED BY"; Subtitle.text = "ALEX_M";
-                    Body.text = "Private 1 × 1 duel\n\nPush-ups · 60 seconds\nNo ranked trophies\n\nThe duel starts when both players confirm\nand finish setting up their cameras.";
+                    LayoutBody(144, 100);
+                    Body.text = "1 VS 1 · Push-ups · 60 seconds\n\nNo ranked trophies";
                     PrimaryLabel.text = "JOIN"; SecondaryLabel.text = "CANCEL"; break;
                 case Page.Info:
                     LayoutBody(140, 265); Body.fontSize = 16;
-                    Title.text = "HOW TO PLAY TOGETHER"; Subtitle.text = "No need to search for your friend's name.";
-                    Body.text = "Inviting a friend?\nCreate an invitation and share the code.\nIt lasts for 5 minutes.\n\nGot an invitation?\nTap the plus on the left, then ENTER CODE.\nEnter 6 digits, check the name, and confirm.\n\nOnce you're together, both tap BATTLE.\nPosition your phones and set up the cameras.\nThe countdown starts when both are ready.";
+                    Title.text = "HOW TO PLAY"; Subtitle.text = "One code. Two players.";
+                    Body.text = "1. INVITE\nCreate a code and send it to your friend.\nThe code lasts 5 minutes.\n\n2. JOIN\nYour friend taps ENTER CODE, checks\nyour name, and joins.\n\n3. BATTLE\nBoth confirm and set up their cameras.\nThen the shared countdown begins.";
                     PrimaryLabel.text = "GOT IT"; Secondary.gameObject.SetActive(false); break;
                 case Page.Leave:
                     Title.text = "LEAVE ROOM?"; Subtitle.text = "Your friend will see that you left.";
-                    Body.text = "Your invitation and ready status will be reset.\n\nCreate a new code to play again later.\n\nYour ranked trophies won't change.";
+                    LayoutBody(144, 100);
+                    Body.text = "Create a new code to play again later.\nYour ranked trophies won't change.";
                     PrimaryLabel.text = "EXIT"; SecondaryLabel.text = "STAY"; break;
                 case Page.Room: RefreshRoom(); break;
             }
@@ -298,7 +302,7 @@ namespace PushStars.UI
             {
                 CodeGroup.SetActive(true); CodeLabel.text = Session.Code.Substring(0, 3) + " " + Session.Code.Substring(3);
                 LayoutBody(246, 125);
-                Body.text = $"Code expires in {left / 60}:{left % 60:00}\n\nYour friend taps plus, then ENTER CODE.\nYou can close this window while we wait.";
+                Body.text = $"Send this code to your friend.\nExpires in {left / 60}:{left % 60:00}";
                 PrimaryLabel.text = "COPY CODE"; return;
             }
             if (phase == FriendDuelSession.Phase.Expired)
@@ -334,6 +338,25 @@ namespace PushStars.UI
         }
         private void OnDisable() { if (Overlay != null) Overlay.SetActive(false); }
         private void OnEnable() { if (_wired) Refresh(); }
+        private void LayoutPage()
+        {
+            bool menu = _page == Page.Menu;
+            bool compact = menu || _page == Page.Join || _page == Page.ConfirmJoin || _page == Page.Leave;
+            Sheet.sizeDelta = new Vector2(390, compact ? 500 : 680);
+            if (MenuArtwork != null) MenuArtwork.SetActive(menu);
+            Position(Primary.transform, menu ? 236 : compact ? 318 : 418, 60);
+            Position(Secondary.transform, menu ? 308 : compact ? 390 : 490, 56);
+            Position(Tertiary.transform, 550, 28);
+            Position(Message.transform, menu ? 372 : compact ? 269 : 376, 38);
+            Position(Help.transform, compact ? 449 : 579, compact ? 40 : 32);
+            Body.alignment = menu ? TextAlignmentOptions.Center : TextAlignmentOptions.TopLeft;
+        }
+        private static void Position(Transform target, float top, float height)
+        {
+            var rect = (RectTransform)target;
+            rect.anchoredPosition = new Vector2(rect.anchoredPosition.x, -top);
+            rect.sizeDelta = new Vector2(rect.sizeDelta.x, height);
+        }
         private void LayoutBody(float top, float height)
         {
             Body.rectTransform.anchoredPosition = new Vector2(24, -top);

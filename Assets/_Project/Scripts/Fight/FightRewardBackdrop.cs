@@ -7,7 +7,7 @@ namespace PushStars.Fight
     [RequireComponent(typeof(CanvasRenderer))]
     public sealed class FightRewardBackdrop : MaskableGraphic
     {
-        public enum Style { Summary, Case, Gems }
+        public enum Style { Summary, Case, Gems, Aura }
         public Style Appearance;
         private Texture2D _summaryBackground;
         public override Texture mainTexture => Appearance == Style.Summary
@@ -27,6 +27,11 @@ namespace PushStars.Fight
             Color top, bottom, glow;
             switch (Appearance)
             {
+                case Style.Aura:
+                    top = new Color32(5, 3, 17, 255);
+                    bottom = new Color32(8, 4, 26, 255);
+                    glow = new Color32(24, 10, 55, 100);
+                    break;
                 case Style.Gems:
                     top = new Color32(40, 151, 0, 255);
                     bottom = new Color32(39, 148, 0, 255);

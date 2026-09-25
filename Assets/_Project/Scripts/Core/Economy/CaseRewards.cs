@@ -17,17 +17,19 @@ namespace PushStars.Core
         public int RemainingTaps => Math.Max(0, CaseRewards.UpgradeTapCount - UpgradeTapsUsed);
         public bool Opened { get; }
         public int Gems { get; }
+        public int Aura { get; }
         public string AvatarId { get; }
         public int AvatarCards { get; }
         public bool CanOpen => !Opened && RemainingTaps == 0;
 
-        internal PendingCase(string id, CaseRarity rarity, int taps, bool opened, int gems, string avatarId = null, int avatarCards = 0)
+        internal PendingCase(string id, CaseRarity rarity, int taps, bool opened, int gems, string avatarId = null, int avatarCards = 0, int aura = 0)
         {
             Id = id;
             Rarity = rarity;
             UpgradeTapsUsed = taps;
             Opened = opened;
             Gems = gems;
+            Aura = aura;
             AvatarId = avatarId;
             AvatarCards = avatarCards;
         }
@@ -42,6 +44,8 @@ namespace PushStars.Core
     public static class CaseRewards
     {
         public const int UpgradeTapCount = 3;
+        public const int AssessmentAura = 200;
+        public const string AssessmentReceipt = "assessment:welcome:v1";
         // Keep the original key so existing inventories are migrated in place, never abandoned.
         private const string SaveKey = "rewards.case_ledger.v1";
         private static readonly System.Random Random = new System.Random();
@@ -108,6 +112,13 @@ namespace PushStars.Core
         /// must provide a stable, globally unique receipt ID such as "promotion:gold:player-id".
         /// </summary>
         public static bool TryGrantCase(string grantId) => Ledger.TryGrantCase(grantId);
+
+        public static bool TryAwardAssessmentCase(int reps, out PendingCase awarded)
+        {
+            bool granted = Ledger.TryAwardAssessmentCase(reps);
+            awarded = reps > 0 ? Ledger.Find(AssessmentReceipt) : null;
+            return granted;
+        }
 
         /// <summary>expectedTap is the snapshot's UpgradeTapsUsed; stale or repeated callbacks are rejected.</summary>
         public static bool TryUpgrade(string caseId, int expectedTap, out PendingCase updated) =>
@@ -190,11 +201,12 @@ namespace PushStars.Core
             public int taps;
             public bool opened;
             public int gems;
+            public int aura;
             public string avatarId;
             public int avatarCards;
 
             public Entry Copy() => (Entry)MemberwiseClone();
-            public PendingCase Snapshot() => new PendingCase(id, rarity, taps, opened, gems, avatarId, avatarCards);
+            public PendingCase Snapshot() => new PendingCase(id, rarity, taps, opened, gems, avatarId, avatarCards, aura);
         }
 
         [Serializable]
@@ -209,7 +221,7 @@ namespace PushStars.Core
         [Serializable]
         private sealed class SaveData
         {
-            public int version = 3;
+            public int version = 4;
             public long gems;
             public long aura;
             public List<string> auraReceipts = new List<string>();
@@ -265,6 +277,7 @@ namespace PushStars.Core
                 _state.aura = 0;
             }
             _awardedWorkouts = new HashSet<string>(_state.awardedWorkouts, StringComparer.Ordinal);
+            _state.version = 4;
             _processedWorkouts = new HashSet<string>(_state.processedWorkoutIds, StringComparer.Ordinal);
         }
 
@@ -382,6 +395,22 @@ namespace PushStars.Core
             return true;
         }
 
+        /// <summary>One welcome case, independent of daily workout quota. Its prize is fixed
+        /// when awarded and wallet credit/removal are committed together when claimed.</summary>
+        public bool TryAwardAssessmentCase(int reps)
+        {
+            if (reps <= 0 || _awardedWorkouts.Contains(CaseRewards.AssessmentReceipt)) return false;
+            var next = _state.Copy();
+            next.awardedWorkouts.Add(CaseRewards.AssessmentReceipt);
+            next.cases.Add(new Entry {
+                id = CaseRewards.AssessmentReceipt, rarity = CaseRarity.Legendary,
+                taps = CaseRewards.UpgradeTapCount, aura = CaseRewards.AssessmentAura
+            });
+            Commit(next);
+            _awardedWorkouts.Add(CaseRewards.AssessmentReceipt);
+            return true;
+        }
+
         private static string UtcDay(DateTimeOffset instant) => instant.UtcDateTime.ToString("yyyy-MM-dd", CultureInfo.InvariantCulture);
 
         public bool TryUpgrade(string caseId, int expectedTap, out PendingCase updated)
@@ -410,6 +439,13 @@ namespace PushStars.Core
 
             var next = _state.Copy();
             Entry entry = next.cases[index];
+            if (entry.aura > 0)
+            {
+                entry.opened = true;
+                Commit(next);
+                opened = entry.Snapshot();
+                return true;
+            }
             entry.gems = CaseRewards.GemsForRoll(entry.rarity, _random());
             var eligible = Array.FindAll(_offers, a => a.UsesCards && !OwnsAvatar(a.Id));
             if (eligible.Length > 0)
@@ -436,6 +472,7 @@ namespace PushStars.Core
             int reward = next.cases[index].gems;
             next.gems = checked(next.gems + reward);
             Entry prize = next.cases[index];
+            next.aura = checked(next.aura + prize.aura);
             var offer = Offer(prize.avatarId);
             if (prize.avatarCards > 0 && offer != null && offer.UsesCards && !OwnsAvatar(offer.Id))
             {
@@ -465,7 +502,7 @@ namespace PushStars.Core
 
         private static void ValidateSave(SaveData state)
         {
-            if (state == null || state.version < 1 || state.version > 3 || state.gems < 0 || state.cases == null || state.awardedWorkouts == null)
+            if (state == null || state.version < 1 || state.version > 4 || state.gems < 0 || state.cases == null || state.awardedWorkouts == null)
                 throw new InvalidOperationException("Invalid case ledger. Saved rewards were not overwritten.");
             foreach (string id in state.awardedWorkouts)
                 if (string.IsNullOrWhiteSpace(id))
@@ -498,6 +535,16 @@ namespace PushStars.Core
             var caseIds = new HashSet<string>(StringComparer.Ordinal);
             foreach (Entry entry in state.cases)
             {
+                if (entry != null && entry.aura != 0)
+                {
+                    if (state.version < 4 || entry.id != CaseRewards.AssessmentReceipt ||
+                        entry.aura != CaseRewards.AssessmentAura || entry.gems != 0 ||
+                        entry.avatarCards != 0 || !string.IsNullOrEmpty(entry.avatarId) ||
+                        entry.rarity != CaseRarity.Legendary || entry.taps != CaseRewards.UpgradeTapCount ||
+                        !caseIds.Add(entry.id) || !awards.Contains(entry.id))
+                        throw new InvalidOperationException("Invalid assessment case. Saved rewards were not overwritten.");
+                    continue;
+                }
                 if (entry == null || string.IsNullOrWhiteSpace(entry.id) || !caseIds.Add(entry.id) || !awards.Contains(entry.id) ||
                     (int)entry.rarity < 0 || (int)entry.rarity > (int)CaseRarity.Legendary ||
                     entry.taps < 0 || entry.taps > CaseRewards.UpgradeTapCount || (int)entry.rarity > entry.taps ||

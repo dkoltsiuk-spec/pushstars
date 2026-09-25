@@ -135,8 +135,7 @@ namespace PushStars.Editor
                     Check(screen.PreviewPage.Preview.IsRendering && _previews.All(p => !p.IsRendering), "Preview page must render only the full-body model.");
                     Capture(screen, 780, 1688, "preview-sonic.png");
                     screen.PreviewPage.Action.onClick.Invoke();
-                    Check(screen.Roster.IsSonic && PlayerPrefs.GetInt(CharacterRoster.HomeAvatarKey) == 1 && screen.Actions[0].text == "SELECTED", "Sonic selection/persistence failed.");
-                    Check(screen.Roster.GetComponent<CharacterStage>().GetComponentInChildren<SonicIdleBehaviour>() != null, "Sonic was not seated on Home stage.");
+                    Check(!screen.Roster.IsSonic && !screen.PreviewPage.Action.interactable && screen.Actions[0].text == "$5.99", "Premium Sonic must not equip without ownership.");
                     screen.InfoClose.onClick.Invoke();
                     Check(screen.Grid.gameObject.activeInHierarchy && !screen.PreviewPage.Preview.IsRendering, "Back must restore collection and stop full-body camera.");
                     screen.InfoButtons[3].onClick.Invoke();
@@ -170,12 +169,13 @@ namespace PushStars.Editor
                         screen.Tabs[1].transform.localPosition.x) &&
                         Mathf.Approximately(screen.Tabs[1].transform.localPosition.x + 106,
                         screen.Tabs[2].transform.localPosition.x) &&
-                        Mathf.Approximately(screen.Tabs[0].transform.localPosition.x, 20),
+                        Mathf.Approximately(((RectTransform)screen.Tabs[0].transform).anchoredPosition.x, 20),
                         "Tabs must form a compact left-aligned group.");
-                    Check(screen.Cards.Count(c => c.gameObject.activeSelf) == 3, "Opened filter failed.");
+                    Check(screen.Cards.Count(c => c.gameObject.activeSelf) == 2, "Opened filter failed.");
                     screen.Filter(2);
-                    Check(screen.Empty.gameObject.activeSelf && screen.Cards.All(c => !c.gameObject.activeSelf), "Premium empty state failed.");
-                    Check(_previews.All(p => !p.IsRendering), "Hidden previews must stop rendering.");
+                    Check(!screen.Empty.gameObject.activeSelf && screen.Cards[0].gameObject.activeSelf &&
+                        screen.Cards.Skip(1).All(c => !c.gameObject.activeSelf), "Premium filter must show only Sonic.");
+                    Check(_previews[0].IsRendering && _previews.Skip(1).All(p => !p.IsRendering), "Hidden previews must stop rendering.");
                     screen.Home.onClick.Invoke(); Check(!screen.IsOpen, "Home failed.");
                     screen.Show(); screen.Back.onClick.Invoke(); Check(!screen.IsOpen, "Back failed.");
                     Check(_previews.All(p => !p.IsRendering), "Closing collection must stop all previews.");

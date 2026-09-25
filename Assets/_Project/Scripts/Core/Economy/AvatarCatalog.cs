@@ -29,7 +29,7 @@ namespace PushStars.Core
         public static AvatarOffer Find(string id) => Array.Find(All, a => a.Id == id);
         public static AvatarOffer At(int index) => index >= 0 && index < All.Length ? All[index] : null;
         public static AvatarOffer[] Defaults() => new[] {
-            new AvatarOffer { Id = "sonic", Name = "SONIC", Kind = AvatarPurchaseKind.Included },
+            new AvatarOffer { Id = "sonic", Name = "SONIC", Kind = AvatarPurchaseKind.Dollars, Price = 599 },
             new AvatarOffer { Id = "madam-engry", Name = "MADAM ENGRY", Kind = AvatarPurchaseKind.Included },
             new AvatarOffer { Id = "fighter", Name = "FIGHTER", Kind = AvatarPurchaseKind.Included },
             new AvatarOffer { Id = "robot", Name = "ROBOT", Kind = AvatarPurchaseKind.Aura, Price = 300, RequiredCards = 60, HeadIcon = "AvatarCollection/RobotHead" },

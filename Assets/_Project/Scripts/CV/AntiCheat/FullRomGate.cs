@@ -30,10 +30,15 @@ namespace PushStars.CV.AntiCheat
 
         public RepVote Validate(in RepWindow window)
         {
-            if (window.Count < 4) return RepVote.Pass;
+            if (window.Count < 4) return RepVote.HardVeto(RepRejectReason.LowVisibility);
 
             if (!window.TryComputeBodyAxis(CVConstants.RepBodyAxisLeadFrames, out Vector2 bodyAxis, out float scale))
-                return RepVote.Pass; // no geometry — fail open
+            {
+                // Hips often disappear frontally. The projection axis is already vertical and
+                // visible shoulders provide its scale, so missing hips must not bypass ROM.
+                if (window.View != ViewKind.Frontal || !TryShoulderScale(in window, out scale))
+                    return RepVote.HardVeto(RepRejectReason.LowVisibility);
+            }
 
             Vector2 axis;
             switch (window.View)
@@ -62,7 +67,7 @@ namespace PushStars.CV.AntiCheat
                 if (p > maxProj) maxProj = p;
                 used++;
             }
-            if (used < 4) return RepVote.Pass;
+            if (used < 4) return RepVote.HardVeto(RepRejectReason.LowVisibility);
 
             float travelFrac = (maxProj - minProj) / scale;
 
@@ -81,6 +86,24 @@ namespace PushStars.CV.AntiCheat
             if (travelFrac < CVConstants.MinChestTravelFracSoft)
                 return RepVote.Dock(0.25f, RepRejectReason.ShallowTravel);
             return RepVote.Pass;
+        }
+
+        private static bool TryShoulderScale(in RepWindow window, out float scale)
+        {
+            float sum = 0f;
+            int used = 0;
+            // Prefer the same top-of-rep lead-in used by TryComputeBodyAxis. If shoulders
+            // were occluded there, use the remaining measured widths rather than guessing.
+            for (int i = 0; i < window.Count; i++)
+            {
+                if (i == CVConstants.RepBodyAxisLeadFrames && used > 0) break;
+                var sample = window[i];
+                if (!sample.HasShoulderMid || sample.ShoulderWidthSq <= 1e-4f) continue;
+                sum += sample.ShoulderWidthSq;
+                used++;
+            }
+            scale = used > 0 ? sum / used : 0f;
+            return scale > 1e-4f;
         }
 
         /// <summary>First principal component of the shoulderMid trajectory — closed-form 2×2

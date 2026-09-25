@@ -40,6 +40,9 @@ namespace PushStars.CV
         private bool _ready, _active, _hasShown;
         private float _depth, _fadeRemaining, _fadeDuration;
 
+        /// <summary>True while a depth driver owns the authored push-up pose.</summary>
+        public bool IsActive => _active;
+
         public static PushupPoseCorrection Bind(Animator animator)
         {
             if (animator == null || !animator.isHuman) return null;

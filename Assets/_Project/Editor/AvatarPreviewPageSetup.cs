@@ -32,6 +32,9 @@ namespace PushStars.Editor
             {
                 var existingShadow = screen.PreviewPage.transform.Find("FloorShadow") as RectTransform;
                 Place(existingShadow, 95, 544, 200, 20);
+                Place((RectTransform)screen.InfoClose.transform, 20, 48, 57, 44);
+                Place((RectTransform)screen.PreviewPage.Home.transform, 313, 48, 57, 44);
+                Place(screen.InfoTitle.rectTransform, 82, 50, 226, 42);
                 screen.InfoBody.fontSharedMaterial = screen.InfoBody.font.material;
                 screen.PreviewPage.Status.fontSharedMaterial = screen.PreviewPage.Status.font.material;
                 EditorSceneManager.MarkSceneDirty(scene); EditorSceneManager.SaveScene(scene);
@@ -72,9 +75,9 @@ namespace PushStars.Editor
             page.Prefabs = screen.Cards.Select(c => c.GetComponentInChildren<AvatarCardPreview>(true).Prefab).ToArray();
             screen.PreviewPage = page;
             screen.InfoPanel = pageRoot.gameObject;
-            screen.InfoClose = Button(pageRoot, "Back", Profile("Group 549"), "", 20, 26, 57, 44);
-            page.Home = Button(pageRoot, "Home", Profile("Group 550"), "", 313, 26, 57, 44);
-            screen.InfoTitle = Text(pageRoot, "Title", "SONIC", 82, 28, 226, 42, 22);
+            screen.InfoClose = Button(pageRoot, "Back", Profile("Group 549"), "", 20, 48, 57, 44);
+            page.Home = Button(pageRoot, "Home", Profile("Group 550"), "", 313, 48, 57, 44);
+            screen.InfoTitle = Text(pageRoot, "Title", "SONIC", 82, 50, 226, 42, 22);
             page.Name = Text(pageRoot, "SkinName", "SONIC", 24, 110, 342, 25, 15);
             page.Name.alignment = TextAlignmentOptions.Left;
             screen.InfoBody = Text(pageRoot, "Category", "CHARACTER SKIN", 24, 135, 342, 21, 11);

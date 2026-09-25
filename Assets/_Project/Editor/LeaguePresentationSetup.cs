@@ -31,9 +31,11 @@ namespace PushStars.Editor
                     (RectTransform)root.Find("TrophyProgress"), (RectTransform)root.Find("ProgressCup"),
                     view.Season.rectTransform, view.Online.rectTransform,
                     (RectTransform)root.Find("OnlineGlow"), (RectTransform)root.Find("OnlineDot") };
-                targets.AddRange(previous.Leaderboard.content.Cast<RectTransform>());
+                var layout = view.GetComponent<LeagueLayout>();
+                targets.AddRange((layout.Rows != null ? layout.Rows : previous.Leaderboard.content).Cast<RectTransform>());
                 Undo.RecordObject(previous, "Repair entrance group bindings");
                 for (int i = 0; i < previous.Beats.Length; i++) previous.Beats[i].Group = Group(targets[i]);
+                InstallPageScroll(view, previous.Leaderboard);
                 EditorUtility.SetDirty(previous); EditorSceneManager.MarkSceneDirty(scene); EditorSceneManager.SaveScene(scene);
                 return;
             }
@@ -43,12 +45,7 @@ namespace PushStars.Editor
             var existing = new[] { "RankRow1", "RankRow2", "RankRow3", "CurrentPlayerRow" }
                 .Select(n => (RectTransform)art.Find(n)).ToArray();
             if (existing.Any(r => r == null)) throw new InvalidOperationException("Expected the four authored league rows.");
-            Undo.RecordObject(view, "Expand mock leaderboard");
-            var players = view.Players.ToList();
-            string[] names = { "IRON_MAX", "LUNA_FIT", "PUSH_KING", "BEAST_07", "KIRA", "TITAN_X" };
-            int[] scores = { 512, 487, 453, 421, 398, 365 };
-            for (int i = players.Count; i < 10; i++) players.Add(new LeagueView.Entry { Name = names[i - 4], Trophies = scores[i - 4] });
-            view.Players = players.ToArray();
+            Undo.RecordObject(view, "Prepare leaderboard slots");
             var viewport = Rect(art, "LeaderboardViewport", 12, 471, 366, 229);
             var hit = viewport.gameObject.AddComponent<Image>(); hit.color = Color.clear; hit.raycastTarget = true;
             viewport.gameObject.AddComponent<RectMask2D>();
@@ -98,11 +95,53 @@ namespace PushStars.Editor
                 beat.Rise = 16; beats.Add(beat);
             }
             entrance.Beats = beats.ToArray();
+            InstallPageScroll(view, scroll);
             view.Refresh(); scroll.verticalNormalizedPosition = 1;
             EditorUtility.SetDirty(view); EditorUtility.SetDirty(entrance);
             EditorSceneManager.MarkSceneDirty(scene); EditorSceneManager.SaveScene(scene);
             Selection.activeGameObject = view.gameObject;
-            Debug.Log("[League] Entrance timeline and 10-player leaderboard saved. Row pitch 69, viewport 229, content 682.");
+            Debug.Log("[League] Entrance timeline and whole-page scrolling saved.");
+        }
+        [MenuItem("Push Stars/UI/Enable Whole League Scrolling")]
+        public static void InstallWholePageScrolling()
+        {
+            if (EditorApplication.isPlaying) throw new InvalidOperationException("Exit Play mode first.");
+            var scene = SceneManager.GetActiveScene();
+            if (scene.path != "Assets/_Project/Scenes/Main.unity")
+                scene = EditorSceneManager.OpenScene("Assets/_Project/Scenes/Main.unity");
+            var view = scene.GetRootGameObjects().SelectMany(r => r.GetComponentsInChildren<LeagueView>(true)).First();
+            InstallPageScroll(view, view.GetComponent<LeagueEntrance>().Leaderboard);
+            EditorSceneManager.MarkSceneDirty(scene);
+            EditorSceneManager.SaveScene(scene);
+        }
+        static void InstallPageScroll(LeagueView view, ScrollRect scroll)
+        {
+            var layout = view.GetComponent<LeagueLayout>();
+            var art = layout.Art;
+            var viewport = scroll.viewport;
+            Undo.RecordObjects(new Object[] { layout, scroll, viewport, art }, "Scroll the whole league page");
+            if (scroll.content != art)
+            {
+                var rows = scroll.content;
+                Undo.SetTransformParent(rows, art, "Keep rows with league header");
+                rows.anchorMin = rows.anchorMax = rows.pivot = new Vector2(0, 1);
+                rows.anchoredPosition = new Vector2(12, -471);
+                rows.localScale = Vector3.one;
+                Undo.SetTransformParent(viewport, view.transform, "Expand league viewport");
+                Undo.SetTransformParent(art, viewport, "Scroll league artwork and rows together");
+                layout.Rows = rows;
+            }
+            viewport.name = "LeagueViewport";
+            viewport.anchorMin = Vector2.zero; viewport.anchorMax = Vector2.one;
+            viewport.pivot = new Vector2(.5f, 1);
+            viewport.localScale = Vector3.one;
+            art.anchorMin = art.anchorMax = art.pivot = new Vector2(.5f, 1);
+            art.anchoredPosition = Vector2.zero;
+            scroll.content = art;
+            layout.PageScroll = scroll;
+            view.Refresh(); layout.Fit();
+            scroll.StopMovement(); scroll.verticalNormalizedPosition = 1;
+            EditorUtility.SetDirty(layout); EditorUtility.SetDirty(scroll);
         }
         static LeagueEntrance.Beat Beat(CanvasGroup group, float delay, float duration, float scale = 1, bool spring = false)
             => new LeagueEntrance.Beat { Group = group, Delay = delay, Duration = duration, FromScale = scale, Spring = spring };

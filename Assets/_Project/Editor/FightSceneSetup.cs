@@ -427,6 +427,9 @@ namespace PushStars.Editor
             UiBuilder.Set(so, "_avatarRoot", root);
             UiBuilder.Set(so, "_malePrefab", male);
             UiBuilder.Set(so, "_femalePrefab", female);
+            UiBuilder.Set(so, "_sonicPrefab", AssetDatabase.LoadAssetAtPath<GameObject>("Assets/Character/Sonic/Sonic.prefab"));
+            UiBuilder.Set(so, "_gladiatorPrefab", AssetDatabase.LoadAssetAtPath<GameObject>("Assets/Character/Gladiator/Gladiator.prefab"));
+            UiBuilder.Set(so, "_robotPrefab", AssetDatabase.LoadAssetAtPath<GameObject>("Assets/Character/Robot/Robot.prefab"));
             UiBuilder.Set(so, "_fightController", controller);
             UiBuilder.SetArray(so, "_alsoBound", alsoBound ?? new UnityEngine.Object[0]);
             UiBuilder.Set(so, "_holdFramingWhileMirroring", holdFramingFor);

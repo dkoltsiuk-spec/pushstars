@@ -28,11 +28,11 @@ namespace PushStars.CV
     /// pass the cycle rate-limit, the ascent floor and the per-rep auditor to become a rep.</para>
     ///
     /// <para><b>Turnaround (undersampled-extreme) channels:</b> when the detector undersamples a
-    /// fast rep, no sample may land inside a zone at all. If the signal V-turns close to a zone
-    /// edge at high speed (|v̂| ≥ FastTurnaroundMinSpeed), the extreme is latched retroactively —
-    /// a slow hoverer near the edge has low speed and never triggers these.</para>
+    /// fast rep, the top can be recovered from a near-zone crest at high speed. Bottom recovery
+    /// always requires an observed angle inside the bottom zone; speed or tracking loss must
+    /// never turn an unobserved descent into a full-depth rep.</para>
     ///
-    /// <para><b>Zones are absolute this release</b> (TopEnter=160 / BottomEnter=95 — the anti-cheat
+    /// <para><b>Zones are absolute this release</b> (TopEnter=148 / BottomEnter=95 — the anti-cheat
     /// envelope). The adaptive tightening (median window of accepted reps) is computed but affects
     /// ONLY the HUD bands (<see cref="CVConstants.AdaptiveZonesAffectLatch"/> = false) — the
     /// adversarial review found a ratchet deadlock if adaptive zones can gate latching.</para>
@@ -62,7 +62,7 @@ namespace PushStars.CV
         public bool BottomAltHintActive { get; private set; }
 
         // ── zones (latching = absolute; Hud* = adaptive display bands) ──
-        public float TopEnterDeg => CVConstants.TopElbowAngle;       // 160 — latch
+        public float TopEnterDeg => CVConstants.TopElbowAngle;       // 148 — latch
         public float BottomEnterDeg => CVConstants.BottomElbowAngle; // 95 — latch
         public float HudTopEnterDeg { get; private set; } = CVConstants.TopElbowAngle;
         public float HudBottomEnterDeg { get; private set; } = CVConstants.BottomElbowAngle;
@@ -212,7 +212,7 @@ namespace PushStars.CV
                 if (ArcState == DepthArcState.AwaitBottom
                     && gap <= CVConstants.GraceLatchMaxGapSec
                     && _descendStreak >= 4
-                    && _lastValidTheta <= BottomEnterDeg + CVConstants.GraceLatchNearZoneDeg
+                    && _lastValidTheta <= BottomEnterDeg
                     && thetaM > _lastValidTheta
                     && _anchorOkAtLastValid && anchorOk)
                 {
@@ -269,12 +269,11 @@ namespace PushStars.CV
                     {
                         LatchBottom(timeSec);
                     }
-                    // Fast-trough turnaround: the detector undersampled the trough (no sample
-                    // landed ≤ BottomEnter), but the signal V-turned just above the zone at high
-                    // speed — latch the observed minimum retroactively. A slow hoverer near the
-                    // edge has low |v̂| and never triggers this.
+                    // Recover an observed bottom if a future debounce setting misses its dwell.
+                    // Never infer extra depth from turnaround speed: shallow fast dips also
+                    // produce a V-turn and previously qualified up to 8° above BottomEnter.
                     else if (thetaM >= _arcThetaMin + CVConstants.TurnaroundRiseDeg
-                             && _arcThetaMin <= BottomEnterDeg + CVConstants.FastTroughSlackDeg
+                             && _arcThetaMin <= BottomEnterDeg
                              && _maxSpeedThisPhase >= CVConstants.FastTurnaroundMinSpeedDegPerSec)
                     {
                         LatchBottom(_arcThetaMinTime >= 0f ? _arcThetaMinTime : timeSec);

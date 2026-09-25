@@ -18,6 +18,7 @@ namespace PushStars.UI
         public Sprite OnSprite, OffSprite;
         private readonly ISettingsStore _store = new PlayerPrefsSettingsStore();
         private Coroutine _noticeRoutine;
+        private SettingsAuthDialog _authDialog;
 
         private void Start()
         {
@@ -29,9 +30,11 @@ namespace PushStars.UI
                 RefreshLanguage();
                 ShowNotice("The app language is English.");
             });
-            Apple.onClick.AddListener(() => ShowNotice("Apple sign-in is not configured yet."));
-            Google.onClick.AddListener(() => ShowNotice("Google sign-in is not configured yet."));
-            Email.onClick.AddListener(() => ShowNotice("Email sign-in is not configured yet."));
+            _authDialog = gameObject.AddComponent<SettingsAuthDialog>();
+            _authDialog.Build(this);
+            Apple.onClick.AddListener(() => _authDialog.Show("apple.com"));
+            Google.onClick.AddListener(() => _authDialog.Show("google.com"));
+            Email.onClick.AddListener(() => _authDialog.Show("password"));
             Privacy.onClick.AddListener(() => ShowNotice("The published privacy policy link has not been configured yet."));
             Support.onClick.AddListener(() => ShowNotice("Support contact has not been configured yet."));
             ExternalMusic.SetIsOnWithoutNotify(GameAudio.KeepExternalMusic);

@@ -81,6 +81,7 @@ namespace PushStars.Fight
         /// <summary>Raised when ГОТОВ is pressed. The controller starts looking for the plank.</summary>
         public event Action OnReady;
         private FightAvatar[] _preparationAvatars;
+        private MatchFoundImpact _matchFoundImpact;
 
         private PushStars.UI.PushStarsTheme _theme;
         private Sprite _playerFlagSprite;
@@ -129,6 +130,12 @@ namespace PushStars.Fight
             RefreshFlags();
             if (!_sceneAuthored) ConfigureEditableLayout();
             if (loadProfile) LoadPlayerName();
+            if (Application.isPlaying)
+            {
+                if (_matchFoundImpact == null)
+                    _matchFoundImpact = _root.GetComponent<MatchFoundImpact>() ?? _root.AddComponent<MatchFoundImpact>();
+                _matchFoundImpact.Play();
+            }
         }
 
         /// <summary>Used once by the scene builder. Subsequent scene loads only fill data.</summary>
@@ -151,28 +158,21 @@ namespace PushStars.Fight
             shadow.rectTransform.sizeDelta = new Vector2(box.rect.height * 0.3f, 22f);
         }
 
-        private async void LoadPlayerName()
+        private void LoadPlayerName()
         {
-            try
-            {
-                var profile = await new PushStars.Services.UserProfileRepository().GetAsync();
-                if (this != null && _playerName != null && profile.Exists && !string.IsNullOrWhiteSpace(profile.DisplayName))
-                    _playerName.text = profile.DisplayName;
-            }
-            catch (Exception exception)
-            {
-                Debug.LogWarning($"[ReadyPanel] Profile name unavailable: {exception.Message}");
-            }
+            if (_playerName != null) _playerName.text = PushStars.UI.ProfileIdentityEditor.ResolveName("YOU");
         }
 
         public void Hide()
         {
+            if (_matchFoundImpact != null) _matchFoundImpact.Cancel();
             RestoreAvatarPresentation();
             if (_root != null) _root.SetActive(false);
         }
 
         private void OnDisable()
         {
+            if (_matchFoundImpact != null) _matchFoundImpact.Cancel();
             if (Application.isPlaying) RestoreAvatarPresentation();
         }
 

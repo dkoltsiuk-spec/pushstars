@@ -76,7 +76,7 @@ namespace PushStars.Editor
             Selection.activeGameObject = bar.gameObject;
             Debug.Log("[League] Exported progress sprites installed.");
         }
-        [MenuItem("Push Stars/UI/Build League Mock Screen")]
+        [MenuItem("Push Stars/UI/Build League Screen")]
         public static void Build()
         {
             var scene = SceneManager.GetActiveScene();
@@ -138,7 +138,7 @@ namespace PushStars.Editor
             view.Title = Text(art, "LeagueTitle", view.LeagueName, 23, 241, 349, 55, 40, true, new Color32(255, 155, 0, 255));
             view.Title.rectTransform.localEulerAngles = new Vector3(0, 0, 5);
             view.Title.characterSpacing = -1;
-            view.Score = Text(art, "TrophyScore", "955", 135, 283, 140, 62, 54, true, new Color32(255, 153, 0, 255));
+            view.Score = Text(art, "TrophyScore", "0", 135, 283, 140, 62, 54, true, new Color32(255, 153, 0, 255));
             view.Season = Text(art, "SeasonCountdown", "", 40, 400, 310, 27, 17, true, Color.white);
             var glow = Pic(art, "OnlineGlow", null, 255, 439, 17, 17);
             glow.sprite = AssetDatabase.LoadAssetAtPath<Sprite>("Assets/_Project/UI/Sprites/glow_radial.png");
@@ -146,7 +146,7 @@ namespace PushStars.Editor
             var dot = Pic(art, "OnlineDot", null, 260, 444, 7, 7);
             dot.sprite = AssetDatabase.LoadAssetAtPath<Sprite>("Assets/_Project/UI/Sprites/circle_128.png");
             dot.color = new Color32(72, 255, 0, 255);
-            view.Online = Text(art, "OnlinePlayers", "126 online", 275, 435, 105, 26, 17, false, new Color32(72, 255, 0, 255));
+            view.Online = Text(art, "OnlinePlayers", "OFFLINE", 275, 435, 105, 26, 17, false, new Color32(72, 255, 0, 255));
             view.Names = new TextMeshProUGUI[4]; view.Scores = new TextMeshProUGUI[4];
             string[] cards = { "row-first", "row-second", "row-third", "row-player" };
             Color32[] colors = { new Color32(255,204,0,255), new Color32(214,213,194,255), new Color32(255,159,0,255), new Color32(255,159,0,255) };
@@ -155,10 +155,10 @@ namespace PushStars.Editor
                 var row = Rect(art, i == 3 ? "CurrentPlayerRow" : "RankRow" + (i + 1), 12, 471 + i * 58, 366, 61);
                 Pic(row, "Card", cards[i], 0, 0, 366, 61);
                 Text(row, "Rank", (i + 1).ToString(), 12, 5, 42, 48, 36, true, colors[i]);
-                view.Names[i] = Text(row, "PlayerName", view.Players[i].Name, 60, 13, 181, 31, 18, false, Color.white);
+                view.Names[i] = Text(row, "PlayerName", "", 60, 13, 181, 31, 18, false, Color.white);
                 view.Names[i].alignment = TextAlignmentOptions.MidlineLeft;
                 Pic(row, "TrophyIcon", "cup-small", 254, 16, 32, 31).preserveAspect = true;
-                view.Scores[i] = Text(row, "Trophies", view.Players[i].Trophies.ToString(), 289, 9, 61, 40, 27, false, Color.white);
+                view.Scores[i] = Text(row, "Trophies", "", 289, 9, 61, 40, 27, false, Color.white);
             }
             var tab = scene.GetRootGameObjects().SelectMany(r => r.GetComponentsInChildren<TabButton>(true)).First(t => t.TabId == TabId.League);
             var tabSo = new SerializedObject(tab);
@@ -174,7 +174,7 @@ namespace PushStars.Editor
             EditorSceneManager.SaveScene(scene); AssetDatabase.SaveAssets();
             LeaguePresentationSetup.Install();
             Selection.activeGameObject = panel;
-            Debug.Log("[League] Mock screen authored and saved in Main. Fixture values are editable on LeagueView.");
+            Debug.Log("[League] League screen authored and bound to local progress.");
         }
         static Sprite S(string name) => AssetDatabase.LoadAssetAtPath<Sprite>(ArtPath + name + ".png");
         static Material Material(TMP_FontAsset font, string name, float width)

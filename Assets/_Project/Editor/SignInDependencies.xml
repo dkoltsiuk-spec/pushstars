@@ -1,0 +1,13 @@
+<dependencies>
+  <remoteSwiftPackage url="https://github.com/google/GoogleSignIn-iOS.git" version="9.0.0">
+    <swiftPackage name="GoogleSignIn" replacesPod="GoogleSignIn" />
+  </remoteSwiftPackage>
+  <iosPods>
+    <iosPod name="GoogleSignIn" version="~> 9.0" minTargetSdk="15.0" />
+  </iosPods>
+  <androidPackages>
+    <androidPackage spec="androidx.credentials:credentials:1.5.0" />
+    <androidPackage spec="androidx.credentials:credentials-play-services-auth:1.5.0" />
+    <androidPackage spec="com.google.android.libraries.identity.googleid:googleid:1.1.1" />
+  </androidPackages>
+</dependencies>

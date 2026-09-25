@@ -8,15 +8,13 @@ namespace PushStars.CV
     public static class CVConstants
     {
         // ── Rep FSM (average elbow angle, degrees) ──────────────────────────────────
-        // 160/95 → 148/110 (2026-07-10): the frontal projection COMPRESSES the elbow angle, and
-        // demanding ≤95 at the bottom missed honest reps ("работает через раз"). The owner's
-        // previous app ran 146/112 in the same frontal setup and detected reliably. Still an
-        // anti-cheat envelope: a 38° swing + FullRom chest travel + MinRepSeconds is not fakeable
-        // with micro-bobs.
+        // Keep the frontal top tolerance, but require an observed near-right-angle bottom.
+        // The former 110° bottom plus turnaround slack credited partial descents; chest-travel
+        // validation alone cannot compensate for a shallow elbow threshold.
         /// <summary>Elbow angle at/above which the arms count as "locked out" (top of the pushup).</summary>
         public const float TopElbowAngle = 148f;
         /// <summary>Elbow angle at/below which the rep counts as having reached the bottom.</summary>
-        public const float BottomElbowAngle = 110f;
+        public const float BottomElbowAngle = 95f;
 
         // ── Anti-cheat / match ───────────────────────────────────────────────────────
         public const int MaxRepsPerMatch = 65; // == MAX_REPS_PER_MATCH
@@ -188,9 +186,6 @@ namespace PushStars.CV
         // ── Turnaround channels (fast undersampled reps, round 5) ──
         /// <summary>A V-turn is recognized when θm rebounds this far off the phase extreme.</summary>
         public const float TurnaroundRiseDeg = 6f;
-        /// <summary>Fast-trough: an unsampled bottom is accepted when the observed minimum came
-        /// within this slack of BottomEnter at high speed.</summary>
-        public const float FastTroughSlackDeg = 8f;
         /// <summary>Fast-crest: symmetric slack under TopEnter (prevents two fast reps merging).</summary>
         public const float FastCrestSlackDeg = 6f;
         /// <summary>|v̂| floor for both turnaround channels — a slow hoverer near a zone edge never
@@ -199,8 +194,6 @@ namespace PushStars.CV
 
         /// <summary>Retro bottom-latch after a tracking dropout near the bottom: max gap length.</summary>
         public const float GraceLatchMaxGapSec = 0.5f;
-        /// <summary>...and how close to the bottom zone the last valid frame must have been.</summary>
-        public const float GraceLatchNearZoneDeg = 3f;
 
         // ── AmplitudeTracker: adaptive zones (HUD-ONLY this release — ratchet-deadlock review) ──
         public const bool  AdaptiveZonesAffectLatch = false;
@@ -213,12 +206,9 @@ namespace PushStars.CV
         public const int   AdaptiveDecayAfterMissedAttempts = 2;
 
         // ── AmplitudeTracker: fixed HUD depth scale (the gauge must not "breathe") ──
-        // 175/75 → 155/105 (round 6, indicator feel): the old app's progress bar spanned ONLY the
-        // active range (146→112, 34°), so one degree of elbow motion moved it 3× further than our
-        // anatomical 100° scale — that under-gained gauge is what read as "laggy". Now the span is
-        // 50° with the latch zones sitting at ~14% and ~90% of the track.
+        // The display reaches full depth at the same angle required by the bottom latch.
         public const float AmplitudeGaugeTopDeg = 155f;    // d01 = 0
-        public const float AmplitudeGaugeBottomDeg = 105f; // d01 = 1
+        public const float AmplitudeGaugeBottomDeg = BottomElbowAngle; // d01 = 1
 
         // ── Bottom latch channel B (tucked elbows / wide grip) — OFF until acceptance recordings ──
         public const bool  BottomAltChannelEnabled = false;

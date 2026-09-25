@@ -40,18 +40,12 @@ namespace PushStars.Core
     /// </summary>
     public static class OfflineXpBank
     {
-        private const string Key = "pending_xp";
-
-        public static long Pending
-        {
-            get => long.TryParse(UnityEngine.PlayerPrefs.GetString(Key, "0"), out var v) ? v : 0L;
-            private set { UnityEngine.PlayerPrefs.SetString(Key, value.ToString()); UnityEngine.PlayerPrefs.Save(); }
-        }
+        public static long Pending => LocalProfile.Xp;
 
         public static void Add(long xp)
         {
             if (xp <= 0) return;
-            Pending += xp;
+            LocalProfile.AddXp(xp);
         }
     }
 }

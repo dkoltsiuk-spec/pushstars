@@ -1853,7 +1853,7 @@ namespace PushStars.Editor
         // against the screen, so the content can never overflow — it adapts to any width.
         static void BuildTopBar(RectTransform panel)
         {
-            const float topY = -14f;
+            const float topY = -6f;
 
             BuildTrophyPill(panel, new Vector2(16f, topY));
 
@@ -1884,8 +1884,8 @@ namespace PushStars.Editor
         {
             var streakIcon = _theme.IconStreak != null ? _theme.IconStreak : _theme.IconLightning;
             BuildHudPill(parent, "StreakPill", streakIcon,      "12",  _theme.AccentYellow);
-            BuildHudPill(parent, "GemPill",    _theme.IconGem,  "312", _theme.GemGreen);
-            BuildHudPill(parent, "AuraPill",   _theme.IconAura, "660", _theme.AuraViolet);
+            BuildHudPill(parent, "GemPill",    _theme.IconGem,  "0", _theme.GemGreen);
+            BuildHudPill(parent, "AuraPill",   _theme.IconAura, "0", _theme.AuraViolet);
         }
 
         // Reference-space contours keep the skew, asymmetric corners and overhang together.
@@ -1903,7 +1903,7 @@ namespace PushStars.Editor
             // The exported cup already includes its black keyline and transparent padding.
             AddCup("Cup", Color.white, Vector2.zero);
 
-            var number = MakeTMP(root, "Number", Color.white, "955", 18.25f, FontStyles.Normal);
+            var number = MakeTMP(root, "Number", Color.white, "0", 18.25f, FontStyles.Normal);
             number.font = AssetDatabase.LoadAssetAtPath<TMP_FontAsset>(FontSetup.MediumAsset);
             number.fontSharedMaterial = TrophyNumberMaterial(number.font);
             number.enableVertexGradient = true;

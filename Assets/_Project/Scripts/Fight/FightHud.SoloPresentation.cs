@@ -49,8 +49,8 @@ namespace PushStars.Fight
                 {
                     // Shared framing for measurement and training. Absolute values avoid
                     // accumulating the enlargement when a new training set starts.
-                    _soloPortrait.rectTransform.localScale = Vector3.one * 2.145f;
-                    _soloPortrait.rectTransform.anchoredPosition = new Vector2(0f, 110f);
+                    _soloPortrait.rectTransform.localScale = Vector3.one * 1.8f;
+                    _soloPortrait.rectTransform.anchoredPosition = new Vector2(0f, 65f);
                     _soloPortraitAspect = _soloPortrait.GetComponent<AspectRatioFitter>();
                     if (!_capturedAspect)
                     {

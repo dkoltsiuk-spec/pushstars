@@ -27,11 +27,9 @@ namespace PushStars.Fight
             if (_homeButton != null) _homeButton.onClick.AddListener(Home);
             bool preview = FightScreenNavigation.IsPreview;
             var theme = Resources.Load<PushStarsTheme>("PushStarsTheme");
-            bool hasHistory = !preview && (LocalProfile.Games > 0 || LocalProfile.Trophies > 0 || LocalProfile.BestReps > 0);
-            var player = hasHistory
-                ? new DuelReadyPanel.Side("YOU", LocalProfile.Trophies, LocalProfile.BestReps,
-                    LocalProfile.Games > 0 ? LocalProfile.WinRatePercent : DuelReadyPanel.Side.Unknown)
-                : new DuelReadyPanel.Side("BEASTCORE_DEV", 120, 32, 52);
+            var player = new DuelReadyPanel.Side(ProfileIdentityEditor.ResolveName("YOU"),
+                LocalProfile.Trophies, LocalProfile.BestReps,
+                LocalProfile.Games > 0 ? LocalProfile.WinRatePercent : DuelReadyPanel.Side.Unknown);
             DuelReadyPanel.Side opponent;
             Sprite opponentFlag;
             if (!preview && FightRequest.Mode == FightMode.Boss)
@@ -42,16 +40,21 @@ namespace PushStars.Fight
                 opponentFlag = null;
                 FightScreenNavigation.PreparedOpponent = null;
             }
-            else
+            else if (preview)
             {
-                var identity = FightScreenNavigation.PreparedOpponent ?? (preview
-                    ? new MockupProfile.Opponent("OSKAT009", MockupProfile.Flag.Germany, 98, 32, 52)
-                    : MockupProfile.PickOpponent());
+                var identity = FightScreenNavigation.PreparedOpponent ??
+                    new MockupProfile.Opponent("OSKAT009", MockupProfile.Flag.Germany, 98, 32, 52);
                 FightScreenNavigation.PreparedOpponent = identity;
                 opponent = new DuelReadyPanel.Side(identity.Name, identity.Trophies, identity.BestReps, identity.WinRate);
                 opponentFlag = MockupProfile.FlagSprite(identity.Flag, theme);
             }
-            _panel.Show(player, opponent, MockupProfile.FlagSprite(MockupProfile.PlayerFlag, theme), opponentFlag, !preview);
+            else
+            {
+                opponent = new DuelReadyPanel.Side(FightConfig.GhostOpponentName, DuelReadyPanel.Side.Unknown,
+                    GhostStore.Load()?.reps ?? 0, DuelReadyPanel.Side.Unknown);
+                opponentFlag = null;
+            }
+            _panel.Show(player, opponent, null, opponentFlag, !preview);
         }
 
         private void OnDestroy()

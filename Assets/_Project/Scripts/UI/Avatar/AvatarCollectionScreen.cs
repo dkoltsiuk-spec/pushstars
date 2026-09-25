@@ -21,6 +21,7 @@ namespace PushStars.UI
         public GameObject[] CollectionContent;
         public TextMeshProUGUI Balance;
         private int _filter;
+        private System.Action _returnToSource;
         public bool IsOpen => Overlay != null && Overlay.activeSelf;
 
         private void Awake()
@@ -72,6 +73,7 @@ namespace PushStars.UI
 
         public void Show()
         {
+            _returnToSource = null;
             Overlay.SetActive(true);
             Overlay.transform.SetAsLastSibling();
             InfoPanel.SetActive(false);
@@ -81,7 +83,14 @@ namespace PushStars.UI
             Overlay.GetComponent<UiTactile>()?.Reveal();
         }
 
-        public void Hide() { InfoPanel.SetActive(false); Overlay.SetActive(false); }
+        public void Hide() { _returnToSource = null; InfoPanel.SetActive(false); Overlay.SetActive(false); }
+
+        public void ShowPreview(int index, System.Action onBack)
+        {
+            Show();
+            _returnToSource = onBack;
+            ShowInfo(index);
+        }
 
         private void SetCollectionVisible(bool visible)
         {
@@ -91,6 +100,13 @@ namespace PushStars.UI
 
         public void CloseInfo()
         {
+            if (_returnToSource != null)
+            {
+                var onBack = _returnToSource;
+                Hide();
+                onBack();
+                return;
+            }
             InfoPanel.SetActive(false);
             SetCollectionVisible(true);
             Filter(_filter);
@@ -175,7 +191,7 @@ namespace PushStars.UI
         {
             var offer = AvatarCatalog.At(index);
             if (offer == null) return "UNAVAILABLE";
-            if (offer.Kind == AvatarPurchaseKind.Dollars) return $"${offer.Price / 100m:0.00}";
+            if (offer.Kind == AvatarPurchaseKind.Dollars) return "$" + (offer.Price / 100m).ToString("0.00", System.Globalization.CultureInfo.InvariantCulture);
             return $"{CaseRewards.AvatarPrice(offer.Id):N0} {(offer.Kind == AvatarPurchaseKind.Gems ? "GEMS" : "<sprite name=\"aura\">")}";
         }
 

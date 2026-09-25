@@ -129,13 +129,13 @@ namespace PushStars.Editor
                 texture.Release(); texture.width = 640; texture.height = 1136; texture.Create();
                 camera.aspect = 320f / 568f;
                 c.SendMessage("Fit"); Capture(camera, texture, "room-small");
-                Canvas.ForceUpdateCanvases();
-                foreach (var button in c.Overlay.GetComponentsInChildren<Button>())
-                {
-                    var corners = new Vector3[4]; ((RectTransform)button.transform).GetWorldCorners(corners);
-                    Require(corners.All(v => { var p = root.InverseTransformPoint(v); return p.y >= root.rect.yMin - 1 && p.y <= root.rect.yMax + 1 && p.x >= root.rect.xMin - 1 && p.x <= root.rect.xMax + 1; }), "Buttons fit on small screen: " + button.name);
-                }
-                File.WriteAllText(Output + "/validation.txt", "PASS: state deadlines, two-party readiness, reconnect, code errors, host confirmation, single plus, room actions, exit restoration, small screen fit, saved-mode preservation; independent male/female friend avatars, two-person layout, name inside BATTLE, avatar tap, reopen and render-resource cleanup.\n");
+                CheckButtonsFit(c, root);
+                c.Session.Reset(); c.Open(); Capture(camera, texture, "invite-menu-small");
+                CheckButtonsFit(c, root);
+                c.Secondary.onClick.Invoke(); Capture(camera, texture, "join-code-small");
+                CheckButtonsFit(c, root);
+                c.CodeInput.text = "12"; c.Primary.onClick.Invoke(); Capture(camera, texture, "join-error-small");
+                File.WriteAllText(Output + "/validation.txt", "PASS: state deadlines, two-party readiness, reconnect, code errors, host confirmation, single plus, room actions, exit restoration, small screen fit (room, menu, code entry), saved-mode preservation; independent male/female friend avatars, two-person layout, name inside BATTLE, avatar tap, reopen and render-resource cleanup.\n");
                 Debug.Log("[FriendDuel] Validation PASS");
             }
             finally
@@ -143,6 +143,16 @@ namespace PushStars.Editor
                 RenderTexture.active = old; EditorSceneManager.ClosePreviewScene(scene);
                 if (texture != null) { texture.Release(); Object.DestroyImmediate(texture); }
                 if (characterTexture != null) { characterTexture.Release(); Object.DestroyImmediate(characterTexture); }
+            }
+        }
+
+        private static void CheckButtonsFit(FriendDuelController c, RectTransform root)
+        {
+            Canvas.ForceUpdateCanvases();
+            foreach (var button in c.Overlay.GetComponentsInChildren<Button>())
+            {
+                var corners = new Vector3[4]; ((RectTransform)button.transform).GetWorldCorners(corners);
+                Require(corners.All(v => { var p = root.InverseTransformPoint(v); return p.y >= root.rect.yMin - 1 && p.y <= root.rect.yMax + 1 && p.x >= root.rect.xMin - 1 && p.x <= root.rect.xMax + 1; }), "Buttons fit on small screen: " + button.name);
             }
         }
 

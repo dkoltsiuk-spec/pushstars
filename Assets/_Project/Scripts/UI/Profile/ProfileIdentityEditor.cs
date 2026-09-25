@@ -35,7 +35,8 @@ namespace PushStars.UI
             }
         }
 
-        public static string ResolveName(string fallback) => PlayerPrefs.GetString(Scope + "name", fallback);
+        public static string ResolveName(string fallback) => PlayerPrefs.GetString(Scope + "name",
+            PlayerPrefs.GetString("profile.identity.local.name", fallback));
 
         private void Awake()
         {
@@ -59,7 +60,7 @@ namespace PushStars.UI
         private void RefreshAvatar()
         {
             _scope = Scope;
-            int index = Mathf.Clamp(PlayerPrefs.GetInt(_scope + "avatar", 0), 0, AvatarTextures.Length - 1);
+            int index = Mathf.Clamp(PlayerPrefs.GetInt(_scope + "avatar", PlayerPrefs.GetInt("profile.identity.local.avatar", 0)), 0, AvatarTextures.Length - 1);
             Avatar.texture = AvatarTextures[index];
             Avatar.uvRect = AvatarCrops[index];
         }
@@ -70,7 +71,7 @@ namespace PushStars.UI
         {
             _editingAvatar = avatar;
             _scope = Scope;
-            _draftAvatar = Mathf.Clamp(PlayerPrefs.GetInt(_scope + "avatar", 0), 0, AvatarTextures.Length - 1);
+            _draftAvatar = Mathf.Clamp(PlayerPrefs.GetInt(_scope + "avatar", PlayerPrefs.GetInt("profile.identity.local.avatar", 0)), 0, AvatarTextures.Length - 1);
             NameInput.SetTextWithoutNotify(NameLabel.text);
             _title.text = avatar ? "CHOOSE AVATAR" : "EDIT NAME";
             _nameGroup.SetActive(!avatar);

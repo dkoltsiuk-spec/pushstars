@@ -83,7 +83,7 @@ namespace PushStars.UI
 
             Gender = Load();
             int homeAvatar = PlayerPrefs.GetInt(HomeAvatarKey, _defaultHomeAvatar);
-            IsSonic = _sonicPrefab != null && homeAvatar == 1;
+            IsSonic = _sonicPrefab != null && homeAvatar == 1 && CaseRewards.OwnsAvatar("sonic");
             IsGladiator = _gladiatorPrefab != null && homeAvatar == 2 && CaseRewards.OwnsAvatar("gladiator");
             IsRobot = _robotPrefab != null && homeAvatar == 3 && CaseRewards.OwnsAvatar("robot");
             if (_switchButton != null) _switchButton.onClick.AddListener(Toggle);
@@ -120,7 +120,7 @@ namespace PushStars.UI
 
         public void SetSonic()
         {
-            if (_sonicPrefab == null || (IsSonic && _current != null)) return;
+            if (!CaseRewards.OwnsAvatar("sonic") || _sonicPrefab == null || (IsSonic && _current != null)) return;
             IsSonic = true;
             IsGladiator = false;
             IsRobot = false;
@@ -216,6 +216,19 @@ namespace PushStars.UI
         /// its own character (it needs a push-up-capable controller the menu stage has no use for)
         /// and still has to put the same body on screen the player picked in the menu.</summary>
         public static CharacterGender SavedGender => Load();
+
+        /// <summary>The equipped collection body, shared by the home and fight stages.</summary>
+        public static int SavedHomeAvatar
+        {
+            get
+            {
+                int choice = PlayerPrefs.GetInt(HomeAvatarKey, 0);
+                if (choice == 1 && CaseRewards.OwnsAvatar("sonic")) return 1;
+                if (choice == 2 && CaseRewards.OwnsAvatar("gladiator")) return 2;
+                if (choice == 3 && CaseRewards.OwnsAvatar("robot")) return 3;
+                return 0;
+            }
+        }
 
         /// <summary>Records the choice from outside a roster — the onboarding gender picker runs
         /// in its own scene, before any stage exists.</summary>

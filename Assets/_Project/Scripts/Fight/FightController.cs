@@ -68,23 +68,15 @@ namespace PushStars.Fight
         [SerializeField] private UnityEngine.UI.Button _debugButton;
 
         private Phase _phase = Phase.WaitPlank;
-        /// <summary>The player's own label on the duel screens. A nickname system
-        /// arrives with PvP; until then the second fighter is simply "you".</summary>
-        private const string PlayerLabel = "YOU";
+        /// <summary>Use the same saved name as the profile and preparation screens.</summary>
+        private static string PlayerLabel => ProfileIdentityEditor.ResolveName("YOU");
         private FightMode _mode;
         private IOpponentFeed _opponent;   // null in the level test
 
-        // A ghost duel wears a mock opponent identity (name + flag + ladder) so the pre-duel card,
-        // the fight HUD and the result screen read like a real match. Picked once, here, and the
-        // ghost recording still drives the actual duel. See MockupProfile.
-        private bool _mockOpponent;
-        private MockupProfile.Opponent _mockOpponentIdentity;
         private PushStarsTheme _theme;
 
-        /// <summary>Opponent name for every duel screen: the mock identity in a ghost duel, the
-        /// real feed name (a boss) otherwise.</summary>
-        private string OpponentLabel =>
-            _mockOpponent ? _mockOpponentIdentity.Name : _opponent?.DisplayName ?? "";
+        /// <summary>Opponent identity comes from the actual ghost or boss feed.</summary>
+        private string OpponentLabel => _opponent?.DisplayName ?? "";
         private float _countdownEndTime;
         private int _lastCountdownShown = int.MinValue;
         private float _liveStartTime;
@@ -134,8 +126,6 @@ namespace PushStars.Fight
             }
             if (_mode == FightMode.Training) _training = new TrainingProgress(FightRequest.Workout);
             _theme = Resources.Load<PushStarsTheme>("PushStarsTheme"); // flag sprites for the card
-            _mockOpponent = _mode == FightMode.Ghost;
-            if (_mockOpponent) _mockOpponentIdentity = FightScreenNavigation.PreparedOpponent ?? MockupProfile.PickOpponent();
             ConfigureHudForMode();
 
             _hud.SetPlayerReps(0);
@@ -267,6 +257,8 @@ namespace PushStars.Fight
             _repForms.Add(_session.Form);
             _repTimes.Add(Time.time - _liveStartTime);
             _hud.SetPlayerReps(totalReps - _baselineReps);
+            if (_mode == FightMode.Training && !_paused && !_layoutPaused)
+                ShowRepMilestone(totalReps - _baselineReps);
             if (BossHealth != null) { BossHealth.PlayerRep(_session.Form); CheckBossKnockout(); }
         }
 
@@ -323,6 +315,7 @@ namespace PushStars.Fight
         {
             if (_paused || _phase == Phase.Finished || _phase == Phase.Rest) return;
             _paused = true;
+            _repMilestone?.Cancel();
             _pausedAt = Time.time;
             if (_session != null) _session.enabled = false;
             _hud.SetPaused(true);
@@ -448,6 +441,7 @@ namespace PushStars.Fight
             _hud.PlayCornerAccents();
             _liveStartTime = Time.time;
             _baselineReps = _session.Reps;
+            _repMilestone?.ResetSet();
             _repForms.Clear();
             _repTimes.Clear();
             _opponent?.Begin();
@@ -491,6 +485,7 @@ namespace PushStars.Fight
         {
             if (_phase == Phase.Finished || _screenPreview) return;
             _phase = Phase.Finished;
+            _repMilestone?.Cancel();
             _hud.HideBanner();
             _hud.HideCountdown();
             _hud.SetScoresVisible(false);
@@ -521,9 +516,8 @@ namespace PushStars.Fight
             // the result screen's ПРОПУСТИТЬ is the way out for a device that simply cannot see them.
             if (myReps > 0)
             {
+                LocalProfile.RecordWorkout(_rewardSessionId, "assessment", myReps, xp);
                 OnboardingState.CompleteLevelTest(myReps);
-                LocalProfile.SeedFromLevelTest(myReps);
-                OfflineXpBank.Add(xp);
             }
 
             PresentResults(new FightResultData
@@ -543,9 +537,9 @@ namespace PushStars.Fight
             bool ghost = _mode == FightMode.Ghost;
 
             if (win) xp += FightConfig.BossWinXpBonus;
-            OfflineXpBank.Add(xp);
-            LocalProfile.RecordSet(myReps);
-            int trophies = LocalProfile.ApplyDuelResult(win, draw, ghost);
+            int trophies = LocalProfile.RecordWorkout(_rewardSessionId, ghost ? "ghost" : "boss",
+                myReps, xp, oppReps, OpponentLabel, win, draw,
+                Mathf.Clamp(Mathf.RoundToInt(Time.time - _liveStartTime), 0, FightConfig.DuelDurationSec));
 
             // Beating your shadow makes a new shadow: the record always tracks the best set, so the
             // next duel is against the version of you that just won.
@@ -569,7 +563,10 @@ namespace PushStars.Fight
             PendingCase awarded = null;
             try
             {
-                CaseRewards.TryAwardDailyWorkoutCase(_rewardSessionId, data.MyReps, out awarded);
+                if (data.Mode == FightMode.LevelTest)
+                    CaseRewards.TryAwardAssessmentCase(data.MyReps, out awarded);
+                else
+                    CaseRewards.TryAwardDailyWorkoutCase(_rewardSessionId, data.MyReps, out awarded);
             }
             catch (System.Exception exception)
             {

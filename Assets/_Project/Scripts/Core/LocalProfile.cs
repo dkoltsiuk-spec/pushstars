@@ -1,112 +1,72 @@
+using System;
+using System.Collections.Generic;
+using System.IO;
 using UnityEngine;
 
 namespace PushStars.Core
 {
-    /// <summary>
-    /// The offline mirror of the numbers a duel changes: trophies, best set, lifetime reps.
-    /// Same role and same lifetime as <see cref="OfflineXpBank"/> — the client keeps playing and
-    /// scoring without a backend, and phase 11.5's sync drains this into <c>users/{uid}</c>, after
-    /// which the server is authoritative and this becomes a cache.
-    ///
-    /// <para>Trophies are seeded once, from the onboarding level test: a newcomer who can do 40
-    /// push-ups should not start on the same rung as one who can do 5.</para>
-    /// </summary>
+    /// <summary>Device progress. Cloud authentication does not replace this unsynced save.</summary>
     public static class LocalProfile
     {
-        private const string KeyTrophies  = "profile.trophies";
-        private const string KeyBestReps  = "profile.best_reps";
-        private const string KeyTotalReps = "profile.total_reps";
-        private const string KeySeeded    = "profile.seeded";
-        private const string KeyWins      = "profile.wins";
-        private const string KeyLosses    = "profile.losses";
+        private static LocalWorkoutLedger _ledger;
+        private static string SavePath => Path.Combine(Application.persistentDataPath, "workouts_v1.json");
+        private static LocalWorkoutLedger Ledger => _ledger ?? (_ledger = new LocalWorkoutLedger(
+            File.Exists(SavePath) ? File.ReadAllText(SavePath) : null, Save, LegacySnapshot()));
 
-        public static int Trophies
-        {
-            get => PlayerPrefs.GetInt(KeyTrophies, 0);
-            private set { PlayerPrefs.SetInt(KeyTrophies, Mathf.Max(0, value)); PlayerPrefs.Save(); }
-        }
+        [RuntimeInitializeOnLoadMethod(RuntimeInitializeLoadType.SubsystemRegistration)]
+        private static void Reload() => _ledger = null;
 
-        /// <summary>Best reps in a single 60-second set.</summary>
-        public static int BestReps
-        {
-            get => PlayerPrefs.GetInt(KeyBestReps, 0);
-            private set { PlayerPrefs.SetInt(KeyBestReps, Mathf.Max(0, value)); PlayerPrefs.Save(); }
-        }
-
-        public static int TotalReps
-        {
-            get => PlayerPrefs.GetInt(KeyTotalReps, 0);
-            private set { PlayerPrefs.SetInt(KeyTotalReps, Mathf.Max(0, value)); PlayerPrefs.Save(); }
-        }
-
-        public static League League => Leagues.ForTrophies(Trophies);
-
-        public static int Wins
-        {
-            get => PlayerPrefs.GetInt(KeyWins, 0);
-            private set { PlayerPrefs.SetInt(KeyWins, Mathf.Max(0, value)); PlayerPrefs.Save(); }
-        }
-
-        public static int Losses
-        {
-            get => PlayerPrefs.GetInt(KeyLosses, 0);
-            private set { PlayerPrefs.SetInt(KeyLosses, Mathf.Max(0, value)); PlayerPrefs.Save(); }
-        }
-
+        public static int Trophies => Ledger.Snapshot.Trophies;
+        public static int BestReps => Ledger.Snapshot.BestReps;
+        public static int TotalReps => Ledger.Snapshot.TotalReps;
+        public static int Wins => Ledger.Snapshot.Wins;
+        public static int Losses => Ledger.Snapshot.Losses;
+        public static int WinStreak => Ledger.Snapshot.WinStreak;
+        public static long Xp => Ledger.Snapshot.Xp;
         public static int Games => Wins + Losses;
-
-        /// <summary>Win rate as a percentage, 0 before the first decided duel. A draw is not a
-        /// loss, so it stays out of the denominator rather than quietly dragging the number down.</summary>
         public static int WinRatePercent => Games > 0 ? Mathf.RoundToInt(100f * Wins / Games) : 0;
+        public static League League => Leagues.ForTrophies(Trophies);
+        public static List<MatchRecord> History => Ledger.History;
 
-        /// <summary>Puts the player on the ladder rung their level test earned. Idempotent: a second
-        /// level test improves the best-set record but never re-seeds trophies the player has since
-        /// won or lost.</summary>
-        public static void SeedFromLevelTest(int reps)
+        public static UserProfile Profile => new UserProfile {
+            Exists = true, Trophies = Trophies, Rank = League.Id, Xp = Xp,
+            TotalWins = Wins, TotalLosses = Losses, TotalReps = TotalReps, WinStreak = WinStreak
+        };
+
+        public static int RecordWorkout(string id, string mode, int reps, long xp, int opponentReps = 0,
+            string opponentName = null, bool win = false, bool draw = false, int durationSec = 60)
+            => Ledger.Record(new LocalWorkout {
+                Id = id, Mode = mode, Reps = reps, Xp = xp, OpponentReps = opponentReps,
+                OpponentName = opponentName, Won = win, Draw = draw, DurationSec = durationSec,
+                UtcTicks = DateTime.UtcNow.Ticks
+            });
+
+        public static void AddXp(long xp) => Ledger.AddXp(xp);
+
+        private static LocalProgress LegacySnapshot() => new LocalProgress {
+            Trophies = Mathf.Max(0, PlayerPrefs.GetInt("profile.trophies", 0)),
+            BestReps = Mathf.Max(0, PlayerPrefs.GetInt("profile.best_reps", 0)),
+            TotalReps = Mathf.Max(0, PlayerPrefs.GetInt("profile.total_reps", 0)),
+            Wins = Mathf.Max(0, PlayerPrefs.GetInt("profile.wins", 0)),
+            Losses = Mathf.Max(0, PlayerPrefs.GetInt("profile.losses", 0)),
+            Seeded = PlayerPrefs.GetInt("profile.seeded", 0) != 0,
+            Xp = long.TryParse(PlayerPrefs.GetString("pending_xp", "0"), out var xp) ? Math.Max(0, xp) : 0
+        };
+
+        private static void Save(string json)
         {
-            RecordSet(reps);
-            if (PlayerPrefs.GetInt(KeySeeded, 0) != 0) return;
-
-            Trophies = FitnessTest.StartingTrophiesFor(FitnessTest.TierFor(reps));
-            PlayerPrefs.SetInt(KeySeeded, 1);
-            PlayerPrefs.Save();
+            string path = SavePath, temp = path + ".tmp";
+            Directory.CreateDirectory(Path.GetDirectoryName(path));
+            File.WriteAllText(temp, json);
+            if (File.Exists(path)) File.Replace(temp, path, null);
+            else File.Move(temp, path);
         }
 
-        /// <summary>Logs a finished set: lifetime reps always, best set when it beats the record.</summary>
-        public static void RecordSet(int reps)
-        {
-            if (reps <= 0) return;
-            TotalReps += reps;
-            if (reps > BestReps) BestReps = reps;
-        }
-
-        /// <summary>Applies a duel outcome. Returns the signed trophy delta actually applied —
-        /// a loss is clamped at zero trophies, so the number shown is the number that moved.</summary>
-        public static int ApplyDuelResult(bool win, bool draw, bool ghost)
-        {
-            if (draw) return 0;
-
-            if (win) Wins += 1; else Losses += 1;
-
-            int delta = win
-                ? (ghost ? EconomyConfig.TrophyGhostWin : EconomyConfig.TrophyWin)
-                : -(ghost ? EconomyConfig.TrophyGhostLoss : EconomyConfig.TrophyLoss);
-
-            int before = Trophies;
-            Trophies = before + delta;
-            return Trophies - before;
-        }
-
-        /// <summary>Debug reset, alongside <see cref="OnboardingState.Reset"/>.</summary>
+        /// <summary>Explicit debug reset, never invoked during migration or sign-in.</summary>
         public static void Reset()
         {
-            PlayerPrefs.DeleteKey(KeyTrophies);
-            PlayerPrefs.DeleteKey(KeyBestReps);
-            PlayerPrefs.DeleteKey(KeyTotalReps);
-            PlayerPrefs.DeleteKey(KeySeeded);
-            PlayerPrefs.DeleteKey(KeyWins);
-            PlayerPrefs.DeleteKey(KeyLosses);
-            PlayerPrefs.Save();
+            Save(JsonUtility.ToJson(new LocalProgress()));
+            _ledger = null;
         }
     }
 }

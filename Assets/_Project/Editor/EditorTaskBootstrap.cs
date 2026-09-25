@@ -90,6 +90,18 @@ namespace PushStars.Editor
 
                 switch (task)
                 {
+                    case "configure-assessment-rewards":
+                        AssessmentRewardSetup.Apply();
+                        break;
+                    case "validate-assessment-rewards":
+                        AssessmentRewardValidation.Run();
+                        break;
+                    case "render-aura-fire":
+                        AssessmentRewardValidation.RenderFire();
+                        break;
+                    case "validate-assessment-rewards-play":
+                        AssessmentRewardPlayValidation.Run();
+                        break;
                     case "install-avatar-unlocks":
                         AvatarUnlockSetup.Run();
                         break;

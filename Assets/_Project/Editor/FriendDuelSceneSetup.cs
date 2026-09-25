@@ -28,6 +28,15 @@ namespace PushStars.Editor
             EditorSceneManager.MarkSceneDirty(scene); EditorSceneManager.SaveScene(scene);
         }
 
+        public static void RestyleAndValidate()
+        {
+            var scene = EditorSceneManager.OpenScene(AuthoredScenes.MainPath);
+            var controller = scene.GetRootGameObjects().SelectMany(r => r.GetComponentsInChildren<FriendDuelController>(true)).Single();
+            Polish(controller);
+            EditorSceneManager.MarkSceneDirty(scene); EditorSceneManager.SaveScene(scene);
+            FriendDuelValidation.Run();
+        }
+
         public static void Install(Scene scene)
         {
             var roots = scene.GetRootGameObjects();
@@ -243,6 +252,112 @@ namespace PushStars.Editor
             c.DemoConnection.GetComponentInChildren<TextMeshProUGUI>().fontSizeMax = 10;
             c.Close.GetComponentInChildren<TextMeshProUGUI>().fontSizeMax = 26;
             c.MeLabel.fontSizeMax = c.FriendLabel.fontSizeMax = 20;
+            StyleGameSheet(c);
+        }
+
+        private static void StyleGameSheet(FriendDuelController c)
+        {
+            const string art = "Assets/_Project/UI/Sprites/";
+            var outline = FriendOutline();
+            var sheet = c.Sheet.GetComponent<Image>();
+            sheet.sprite = AssetDatabase.LoadAssetAtPath<Sprite>(art + "BattleSettings/sheet.png");
+            sheet.type = Image.Type.Simple; sheet.color = Color.white;
+            c.Backdrop.GetComponent<Image>().color = new Color(0, 0, 0, .65f);
+            var handle = c.Sheet.Find("Handle");
+            if (handle != null) handle.gameObject.SetActive(false);
+            // Use the same top handle, gradient, pattern and outlined controls as training.
+            Place(c.Close.transform, 140, 0, 110, 38);
+            c.Close.GetComponent<Image>().color = Color.clear;
+            c.Close.GetComponentInChildren<TextMeshProUGUI>(true).text = "";
+            Place(c.Title.transform, 18, 45, 354, 38);
+            c.Title.fontSharedMaterial = outline; c.Title.fontSize = c.Title.fontSizeMax = 27;
+            c.Title.alignment = TextAlignmentOptions.Center;
+            Place(c.Subtitle.transform, 24, 94, 342, 38);
+            c.Subtitle.alignment = TextAlignmentOptions.Center;
+            c.Subtitle.color = new Color32(195, 222, 255, 255);
+            c.Body.color = Color.white;
+            c.Message.color = new Color32(255, 239, 153, 255);
+            c.Message.alignment = TextAlignmentOptions.Center;
+            c.Message.fontSize = c.Message.fontSizeMax = 13;
+            StylePlate(c.Primary, "selected", outline, 23);
+            StylePlate(c.Secondary, "option", outline, 21);
+            c.TertiaryLabel.color = Color.white;
+            c.Help.GetComponentInChildren<TextMeshProUGUI>(true).color = new Color32(222, 238, 255, 255);
+            foreach (var card in new[] { c.CodeGroup, c.InputGroup, c.MeLabel.transform.parent.gameObject, c.FriendLabel.transform.parent.gameObject })
+                card.GetComponent<Image>().color = new Color32(12, 58, 156, 210);
+            c.CodeLabel.fontSharedMaterial = outline; c.CodeLabel.color = Color.white;
+            if (c.Sheet.Find("DuelPattern") == null)
+            {
+                var field = Rect(c.Sheet, "DuelPattern", 0, 0, 390, 500);
+                Stretch(field); field.offsetMin = new Vector2(8, 8); field.offsetMax = new Vector2(-8, -40);
+                field.SetSiblingIndex(0); field.gameObject.AddComponent<RectMask2D>();
+                var pattern = AssetDatabase.LoadAssetAtPath<Sprite>(art + "TrainingSettings/dumbbell-pattern.png");
+                for (int row = 0; row < 6; row++) for (int col = 0; col < 3; col++)
+                {
+                    var icon = Picture(field, $"Pattern_{row}_{col}", pattern, new Color(1, 1, 1, .09f),
+                        -28 + col * 152 + (row % 2) * 65, 30 + row * 112, 83, 89);
+                    icon.preserveAspect = true;
+                }
+            }
+            if (c.MenuArtwork == null)
+            {
+                var icon = Picture(c.Sheet, "MenuArtwork", AssetDatabase.LoadAssetAtPath<Sprite>(art + "duel_icon.png"), Color.white, 143, 131, 104, 88);
+                icon.preserveAspect = true; c.MenuArtwork = icon.gameObject;
+            }
+            c.Sheet.sizeDelta = new Vector2(390, 500);
+            c.Title.text = "FRIEND DUEL"; c.Subtitle.text = "1 VS 1  ·  PUSH-UPS  ·  60 SEC";
+            c.Body.text = "Friendly match · No trophies"; c.Body.fontSize = 13;
+            c.Body.alignment = TextAlignmentOptions.Center;
+            Place(c.Body.transform, 24, 409, 342, 22);
+            Place(c.Primary.transform, 24, 236, 342, 60);
+            Place(c.Secondary.transform, 24, 308, 342, 56);
+            Place(c.Message.transform, 24, 372, 342, 38);
+            Place(c.Help.transform, 24, 449, 342, 40);
+            EditorUtility.SetDirty(c);
+        }
+
+        private static void StylePlate(Button button, string sprite, Material outline, float size)
+        {
+            var image = button.GetComponent<Image>();
+            image.enabled = false;
+            var plate = button.GetComponentInChildren<DuelActionPlate>(true);
+            if (plate == null)
+            {
+                var rect = Rect(button.transform, "ActionPlate", 0, 0, 0, 0);
+                Stretch(rect); rect.SetAsFirstSibling();
+                plate = rect.gameObject.AddComponent<DuelActionPlate>();
+            }
+            plate.color = sprite == "selected" ? new Color32(255, 214, 13, 255) : new Color32(43, 133, 255, 255);
+            plate.raycastTarget = true; button.targetGraphic = plate;
+            var label = button.GetComponentInChildren<TextMeshProUGUI>(true);
+            label.color = Color.white; label.fontSharedMaterial = outline;
+            label.fontSize = label.fontSizeMax = size; label.fontSizeMin = 16;
+            var rt = label.rectTransform; Stretch(rt);
+            rt.offsetMin = new Vector2(16, 7); rt.offsetMax = new Vector2(-16, -1);
+        }
+
+        private static Material FriendOutline()
+        {
+            const string path = "Assets/_Project/Resources/FriendDuel/FriendOutline.mat";
+            var material = AssetDatabase.LoadAssetAtPath<Material>(path);
+            if (material == null)
+            {
+                material = new Material(AssetDatabase.LoadAssetAtPath<Material>("Assets/_Project/UI/Sprites/ModeSelection/ModeOutline.mat"));
+                material.name = "FriendOutline";
+                AssetDatabase.CreateAsset(material, path);
+            }
+            material.SetFloat("_OutlineWidth", .18f);
+            material.SetFloat("_UnderlayDilate", .45f);
+            material.SetFloat("_UnderlayOffsetY", -.75f);
+            EditorUtility.SetDirty(material); AssetDatabase.SaveAssetIfDirty(material);
+            return material;
+        }
+
+        private static void Place(Transform target, float x, float top, float w, float h)
+        {
+            var rt = (RectTransform)target;
+            rt.anchorMin = rt.anchorMax = rt.pivot = new Vector2(0, 1);
+            rt.anchoredPosition = new Vector2(x, -top); rt.sizeDelta = new Vector2(w, h);
         }
 
         private static void Player(RectTransform parent, string name, float top, out TextMeshProUGUI label, out TextMeshProUGUI status)

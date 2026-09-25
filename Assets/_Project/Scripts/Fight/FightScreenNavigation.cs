@@ -27,27 +27,29 @@ namespace PushStars.Fight
     /// </summary>
     public static class FightScreenNavigation
     {
-        public static bool IsPreview { get; private set; } = true;
-        public static FightResultData Result { get; private set; } = DemoResult();
-        public static FightRewardFlow.Summary RewardSummary { get; private set; } = DemoSummary();
+        public static bool IsPreview { get; private set; } = Application.isEditor;
+        public static FightResultData Result { get; private set; } = Application.isEditor ? DemoResult() : null;
+        public static FightRewardFlow.Summary RewardSummary { get; private set; } = Application.isEditor ? DemoSummary() : default;
         public static string CaseId { get; set; }
         public static string AwardedCaseId { get; private set; }
         public static string ReturnScene { get; private set; } = FightConfig.MainSceneName;
         public static CaseRarity PreviewRarity { get; set; } = CaseRarity.Common;
         public static int PreviewGems { get; set; } = 100;
+        public static int PreviewAura { get; set; }
         internal static MockupProfile.Opponent? PreparedOpponent { get; set; }
         private static bool _loading;
 
         [RuntimeInitializeOnLoadMethod(RuntimeInitializeLoadType.SubsystemRegistration)]
         private static void Reset()
         {
-            IsPreview = true;
-            Result = DemoResult();
-            RewardSummary = DemoSummary();
+            IsPreview = Application.isEditor;
+            Result = Application.isEditor ? DemoResult() : null;
+            RewardSummary = Application.isEditor ? DemoSummary() : default;
             CaseId = AwardedCaseId = null;
             ReturnScene = FightConfig.MainSceneName;
             PreviewRarity = CaseRarity.Common;
             PreviewGems = 100;
+            PreviewAura = 0;
             PreparedOpponent = null;
             _loading = false;
             SceneManager.sceneLoaded -= SceneLoaded;
@@ -76,7 +78,7 @@ namespace PushStars.Fight
         public static void BeginPreparation()
         {
             HomeRewardFlight.Clear();
-            IsPreview = !FightRequest.HasRequest;
+            IsPreview = Application.isEditor && !FightRequest.HasRequest;
             ReturnScene = FightRequest.ReturnScene;
             CaseId = AwardedCaseId = null;
         }
@@ -86,7 +88,8 @@ namespace PushStars.Fight
         {
             Result = result ?? throw new ArgumentNullException(nameof(result));
             SetSummary(summary, awardedCaseId, returnScene);
-            Navigate(FightScreen.Results);
+            Navigate(result.Mode == FightMode.LevelTest && result.MyReps > 0
+                ? FightScreen.RewardSummary : FightScreen.Results);
         }
 
         public static void ShowSummary(FightRewardFlow.Summary summary, string returnScene = "Main")
@@ -132,6 +135,7 @@ namespace PushStars.Fight
 
         public static void Preview(FightScreen screen)
         {
+            if (!Application.isEditor) return;
             HomeRewardFlight.Clear();
             FightRequest.Clear();
             IsPreview = true;
@@ -140,8 +144,21 @@ namespace PushStars.Fight
             CaseId = AwardedCaseId = null;
             PreviewRarity = CaseRarity.Common;
             PreviewGems = 100;
+            PreviewAura = 0;
             Navigate(screen);
         }
+
+#if UNITY_EDITOR
+        /// <summary>Wallet-free preview of the completed assessment and its fixed reward.</summary>
+        public static void PrepareAssessmentPreview()
+        {
+            IsPreview = true;
+            Result = new FightResultData { Mode = FightMode.LevelTest, MyReps = 8, MyForm = 92, Xp = 80, PlayerName = "BEASTCORE_DEV" };
+            RewardSummary = new FightRewardFlow.Summary { PlayerName = Result.PlayerName, TotalReps = 8, Technique = .92f, EnergyXp = 80, HasCase = true };
+            PreviewAura = CaseRewards.AssessmentAura; PreviewGems = 0; PreviewRarity = CaseRarity.Legendary;
+            CaseId = AwardedCaseId = null;
+        }
+#endif
 
         /// <summary>Exit to the caller and clear any prepared opponent or outstanding fight request.</summary>
         public static void ReturnTo(string returnScene)

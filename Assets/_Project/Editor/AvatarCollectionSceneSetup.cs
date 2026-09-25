@@ -68,9 +68,9 @@ namespace PushStars.Editor
             art.anchorMin = art.anchorMax = art.pivot = new Vector2(.5f, 1);
             art.sizeDelta = new Vector2(390, 720);
             screen.Art = art;
-            screen.Back = Button(art, "Back", Profile("Group 549"), "", 20, 26, 57, 44);
-            screen.Home = Button(art, "Home", Profile("Group 550"), "", 313, 26, 57, 44);
-            Label(art, "Title", "AVATARS", 90, 27, 210, 44, 25);
+            screen.Back = Button(art, "Back", Profile("Group 549"), "", 20, 48, 57, 44);
+            screen.Home = Button(art, "Home", Profile("Group 550"), "", 313, 48, 57, 44);
+            Label(art, "Title", "AVATARS", 90, 49, 210, 44, 25);
             screen.Tabs = new[] {
                 Button(art, "All", Profile("Group 556"), "ALL", 20, 103, 82, 42),
                 Button(art, "Opened", Profile("Group 557"), "OPENED", 114, 103, 111, 42),

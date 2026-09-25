@@ -17,12 +17,12 @@ namespace PushStars.Fight
         private void FinishTrainingSet(int reps, long xp)
         {
             if (reps >= EconomyConfig.MinSessionReps) xp += EconomyConfig.SessionCompleteXp;
+            LocalProfile.RecordWorkout(_rewardSessionId + ":set:" + _training.CurrentSet, "training", reps, xp,
+                durationSec: Mathf.Clamp(Mathf.RoundToInt(Time.time - _liveStartTime), 0, TrainingPlan.SetSeconds));
             _trainingReps += reps;
             foreach (float form in _repForms) { _trainingFormSum += form; _trainingFormCount++; }
             _trainingXp += xp;
             _trainingRecord |= GhostStore.SaveIfBest(NewRecord("training"));
-            LocalProfile.RecordSet(reps);
-            OfflineXpBank.Add(xp);
             _training.CompleteSet();
             if (!_training.IsComplete)
             {

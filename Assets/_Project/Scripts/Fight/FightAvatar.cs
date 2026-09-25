@@ -41,7 +41,7 @@ namespace PushStars.Fight
     /// So the shot pulls in when the plank arms, settles, and holds for the set.</para>
     /// </summary>
     [DefaultExecutionOrder(300)]
-    public sealed class FightAvatar : MonoBehaviour
+    public sealed partial class FightAvatar : MonoBehaviour
     {
         [Header("Bindings")]
         [Tooltip("Component driving this body. Must implement IAvatarAnimator.")]
@@ -65,6 +65,9 @@ namespace PushStars.Fight
         [Header("Bodies")]
         [SerializeField] private GameObject _malePrefab;
         [SerializeField] private GameObject _femalePrefab;
+        [SerializeField] private GameObject _sonicPrefab;
+        [SerializeField] private GameObject _gladiatorPrefab;
+        [SerializeField] private GameObject _robotPrefab;
 
         [Tooltip("Controller carrying the states the drivers play: PushUp / WarriorIdle / SittingIdle.")]
         [SerializeField] private RuntimeAnimatorController _fightController;
@@ -214,6 +217,7 @@ namespace PushStars.Fight
             // Each phase frames itself once, from where the body is now — the card cannot inherit
             // a shot aimed at a plank, and the duel cannot inherit one locked on a standing figure.
             _framed = false;
+            _pushupFramed = false;
             _settleUntil = Time.time + _settleSeconds;
 
             foreach (var entry in _shadowColors)
@@ -421,9 +425,14 @@ namespace PushStars.Fight
             // camera fixed afterwards; following breathing would make the floor drift.
             if (_preparation)
             {
+                UpdatePushupGroundShadow(false);
                 if (!_framed) FrameCharacter();
                 return;
             }
+
+            // The canned pose has its own fixed composition, fitted to the ENTIRE motion.
+            // Neither the live mirror's distance nor the current rep depth owns this camera.
+            if (FrameAuthoredPushup()) return;
 
             // Nothing to hold the shot for — the opponent's body, which is on a recording and
             // stays where its stage puts it. Frame it every frame.
@@ -458,6 +467,12 @@ namespace PushStars.Fight
             var gender = CharacterRoster.SavedGender;
             var prefab = gender == CharacterGender.Female ? _femalePrefab : _malePrefab;
             if (prefab == null) prefab = gender == CharacterGender.Female ? _malePrefab : _femalePrefab;
+            switch (CharacterRoster.SavedHomeAvatar)
+            {
+                case 1: if (_sonicPrefab != null) prefab = _sonicPrefab; break;
+                case 2: if (_gladiatorPrefab != null) prefab = _gladiatorPrefab; break;
+                case 3: if (_robotPrefab != null) prefab = _robotPrefab; break;
+            }
             bool bossBody = false;
             if (_opponentStage && FightRequest.HasRequest && FightRequest.Mode == FightMode.Boss)
             {
@@ -495,6 +510,11 @@ namespace PushStars.Fight
                 Debug.LogError($"[FightAvatar] {prefab.name} has no Animator - nothing to drive.");
                 return;
             }
+
+            // Collection prefabs bring their menu idle scheduler with them. The fight
+            // controller owns every pose on this stage, including preparation and reps.
+            foreach (var idle in Character.GetComponentsInChildren<SonicIdleBehaviour>(true)) idle.enabled = false;
+            foreach (var idle in Character.GetComponentsInChildren<CharacterIdleAccent>(true)) idle.enabled = false;
 
             // The duel controller replaces the menu one: same rig, different clip set. Without it
             // the drivers' Animator.Play("PushUp") is a silent no-op and the body never moves.
@@ -536,6 +556,8 @@ namespace PushStars.Fight
                     else if (extra != null)
                         Debug.LogError($"[FightAvatar] {extra.GetType().Name} does not implement IAvatarAnimator.");
                 }
+
+            CachePushupSilhouette();
 
             // The card may have asked for the standing-idle presentation before this body existed.
             if (_resultLost || _resultWon) SetResultPresentation(_resultLost, _resultWon);

@@ -16,6 +16,7 @@ namespace PushStars.Editor
         {
             var report = new StringBuilder("Case rewards regression — " + DateTime.UtcNow.ToString("u") + "\n");
             int passed = 0, failed = 0;
+            Check("Assessment case guarantees 200 Aura once, across reload and save failures", AssessmentAura, report, ref passed, ref failed);
             Check("Reward roll ranges and rarity upgrade boundaries", Rules, report, ref passed, ref failed);
             Check("Only positive completed workouts award; duplicate callbacks survive reload", Awards, report, ref passed, ref failed);
             Check("Daily eligibility is consumed on award and survives claim/reload", DailyEligibility, report, ref passed, ref failed);
@@ -62,6 +63,43 @@ namespace PushStars.Editor
                 MustThrow<ArgumentOutOfRangeException>(() => CaseRewards.UpgradeForRoll(CaseRarity.Common, roll));
                 MustThrow<ArgumentOutOfRangeException>(() => CaseRewards.GemsForRoll(CaseRarity.Common, roll));
             }
+        }
+
+        private static void AssessmentAura()
+        {
+            var f = new Fixture();
+            string id = CaseRewards.AssessmentReceipt;
+            Require(!f.Ledger.TryAwardAssessmentCase(0), "Empty assessment got a case.");
+            f.FailWrites = true;
+            MustThrow<IOException>(() => f.Ledger.TryAwardAssessmentCase(8));
+            Require(f.Ledger.PendingCount == 0, "Failed award leaked state.");
+            f.FailWrites = false;
+            Require(f.Ledger.TryAwardAssessmentCase(8), "Assessment not awarded.");
+            Require(f.Ledger.RemainingDailyWorkoutCases(DateTimeOffset.UtcNow) == CaseRewardPolicy.DefaultDailyLimit, "Welcome case consumed daily quota.");
+            f.Reload();
+            Require(!f.Ledger.TryAwardAssessmentCase(20), "Repeated assessment duplicated welcome case.");
+            var pending = f.Ledger.Find(id);
+            Require(pending.Aura == 200 && pending.CanOpen && pending.Gems == 0 && f.Ledger.AuraBalance == 0, "Wrong saved prize or premature credit.");
+            Require(!f.Ledger.TryClaim(id, out _), "Unopened prize claimed.");
+            f.FailWrites = true;
+            MustThrow<IOException>(() => f.Ledger.TryOpen(id, out _));
+            Require(!f.Ledger.Find(id).Opened, "Failed opening leaked state.");
+            f.FailWrites = false;
+            Require(f.Ledger.TryOpen(id, out _), "Case did not open.");
+            f.Reload();
+            Require(f.Ledger.TryOpen(id, out var prize) && prize.Aura == 200 && prize.AvatarCards == 0, "Prize changed after reload.");
+            f.FailWrites = true;
+            MustThrow<IOException>(() => f.Ledger.TryClaim(id, out _));
+            Require(f.Ledger.AuraBalance == 0 && f.Ledger.Find(id) != null, "Failed claim partly committed.");
+            f.FailWrites = false;
+            Require(f.Ledger.TryClaim(id, out int gems) && gems == 0 && f.Ledger.AuraBalance == 200 && f.Ledger.GemsBalance == 0, "Wrong wallet credited.");
+            f.Reload();
+            Require(!f.Ledger.TryClaim(id, out _) && !f.Ledger.TryAwardAssessmentCase(30) && f.Ledger.AuraBalance == 200 && f.Draws == 0, "Replay or random reward in welcome case.");
+            string migrated = null;
+            var legacy = new CaseRewardLedger("{\"version\":3,\"gems\":50,\"aura\":75,\"auraReceipts\":[\"old\"],\"avatars\":[],\"awardedWorkouts\":[],\"cases\":[],\"processedWorkoutIds\":[]}", () => .9, json => migrated = json);
+            Require(legacy.TryAwardAssessmentCase(1), "v3 migration failed.");
+            legacy = new CaseRewardLedger(migrated, () => .9, _ => { });
+            Require(legacy.AuraBalance == 75 && legacy.GemsBalance == 50 && !legacy.TryCreditAura("old", 75), "Migration lost wallet or receipts.");
         }
 
         private static void Awards()

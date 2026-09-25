@@ -76,7 +76,8 @@ namespace PushStars.App
 
             // The backend is started beside the launch, never in front of it. Where it runs at all
             // is decided by _initializeBackend; either way the router below only reads local state.
-            if (_initializeBackend) InitServicesAsync().Forget();
+            if (_initializeBackend || PlayerPrefs.GetInt(FirebaseAuthService.RememberBackendKey, 0) == 1)
+                InitServicesAsync().Forget();
 
             string next = ResolveNextScene();
             Report(0.65f, next == FightConfig.FightSceneName ? "Preparing assessment…" : "Almost ready…");
@@ -93,41 +94,12 @@ namespace PushStars.App
             try
             {
                 Report(0.12f, "Connecting…");
-                var firebase = new FirebaseService();
-                bool inTime = await WithTimeout(firebase.InitializeAsync());
-                await UniTask.SwitchToMainThread();
-
-                if (!inTime || !firebase.IsReady)
+                if (!await WithTimeout(FirebaseAuthService.EnsureReadyAsync()))
                 {
-                    // Not fatal: the level test, the ghost duel and XP all work offline. The app
-                    // opens without a backend rather than refusing to open.
-                    Debug.LogError(inTime
-                        ? "[AppBootstrap] Firebase unavailable — continuing without backend."
-                        : $"[AppBootstrap] Firebase did not answer in {_serviceTimeoutSec}s — continuing without backend.");
-                    Report(0.6f, "Offline mode");
-                    return;
-                }
-                ServiceLocator.Register(firebase);
-
-                Report(0.32f, "Signing in…");
-                var auth = new FirebaseAuthService();
-                if (!await WithTimeout(auth.SignInAnonymouslyAsync()))
-                {
-                    Debug.LogError($"[AppBootstrap] Sign-in did not answer in {_serviceTimeoutSec}s — continuing without backend.");
-                    Report(0.6f, "Offline mode");
+                    Debug.LogWarning("[AppBootstrap] Backend is still connecting in the background.");
                     return;
                 }
                 await UniTask.SwitchToMainThread();
-                ServiceLocator.Register(auth);
-
-                Report(0.5f, "Loading profile…");
-                var firestore = new FirestoreService();
-                firestore.Configure();
-                ServiceLocator.Register(firestore);
-                // Phase 05: connectivity is now proven by the onUserCreated Cloud Function
-                // seeding users/{uid}. The old _diagnostics/ping self-test is dropped — the
-                // strict Firestore rules deny that path.
-
                 Debug.Log("[AppBootstrap] Services initialized.");
             }
             catch (Exception e)
