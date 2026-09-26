@@ -5,7 +5,8 @@ using UnityEngine.SceneManagement;
 
 namespace PushStars.Fight
 {
-    public enum FightScreen { Home, Preparation, Battle, Results, RewardSummary, CaseAward, CaseOpening, CaseReward }
+    // Append only: scenes serialize these values.
+    public enum FightScreen { Home, Preparation, Battle, Results, RewardSummary, CaseAward, CaseOpening, CaseReward, AuraReward }
 
     [Serializable]
     public sealed class FightResultData
@@ -35,7 +36,13 @@ namespace PushStars.Fight
         public static string ReturnScene { get; private set; } = FightConfig.MainSceneName;
         public static CaseRarity PreviewRarity { get; set; } = CaseRarity.Common;
         public static int PreviewGems { get; set; } = 100;
-        public static int PreviewAura { get; set; }
+        /// <summary>Editor preview of the completed assessment (see PrepareAssessmentPreview).</summary>
+        public static bool PreviewAssessment { get; private set; }
+
+        // The boss map (UI assembly) grants island chest cases; this assembly owns the case screens.
+        [RuntimeInitializeOnLoadMethod(RuntimeInitializeLoadType.BeforeSceneLoad)]
+        private static void RegisterBossMapCases()
+            => PushStars.UI.BossMapController.CaseAwardHandler = id => ShowCaseAward(id, FightConfig.MainSceneName);
         internal static MockupProfile.Opponent? PreparedOpponent { get; set; }
         private static bool _loading;
 
@@ -49,7 +56,7 @@ namespace PushStars.Fight
             ReturnScene = FightConfig.MainSceneName;
             PreviewRarity = CaseRarity.Common;
             PreviewGems = 100;
-            PreviewAura = 0;
+            PreviewAssessment = false;
             PreparedOpponent = null;
             _loading = false;
             SceneManager.sceneLoaded -= SceneLoaded;
@@ -69,6 +76,7 @@ namespace PushStars.Fight
                 case FightScreen.CaseAward: return "CaseAward";
                 case FightScreen.CaseOpening: return "CaseOpening";
                 case FightScreen.CaseReward: return "CaseReward";
+                case FightScreen.AuraReward: return "AuraReward";
                 default: return FightConfig.MainSceneName;
             }
         }
@@ -144,7 +152,7 @@ namespace PushStars.Fight
             CaseId = AwardedCaseId = null;
             PreviewRarity = CaseRarity.Common;
             PreviewGems = 100;
-            PreviewAura = 0;
+            PreviewAssessment = false;
             Navigate(screen);
         }
 
@@ -154,8 +162,8 @@ namespace PushStars.Fight
         {
             IsPreview = true;
             Result = new FightResultData { Mode = FightMode.LevelTest, MyReps = 8, MyForm = 92, Xp = 80, PlayerName = "BEASTCORE_DEV" };
-            RewardSummary = new FightRewardFlow.Summary { PlayerName = Result.PlayerName, TotalReps = 8, Technique = .92f, EnergyXp = 80, HasCase = true };
-            PreviewAura = CaseRewards.AssessmentAura; PreviewGems = 0; PreviewRarity = CaseRarity.Legendary;
+            RewardSummary = new FightRewardFlow.Summary { PlayerName = Result.PlayerName, TotalReps = 8, Technique = .92f, EnergyXp = 80, Aura = CaseRewards.AssessmentAura, HasCase = true };
+            PreviewAssessment = true; PreviewGems = 100; PreviewRarity = CaseRarity.Common;
             CaseId = AwardedCaseId = null;
         }
 #endif
@@ -167,19 +175,18 @@ namespace PushStars.Fight
             Navigate(FightScreen.Home);
         }
 
-        public static void Navigate(FightScreen screen)
-        {
-            if (_loading) return;
-            if (!IsPreview && (screen == FightScreen.CaseOpening || screen == FightScreen.CaseReward || screen == FightScreen.CaseAward))
-            {
-                if (string.IsNullOrEmpty(CaseId)) CaseId = AwardedCaseId;
-                var receipt = CaseRewards.Find(CaseId);
-                if (receipt == null) screen = FightScreen.Home;
-                else if (screen == FightScreen.CaseReward && !receipt.Opened) screen = FightScreen.CaseOpening;
-                else if (screen == FightScreen.CaseOpening && receipt.Opened) screen = FightScreen.CaseReward;
-            }
+        public static void Navigate(FightScreen screen) => Navigate(screen, null);
 
-            string destination = screen == FightScreen.Home ? ReturnScene : SceneName(screen);
+        /// <summary>Loads under a <see cref="ScreenTransition"/> cover instead of a hard cut. The
+        /// load starts now; the cover starts after <paramref name="coverDelay"/>.</summary>
+        public static void Navigate(FightScreen screen, float coverSeconds, ScreenTransition.Reveal reveal,
+            SoundCue? sound = null, float coverDelay = 0) =>
+            Navigate(screen, (coverDelay, coverSeconds, reveal, sound));
+
+        private static void Navigate(FightScreen screen, (float delay, float cover, ScreenTransition.Reveal reveal, SoundCue? sound)? transition)
+        {
+            if (_loading || ScreenTransition.IsBusy) return;
+            string destination = Resolve(ref screen);
             if (!Application.CanStreamedLevelBeLoaded(destination))
             {
                 Debug.LogError("Screen scene is missing from Build Settings: " + destination);
@@ -191,9 +198,27 @@ namespace PushStars.Fight
                 HomeRewardFlight.ReturnTo(destination);
                 PreparedOpponent = null;
                 FightRequest.Clear();
-                SceneManager.LoadScene(destination);
             }
+            if (transition.HasValue)
+                ScreenTransition.Go(destination, transition.Value.delay, transition.Value.cover, transition.Value.reveal, transition.Value.sound);
             else SceneManager.LoadScene(destination);
+        }
+
+        /// <summary>Starts streaming the scene <see cref="Navigate(FightScreen)"/> would open for
+        /// <paramref name="screen"/>, for a later transitioned navigation to the same screen.</summary>
+        public static void Preload(FightScreen screen) => ScreenTransition.Preload(Resolve(ref screen));
+
+        private static string Resolve(ref FightScreen screen)
+        {
+            if (!IsPreview && (screen == FightScreen.CaseOpening || screen == FightScreen.CaseReward || screen == FightScreen.CaseAward))
+            {
+                if (string.IsNullOrEmpty(CaseId)) CaseId = AwardedCaseId;
+                var receipt = CaseRewards.Find(CaseId);
+                if (receipt == null) screen = FightScreen.Home;
+                else if (screen == FightScreen.CaseReward && !receipt.Opened) screen = FightScreen.CaseOpening;
+                else if (screen == FightScreen.CaseOpening && receipt.Opened) screen = FightScreen.CaseReward;
+            }
+            return screen == FightScreen.Home ? ReturnScene : SceneName(screen);
         }
 
         private static FightResultData DemoResult() => new FightResultData

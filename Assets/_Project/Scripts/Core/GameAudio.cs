@@ -8,7 +8,7 @@ namespace PushStars.Core
     {
         Tap, Confirm, Back, Navigate, Rep, RepRejected, Countdown,
         RewardTick, RewardComplete, CaseUnlock, CaseCharge, CaseReveal,
-        CaseUpgrade, CaseUpgradeComplete, Purchase, Victory
+        CaseUpgrade, CaseUpgradeComplete, Purchase, Victory, AuraStamp, AuraSkull, AuraWhoosh, UiTransition, RewardBurst
     }
 
     /// <summary>Persistent, bounded 2D audio. All clips are instrumental; no narration is imported.</summary>
@@ -99,6 +99,11 @@ namespace PushStars.Core
             Add(SoundCue.CaseUpgradeComplete, .5f, .45f, 64, "case_upgrade_finish");
             Add(SoundCue.Purchase, .45f, .3f, 80, "shop_purchase");
             Add(SoundCue.Victory, .55f, .5f, 64, "victory");
+            Add(SoundCue.AuraStamp, .7f, .5f, 64, "aura_stamp");
+            Add(SoundCue.AuraSkull, .65f, .5f, 64, "aura_skull");
+            Add(SoundCue.AuraWhoosh, .75f, .5f, 80, "aura_whoosh");
+            Add(SoundCue.UiTransition, .5f, .3f, 90, "ui_transition");
+            Add(SoundCue.RewardBurst, .45f, .3f, 120, "reward_burst");
             SceneManager.sceneLoaded += SceneLoaded;
             SceneManager.sceneUnloaded += SceneUnloaded;
             SceneManager.activeSceneChanged += ActiveSceneChanged;
@@ -149,7 +154,7 @@ namespace PushStars.Core
             source.priority = group.Priority;
             source.Play();
             group.LastPlayed = now;
-            if (cue == SoundCue.CaseReveal || cue == SoundCue.CaseUpgradeComplete || cue == SoundCue.Victory)
+            if (cue == SoundCue.CaseReveal || cue == SoundCue.CaseUpgradeComplete || cue == SoundCue.Victory || cue == SoundCue.AuraStamp || cue == SoundCue.AuraSkull)
                 _duckUntil = now + 1.1f;
         }
 
@@ -159,7 +164,10 @@ namespace PushStars.Core
             if (_music == null) return;
             float volume = _sceneMusicVolume * (_workoutPaused ? .4f : 1f);
             if (Time.unscaledTime < _duckUntil) volume *= .4f;
-            _music.volume = Mathf.MoveTowards(_music.volume, volume, Time.unscaledDeltaTime * .35f);
+            // Duck quickly for a big moment, swell back slowly afterwards.
+            float rate = volume < _music.volume ? 1.2f : .35f;
+            // Clamp the step: a scene load's long frame must not jump the music in one go.
+            _music.volume = Mathf.MoveTowards(_music.volume, volume, Mathf.Min(Time.unscaledDeltaTime, .05f) * rate);
         }
 
         private void ApplySettings()
@@ -187,8 +195,22 @@ namespace PushStars.Core
         private void RefreshScene(Scene scene)
         {
             _workoutPaused = false;
-            _sceneMusicVolume = scene.name == FightConfig.FightSceneName || scene.name == "Training" ? .15f : .2f;
+            _sceneMusicVolume = SceneMusicVolume(scene.name);
             RefreshListener();
+        }
+
+        /// <summary>The music bed never restarts between screens; it only breathes. It all but
+        /// drops out under the Aura stamp (silence before the hit), sits back for case openings,
+        /// and swells back in on the home screen.</summary>
+        private static float SceneMusicVolume(string scene)
+        {
+            switch (scene)
+            {
+                case "AuraReward": return .03f;
+                case "CaseAward": case "CaseOpening": case "CaseReward": return .13f;
+                case "Training": return .15f;
+                default: return scene == FightConfig.FightSceneName ? .15f : .2f;
+            }
         }
 
         private void RefreshListener()

@@ -23,7 +23,14 @@ namespace PushStars.Fight
             public RectTransform Target;
             public Vector3 Scale;
             public float Hit = -10;
+            // Counter that counts up as icons land (null for the XP tab, which has no number).
+            public string Pill;
+            public TMP_Text Number;
+            public long From, Amount;
+            public int Count, Landed;
         }
+
+        private static readonly string[] Pills = { "AuraPill", "GemPill", "TrophyPill" };
 
         [RuntimeInitializeOnLoadMethod(RuntimeInitializeLoadType.SubsystemRegistration)]
         private static void Reset()
@@ -57,6 +64,11 @@ namespace PushStars.Fight
                 (scene.name != _destination && scene.name != _destination + "Remote")) return;
             _destination = null;
             if (_aura <= 0 && _trophies <= 0 && _xp <= 0 && _gems <= 0) return;
+            // Balances are already saved. Show them as they were until the icons land, from the
+            // very first frame of home, so the counters never jump ahead of the flight.
+            if (_aura > 0) HudBalanceHold.Set("AuraPill", CaseRewards.AuraBalance - _aura);
+            if (_gems > 0) HudBalanceHold.Set("GemPill", CaseRewards.GemsBalance - _gems);
+            if (_trophies > 0) HudBalanceHold.Set("TrophyPill", LocalProfile.Trophies - _trophies);
             var host = new GameObject("HomeRewardFlight");
             SceneManager.MoveGameObjectToScene(host, scene);
             host.AddComponent<HomeRewardFlight>();
@@ -66,10 +78,19 @@ namespace PushStars.Fight
         {
             long aura = _aura, trophies = _trophies, xp = _xp, gems = _gems;
             Clear(); // Consume before playback: leaving home early cannot replay the award.
-            // Let home navigation, safe area and layout settle before resolving visible targets.
-            yield return null;
-            yield return null;
-            yield return new WaitForSecondsRealtime(.2f);
+            if (ScreenTransition.IsBusy)
+            {
+                // Burst out of the opening iris: the rewards come from where the last screen's
+                // prize was, so the move from that screen into home reads as one motion.
+                while (ScreenTransition.IsBusy && ScreenTransition.RevealProgress < .2f) yield return null;
+            }
+            else
+            {
+                // Let home navigation, safe area and layout settle before resolving visible targets.
+                yield return null;
+                yield return null;
+                yield return new WaitForSecondsRealtime(.2f);
+            }
             if (ScreenLayoutRoot.IsAnyEditing) { Destroy(gameObject); yield break; }
             Canvas.ForceUpdateCanvases();
 
@@ -92,6 +113,8 @@ namespace PushStars.Fight
             AddGroup(xp, "XpTrack", null, theme != null ? theme.IconXP : null, ref groups);
             if (groups > 0)
             {
+                // The burst out of the opening screen has its own sound; arrivals then tick.
+                GameAudio.Play(SoundCue.RewardBurst);
                 yield return new WaitForSecondsRealtime(1.9f + groups * .18f);
                 GameAudio.Play(SoundCue.RewardComplete);
             }
@@ -120,14 +143,19 @@ namespace PushStars.Fight
                 foreach (var tab in root.GetComponentsInChildren<TabButton>(false))
                     if (tab.TabId == TabId.Profile && tab.gameObject.activeInHierarchy)
                         target = tab.transform as RectTransform;
-            if (target == null) return; // No corresponding visible HUD on this destination.
+            if (target == null) { HudBalanceHold.Release(targetName); return; } // No visible HUD here.
             var icon = iconName != null ? target.Find(iconName)?.GetComponent<Image>() : null;
             var sprite = icon != null && icon.sprite != null ? icon.sprite : fallback;
-            if (sprite == null) return;
-            var arrival = new Arrival { Target = target, Scale = target.localScale };
+            if (sprite == null) { HudBalanceHold.Release(targetName); return; }
+            int count = (int)System.Math.Min(9, amount);
+            var arrival = new Arrival { Target = target, Scale = target.localScale, Amount = amount, Count = count };
+            if (System.Array.IndexOf(Pills, targetName) >= 0 && HudBalanceHold.TryGet(targetName, out long from))
+            {
+                arrival.Pill = targetName; arrival.From = from;
+                arrival.Number = target.Find("Number")?.GetComponent<TMP_Text>();
+            }
             _arrivals.Add(arrival);
             var aim = icon != null ? icon.rectTransform : target;
-            int count = (int)System.Math.Min(9, amount);
             var origin = new Vector2((groups - 1) * 42, -30);
             float delay = groups++ * .18f;
             for (int i = 0; i < count; i++)
@@ -171,6 +199,18 @@ namespace PushStars.Fight
                 arrival.Hit = Time.unscaledTime;
                 if (index % 2 == 0) GameAudio.Play(SoundCue.RewardTick, 1 + .25f * index / count);
             }
+            Land(arrival);
+        }
+
+        /// <summary>Each landing icon advances its counter; the last one hands it back to live data.</summary>
+        private static void Land(Arrival arrival)
+        {
+            if (arrival.Pill == null) return;
+            arrival.Landed++;
+            long shown = arrival.From + arrival.Amount * arrival.Landed / arrival.Count;
+            if (arrival.Landed >= arrival.Count) HudBalanceHold.Release(arrival.Pill);
+            else HudBalanceHold.Set(arrival.Pill, shown);
+            if (arrival.Number != null) arrival.Number.text = shown.ToString("N0");
         }
 
         private IEnumerator AmountLabel(long amount, RectTransform target, float delay)
@@ -221,6 +261,7 @@ namespace PushStars.Fight
         private void OnDisable()
         {
             StopAllCoroutines();
+            HudBalanceHold.ReleaseAll();
             foreach (var arrival in _arrivals)
                 if (arrival.Target != null) arrival.Target.localScale = arrival.Scale;
             if (_overlay != null) Destroy(_overlay.gameObject);

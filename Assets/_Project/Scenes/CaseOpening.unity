@@ -2511,7 +2511,6 @@ RectTransform:
   m_Children:
   - {fileID: 1704600604}
   - {fileID: 778072855}
-  - {fileID: 2081338505}
   - {fileID: 2039142979}
   - {fileID: 184941259}
   - {fileID: 1160369608}
@@ -4024,7 +4023,6 @@ GameObject:
   - component: {fileID: 789352167}
   - component: {fileID: 789352169}
   - component: {fileID: 789352170}
-  - component: {fileID: 789352171}
   m_Layer: 0
   m_Name: CaseOpening
   m_TagString: Untagged
@@ -4069,7 +4067,6 @@ MonoBehaviour:
     Subtitle: {fileID: 0}
     ContinueLabel: {fileID: 0}
     TrophyGroup: {fileID: 0}
-    AssessmentBonus: {fileID: 0}
     ContinueIcon: {fileID: 0}
   _caseUi:
     Rarity: {fileID: 1177625464}
@@ -4121,7 +4118,6 @@ MonoBehaviour:
     AvatarCardIcon: {fileID: 0}
     ClaimButton: {fileID: 0}
   _caseMotion: {fileID: 789352170}
-  _auraPresentation: {fileID: 789352171}
   _sampleSummary:
     PlayerName: BEASTCORE_DEV
     TotalReps: 57
@@ -4281,26 +4277,6 @@ MonoBehaviour:
   Screen: {fileID: 789352167}
   Behind: {fileID: 1418639789}
   InFront: {fileID: 1146473651}
---- !u!114 &789352171
-MonoBehaviour:
-  m_ObjectHideFlags: 0
-  m_CorrespondingSourceObject: {fileID: 0}
-  m_PrefabInstance: {fileID: 0}
-  m_PrefabAsset: {fileID: 0}
-  m_GameObject: {fileID: 789352166}
-  m_Enabled: 1
-  m_EditorHideFlags: 0
-  m_Script: {fileID: 11500000, guid: 9433bc8b1972c9a4ba3abcbe4dad7449, type: 3}
-  m_Name: 
-  m_EditorClassIdentifier: PushStars.Fight::PushStars.Fight.AuraRewardPresentation
-  Energy: {fileID: 2081338504}
-  Screen: {fileID: 789352167}
-  Title: {fileID: 0}
-  ClaimHint: {fileID: 0}
-  PrizeIcon: {fileID: 0}
-  Flame: {fileID: 0}
-  AmountGroup: {fileID: 0}
-  TitleGroup: {fileID: 0}
 --- !u!1 &791459013
 GameObject:
   m_ObjectHideFlags: 0
@@ -11448,71 +11424,6 @@ RectTransform:
   m_AnchoredPosition: {x: 195, y: -224}
   m_SizeDelta: {x: 340, y: 40}
   m_Pivot: {x: 0.5, y: 0.5}
---- !u!1 &2081338503
-GameObject:
-  m_ObjectHideFlags: 0
-  m_CorrespondingSourceObject: {fileID: 0}
-  m_PrefabInstance: {fileID: 0}
-  m_PrefabAsset: {fileID: 0}
-  serializedVersion: 6
-  m_Component:
-  - component: {fileID: 2081338505}
-  - component: {fileID: 2081338504}
-  - component: {fileID: 2081338506}
-  m_Layer: 0
-  m_Name: AuraEnergy
-  m_TagString: Untagged
-  m_Icon: {fileID: 0}
-  m_NavMeshLayer: 0
-  m_StaticEditorFlags: 0
-  m_IsActive: 0
---- !u!114 &2081338504
-MonoBehaviour:
-  m_ObjectHideFlags: 0
-  m_CorrespondingSourceObject: {fileID: 0}
-  m_PrefabInstance: {fileID: 0}
-  m_PrefabAsset: {fileID: 0}
-  m_GameObject: {fileID: 2081338503}
-  m_Enabled: 1
-  m_EditorHideFlags: 0
-  m_Script: {fileID: 11500000, guid: b097aa34bba1ba440bee80dcbfcfd992, type: 3}
-  m_Name: 
-  m_EditorClassIdentifier: PushStars.Fight::PushStars.Fight.AuraEnergyGraphic
-  m_Material: {fileID: 2100000, guid: f013ed094f0ac7c4b87617fb907de4a8, type: 2}
-  m_Color: {r: 1, g: 1, b: 1, a: 1}
-  m_RaycastTarget: 0
-  m_RaycastPadding: {x: 0, y: 0, z: 0, w: 0}
-  m_Maskable: 1
-  m_OnCullStateChanged:
-    m_PersistentCalls:
-      m_Calls: []
---- !u!224 &2081338505
-RectTransform:
-  m_ObjectHideFlags: 0
-  m_CorrespondingSourceObject: {fileID: 0}
-  m_PrefabInstance: {fileID: 0}
-  m_PrefabAsset: {fileID: 0}
-  m_GameObject: {fileID: 2081338503}
-  m_LocalRotation: {x: 0, y: 0, z: 0, w: 1}
-  m_LocalPosition: {x: 0, y: 0, z: 0}
-  m_LocalScale: {x: 1, y: 1, z: 1}
-  m_ConstrainProportionsScale: 0
-  m_Children: []
-  m_Father: {fileID: 500662534}
-  m_LocalEulerAnglesHint: {x: 0, y: 0, z: 0}
-  m_AnchorMin: {x: 0, y: 0}
-  m_AnchorMax: {x: 1, y: 1}
-  m_AnchoredPosition: {x: 0, y: 0}
-  m_SizeDelta: {x: 0, y: 0}
-  m_Pivot: {x: 0.5, y: 0.5}
---- !u!222 &2081338506
-CanvasRenderer:
-  m_ObjectHideFlags: 0
-  m_CorrespondingSourceObject: {fileID: 0}
-  m_PrefabInstance: {fileID: 0}
-  m_PrefabAsset: {fileID: 0}
-  m_GameObject: {fileID: 2081338503}
-  m_CullTransparentMesh: 1
 --- !u!1 &2132050708
 GameObject:
   m_ObjectHideFlags: 0

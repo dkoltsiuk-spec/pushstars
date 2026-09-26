@@ -14,7 +14,8 @@ dedicated HP layout; PvP and training retain their own existing layouts.
 - Each attack on the existing boss timeline deals 75 damage. No random criticals.
 - Zero HP locks further damage and repetition credit immediately. The finishing
   hit remains visible for 0.6 seconds before the existing results/reward flow.
-- At 60 seconds remaining HP decides the result; equal HP is a draw.
+- At 60 seconds the larger share of remaining HP wins; equal shares draw.
+- Bosses grant no trophies; island gems and chests are on the map (see boss-map.md).
 - Rewards and ladder advancement still run once through the existing finish
   path. The preparation card displays the actual +50 win bonus, not the mockup's
   illustrative +570; per-rep XP remains additional.

@@ -25,7 +25,7 @@ namespace PushStars.Fight
             public Texture2D MalePortrait, FemalePortrait;
             public Button CaseAwardButton;
             public TextMeshProUGUI Title, Subtitle, ContinueLabel;
-            public GameObject TrophyGroup, AssessmentBonus;
+            public GameObject TrophyGroup;
             public Image ContinueIcon;
         }
         [Serializable] public sealed class CaseElements
@@ -61,7 +61,6 @@ namespace PushStars.Fight
         [SerializeField] private CaseElements _caseUi = new CaseElements();
         [SerializeField] private PrizeElements _prizeUi = new PrizeElements();
         [SerializeField] private CaseOpeningMotion _caseMotion;
-        [SerializeField] private AuraRewardPresentation _auraPresentation;
         [Header("Sample data — direct scene launch never grants rewards")]
         [SerializeField] private FightRewardFlow.Summary _sampleSummary = new FightRewardFlow.Summary
         {
@@ -75,7 +74,8 @@ namespace PushStars.Fight
         private static readonly Color Gold = new Color32(255, 214, 17, 255);
         private string _caseId;
         private CaseRarity _rarity;
-        private int _tapsUsed, _gems, _aura;
+        private int _tapsUsed, _gems;
+        private FightRewardFlow.Summary _summary;
         private bool _opened, _available, _busy;
         private Color _glowColor;
         private bool _summaryPortraitFramed;
@@ -116,7 +116,6 @@ namespace PushStars.Fight
         {
             StopAllCoroutines(); _busy = false;
             if (_caseMotion != null) _caseMotion.ResetPose();
-            if (_auraPresentation != null) _auraPresentation.ResetPresentation();
             ResetCaseAttention();
             foreach (var item in _poses)
                 if (item.Key != null)
@@ -199,29 +198,29 @@ namespace PushStars.Fight
 
         private void FillSummary()
         {
-            var data = FightScreenNavigation.IsPreview && FightScreenNavigation.PreviewAura == 0 ? _sampleSummary : FightScreenNavigation.RewardSummary;
+            var data = FightScreenNavigation.IsPreview && !FightScreenNavigation.PreviewAssessment ? _sampleSummary : FightScreenNavigation.RewardSummary;
+            _summary = data;
             HomeRewardFlight.QueueSummary(data);
             Set(_summaryUi.PlayerName, string.IsNullOrWhiteSpace(data.PlayerName) ? "YOUR RESULT" : data.PlayerName);
             Set(_summaryUi.TotalReps, Mathf.Max(0, data.TotalReps).ToString());
             Set(_summaryUi.Technique, $"{Mathf.Clamp01(data.Technique) * 100f:0}%");
-            if (_summaryUi.AuraGroup != null) _summaryUi.AuraGroup.SetActive(data.Aura > 0);
+            // Aura is never counted here: it gets its own screen right after this one.
+            if (_summaryUi.AuraGroup != null) _summaryUi.AuraGroup.SetActive(false);
             if (_summaryUi.Trophies != null && data.Trophies < 0)
                 _summaryUi.Trophies.color = new Color32(255, 107, 95, 255);
             bool hasAward = FightScreenNavigation.IsPreview || !string.IsNullOrEmpty(FightScreenNavigation.AwardedCaseId);
             bool assessment = FightScreenNavigation.Result?.Mode == FightMode.LevelTest;
-            bool auraCase = FightScreenNavigation.IsPreview ? FightScreenNavigation.PreviewAura > 0
-                : CaseRewards.Find(FightScreenNavigation.AwardedCaseId)?.Aura > 0;
             if (assessment)
             {
                 Set(_summaryUi.Title, "ASSESSMENT COMPLETE!");
                 Set(_summaryUi.Subtitle, "Great result. Strong start!");
                 if (_summaryUi.TrophyGroup != null) _summaryUi.TrophyGroup.SetActive(data.Trophies != 0);
             }
-            if (_summaryUi.AssessmentBonus != null) _summaryUi.AssessmentBonus.SetActive(auraCase);
-            Set(_summaryUi.ContinueLabel, hasAward ? "OPEN CASE" : "HOME");
+            var theme = Resources.Load<PushStarsTheme>("PushStarsTheme");
+            Set(_summaryUi.ContinueLabel, data.Aura > 0 ? "CONTINUE" : hasAward ? "OPEN CASE" : "HOME");
             if (_summaryUi.ContinueIcon != null)
-                _summaryUi.ContinueIcon.sprite = hasAward ? Resources.Load<Sprite>("Rewards/CaseLegendary")
-                    : Resources.Load<PushStarsTheme>("PushStarsTheme")?.IconHouse;
+                _summaryUi.ContinueIcon.sprite = data.Aura > 0 ? theme?.IconAura
+                    : hasAward ? Resources.Load<Sprite>("Rewards/CaseCommon") : theme?.IconHouse;
             if (_summaryUi.CaseAwardButton != null) _summaryUi.CaseAwardButton.gameObject.SetActive(hasAward);
             // Keep the baked image for Edit Mode/fallback; this scene owns a live idle stage.
             if (_summaryUi.Portrait != null)
@@ -270,7 +269,7 @@ namespace PushStars.Fight
         private IEnumerator CountSummary(FightRewardFlow.Summary data)
         {
             float elapsed = 0, nextTick = 0;
-            bool hasReward = data.Trophies > 0 || data.EnergyXp > 0 || data.Aura > 0;
+            bool hasReward = data.Trophies > 0 || data.EnergyXp > 0;
             while (elapsed < 1.05f)
             {
                 elapsed += Time.unscaledDeltaTime;
@@ -282,15 +281,14 @@ namespace PushStars.Fight
                 float t = Mathf.Clamp01(elapsed / 1.05f), eased = 1f - Mathf.Pow(1f - t, 3f);
                 Set(_summaryUi.Trophies, Signed((long)Math.Round(data.Trophies * eased)));
                 Set(_summaryUi.EnergyXp, Signed((long)Math.Round(data.EnergyXp * eased)));
-                Set(_summaryUi.Aura, Signed((long)Math.Round(data.Aura * eased)));
                 float punch = 1f + Mathf.Sin(t * Mathf.PI) * 0.07f;
-                Scale(_summaryUi.TrophyContent, punch); Scale(_summaryUi.XpContent, punch); Scale(_summaryUi.AuraContent, punch);
+                Scale(_summaryUi.TrophyContent, punch); Scale(_summaryUi.XpContent, punch);
                 yield return null;
             }
             if (hasReward) GameAudio.Play(SoundCue.RewardComplete);
             Set(_summaryUi.Trophies, Signed(data.Trophies));
-            Set(_summaryUi.EnergyXp, Signed(data.EnergyXp)); Set(_summaryUi.Aura, Signed(data.Aura));
-            Scale(_summaryUi.TrophyContent, 1); Scale(_summaryUi.XpContent, 1); Scale(_summaryUi.AuraContent, 1);
+            Set(_summaryUi.EnergyXp, Signed(data.EnergyXp));
+            Scale(_summaryUi.TrophyContent, 1); Scale(_summaryUi.XpContent, 1);
         }
 
         private bool ReadCase()
@@ -298,9 +296,8 @@ namespace PushStars.Fight
             if (FightScreenNavigation.IsPreview)
             {
                 _rarity = FightScreenNavigation.PreviewRarity;
-                _aura = FightScreenNavigation.PreviewAura;
-                _gems = _aura > 0 ? 0 : Mathf.Max(1, FightScreenNavigation.PreviewGems);
-                _tapsUsed = _aura > 0 ? CaseRewards.UpgradeTapCount : 0;
+                _gems = Mathf.Max(1, FightScreenNavigation.PreviewGems);
+                _tapsUsed = 0;
                 _opened = _screen == FightScreen.CaseReward;
                 return _available = true;
             }
@@ -311,7 +308,6 @@ namespace PushStars.Fight
                 if (saved == null) return _available = false;
                 _rarity = saved.Rarity; _tapsUsed = saved.UpgradeTapsUsed;
                 _opened = saved.Opened; _gems = saved.Gems;
-                _aura = saved.Aura;
                 return _available = true;
             }
             catch (Exception exception) { Debug.LogException(exception, this); return _available = false; }
@@ -325,9 +321,10 @@ namespace PushStars.Fight
                 SetCaseInteractable(false); return;
             }
             UpdateCaseLabels();
-            if (_aura > 0 && _auraPresentation != null) _auraPresentation.ConfigureCase();
+            string caseId = FightScreenNavigation.CaseId ?? "";
+            if (caseId.StartsWith("boss-map:", System.StringComparison.Ordinal))
+                Set(_caseUi.Source, (BossCatalog.FindChapter(caseId.Split(':')[1])?.Title ?? "ISLAND") + " CASE");
             Set(_caseUi.Status, _screen == FightScreen.CaseAward ? "CASE SAVED TO INVENTORY" : "");
-            if (_aura > 0) Set(_caseUi.Status, "200 AURA INSIDE");
             if (_screen == FightScreen.CaseAward)
             {
                 Set(_caseUi.Hint, "Open it now or come back later");
@@ -337,6 +334,10 @@ namespace PushStars.Fight
         }
         private IEnumerator EnterCase()
         {
+            // Hold the case back until the scene's first heavy frames are over, then pop it in
+            // with its sound, so a load stall never freezes the entrance halfway.
+            Scale(_caseUi.Content, 0);
+            yield return ScreenTransition.Settle();
             GameAudio.Play(_screen == FightScreen.CaseAward ? SoundCue.RewardComplete : SoundCue.CaseUnlock);
             yield return PopIn(_caseUi.Content, 0.5f);
             _busy = false; SetCaseInteractable(_available);
@@ -346,7 +347,6 @@ namespace PushStars.Fight
             int rarity = Mathf.Clamp((int)_rarity, 0, 3);
             GetComponent<CaseRarityPresentation>()?.Apply(rarity);
             Set(_caseUi.Rarity, CaseNames[rarity]);
-            if (_aura > 0) Set(_caseUi.Source, "ASSESSMENT REWARD · 200 AURA");
             if (_caseUi.Rarity != null) _caseUi.Rarity.color = RarityColor(_rarity);
             if (_caseUi.Artwork != null && rarity < _caseUi.RarityArtwork.Length)
                 _caseUi.Artwork.sprite = _caseUi.RarityArtwork[rarity];
@@ -447,7 +447,7 @@ namespace PushStars.Fight
         {
             if (FightScreenNavigation.IsPreview)
             {
-                _gems = _aura > 0 ? 0 : 100 + (int)_rarity * 50; FightScreenNavigation.PreviewGems = _gems;
+                _gems = 100 + (int)_rarity * 50; FightScreenNavigation.PreviewGems = _gems;
             }
             else
             {
@@ -474,7 +474,6 @@ namespace PushStars.Fight
                     time += Time.unscaledDeltaTime;
                     if (!unlocked && time >= .38f) { unlocked = true; GameAudio.Play(SoundCue.CaseUnlock); }
                     _caseMotion.SampleReveal(time);
-                    if (_aura > 0 && _auraPresentation != null) _auraPresentation.SampleCharge(time / CaseOpeningMotion.RevealDuration);
                     yield return null;
                 }
                 FightScreenNavigation.CaseId = _caseId; FightScreenNavigation.Navigate(_prizeDestination);
@@ -485,7 +484,6 @@ namespace PushStars.Fight
             {
                 elapsed += Time.unscaledDeltaTime;
                 float t = Mathf.Clamp01(elapsed / 0.7f);
-                if (_aura > 0 && _auraPresentation != null) _auraPresentation.SampleCharge(t);
                 Scale(_caseUi.Content, 1 + t * t * 0.32f); Rotate(_caseUi.Content, Mathf.Sin(t * 42) * t * 7);
                 if (_caseUi.Glow != null)
                 {
@@ -502,15 +500,8 @@ namespace PushStars.Fight
                 ShowPrizeError("Open a case from your inventory first\nTap anywhere to return home");
                 return;
             }
-            GameAudio.Play(SoundCue.CaseReveal, .9f + .05f * (int)_rarity);
             Set(_prizeUi.Rarity, CaseNames[Mathf.Clamp((int)_rarity, 0, 3)] + " CASE");
             Set(_prizeUi.Amount, "×" + _gems);
-            if (_aura > 0)
-            {
-                Set(_prizeUi.Amount, "+" + _aura);
-                Set(_prizeUi.Rarity, "ASSESSMENT REWARD");
-                if (_auraPresentation != null) _auraPresentation.ConfigurePrize();
-            }
             var prize = FightScreenNavigation.IsPreview ? null : CaseRewards.Find(_caseId);
             var avatar = prize != null ? AvatarCatalog.Find(prize.AvatarId) : null;
             bool hasCards = avatar != null && prize.AvatarCards > 0;
@@ -522,27 +513,18 @@ namespace PushStars.Fight
             }
             Set(_prizeUi.Note, hasCards
                 ? $"+{prize.AvatarCards} {avatar.Name} CARDS\nCollect cards to unlock your avatar!"
-                : _aura > 0 ? "" : "Crystals will be added to your balance");
+                : "Crystals will be added to your balance");
             Set(_prizeUi.ClaimLabel, "CLAIM & HOME");
+            // No preload here: streaming home stalls a frame mid pop-in. Home loads under the cover.
             _busy = true;
             if (_prizeUi.ClaimButton != null) _prizeUi.ClaimButton.interactable = false;
             StartCoroutine(EnterPrize());
         }
         private IEnumerator EnterPrize()
         {
-            if (_aura > 0 && _auraPresentation != null)
-            {
-                float time = 0;
-                while (time < AuraRewardPresentation.RevealSeconds)
-                {
-                    if (ScreenLayoutRoot.IsAnyEditing) { yield return null; continue; }
-                    time += Time.unscaledDeltaTime;
-                    _auraPresentation.SampleReveal(time);
-                    yield return null;
-                }
-                _auraPresentation.Settle();
-            }
-            else
+            Scale(_prizeUi.Content, 0);
+            yield return ScreenTransition.Settle();
+            GameAudio.Play(SoundCue.CaseReveal, .9f + .05f * (int)_rarity);
             yield return PopIn(_prizeUi.Content, .65f);
             _busy = false;
             if (_prizeUi.ClaimButton != null) _prizeUi.ClaimButton.interactable = true;
@@ -562,7 +544,6 @@ namespace PushStars.Fight
                 {
                     if (!CaseRewards.TryClaim(_caseId, out var claimedGems)) { ShowPrizeError("Couldn't save. Tap to retry."); return; }
                     HomeRewardFlight.QueueGems(claimedGems);
-                    HomeRewardFlight.QueueAura(_aura);
                 }
                 catch (Exception exception)
                 {
@@ -570,7 +551,6 @@ namespace PushStars.Fight
                 }
             }
             if (FightScreenNavigation.IsPreview) HomeRewardFlight.QueueGems(_gems);
-            if (FightScreenNavigation.IsPreview) HomeRewardFlight.QueueAura(_aura);
             _busy = true;
             if (_prizeUi.ClaimButton != null) _prizeUi.ClaimButton.interactable = false;
             Set(_prizeUi.ClaimLabel, "CLAIMED");
@@ -580,20 +560,33 @@ namespace PushStars.Fight
         }
         private IEnumerator FinishClaim()
         {
-            float elapsed = 0;
-            while (elapsed < 0.45f)
+            // The prize swells and lifts toward the HUD while the cover closes over it; home then
+            // opens from the centre, where the crystals burst out and fly into their counter.
+            LeaveHome(coverDelay: .2f);
+            for (float elapsed = 0; ; elapsed += Time.unscaledDeltaTime)
             {
-                elapsed += Time.unscaledDeltaTime;
-                Scale(_prizeUi.Content, 1 + 0.09f * Mathf.Sin(Mathf.Clamp01(elapsed / 0.45f) * Mathf.PI));
+                float pop = Mathf.Sin(Mathf.Clamp01(elapsed / .3f) * Mathf.PI) * .09f;
+                float lift = Mathf.Clamp01((elapsed - .2f) / .35f);
+                Scale(_prizeUi.Content, 1 + pop + lift * lift * .25f);
                 yield return null;
             }
-            FightScreenNavigation.Navigate(_homeDestination);
         }
+        /// <summary>Every exit from the reward chain to home shares one seam and one sound.</summary>
+        private void LeaveHome(float coverDelay = 0) =>
+            FightScreenNavigation.Navigate(_homeDestination, TransitionCover, ScreenTransition.Reveal.Iris, SoundCue.UiTransition, coverDelay);
+        private const float TransitionCover = .3f;
         public void Home()
         {
             if (ScreenLayoutRoot.IsAnyEditing) return;
             if (_screen == FightScreen.RewardSummary)
             {
+                // Any Aura this fight credited gets its own screen, which then continues to the case.
+                if (_summary.Aura > 0)
+                {
+                    // Straight to black: the stamp's own riser and slam come out of the dark.
+                    FightScreenNavigation.Navigate(FightScreen.AuraReward, .22f, ScreenTransition.Reveal.Instant);
+                    return;
+                }
                 bool hasAward = FightScreenNavigation.IsPreview ? _sampleSummary.HasCase :
                     !string.IsNullOrEmpty(FightScreenNavigation.AwardedCaseId);
                 if (hasAward)
@@ -601,11 +594,11 @@ namespace PushStars.Fight
                     // Only this result's award, never an unrelated pending inventory case.
                     // Navigation validates the receipt and resumes an already opened prize.
                     FightScreenNavigation.CaseId = FightScreenNavigation.AwardedCaseId;
-                    FightScreenNavigation.Navigate(_openDestination);
+                    FightScreenNavigation.Navigate(_openDestination, TransitionCover, ScreenTransition.Reveal.Iris, SoundCue.UiTransition);
                     return;
                 }
             }
-            FightScreenNavigation.Navigate(_homeDestination);
+            LeaveHome();
         }
         public void InspectCaseAward()
         {

@@ -96,8 +96,8 @@ namespace PushStars.Editor
                     case "validate-assessment-rewards":
                         AssessmentRewardValidation.Run();
                         break;
-                    case "render-aura-fire":
-                        AssessmentRewardValidation.RenderFire();
+                    case "render-aura-stamp-movie":
+                        AssessmentRewardValidation.RenderStampMovie();
                         break;
                     case "validate-assessment-rewards-play":
                         AssessmentRewardPlayValidation.Run();

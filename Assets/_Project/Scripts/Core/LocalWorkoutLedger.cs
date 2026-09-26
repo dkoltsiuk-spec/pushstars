@@ -84,7 +84,10 @@ namespace PushStars.Core
                 bool ghost = record.Mode == "ghost";
                 if (record.Won) { checked { next.Wins++; next.WinStreak++; } }
                 else { checked { next.Losses++; } next.WinStreak = 0; }
-                int delta = record.Won ? (ghost ? EconomyConfig.TrophyGhostWin : EconomyConfig.TrophyWin)
+                // Bosses are PvE progression: they pay out on the map (gems, chest case), never
+                // in trophies, so replaying the last boss cannot farm the league ladder.
+                int delta = record.Mode == "boss" ? 0
+                    : record.Won ? (ghost ? EconomyConfig.TrophyGhostWin : EconomyConfig.TrophyWin)
                     : -(ghost ? EconomyConfig.TrophyGhostLoss : EconomyConfig.TrophyLoss);
                 next.Trophies = Math.Max(0, checked(next.Trophies + delta));
             }

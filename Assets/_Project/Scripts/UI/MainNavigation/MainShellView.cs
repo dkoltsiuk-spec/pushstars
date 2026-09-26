@@ -37,7 +37,8 @@ namespace PushStars.UI
             foreach (var btn in _tabButtons)
                 btn.OnTabSelected += SwitchTab;
 
-            foreach (var label in GetComponentsInChildren<TextMeshProUGUI>(true))
+            // The HUD pills live beside the shell under the same canvas, not inside it.
+            foreach (var label in transform.root.GetComponentsInChildren<TextMeshProUGUI>(true))
                 if (label.name == "Number" && (label.transform.parent.name == "TrophyPill" ||
                     label.transform.parent.name == "GemPill" || label.transform.parent.name == "AuraPill"))
                     _balances.Add(label);
@@ -55,8 +56,11 @@ namespace PushStars.UI
         {
             foreach (var label in _balances)
             {
-                long value = label.transform.parent.name == "TrophyPill" ? LocalProfile.Trophies
-                    : label.transform.parent.name == "GemPill" ? CaseRewards.GemsBalance : CaseRewards.AuraBalance;
+                string pill = label.transform.parent.name;
+                // A reward flight may hold the old value while its icons are still in the air.
+                if (!HudBalanceHold.TryGet(pill, out long value))
+                    value = pill == "TrophyPill" ? LocalProfile.Trophies
+                        : pill == "GemPill" ? CaseRewards.GemsBalance : CaseRewards.AuraBalance;
                 string text = value.ToString("N0");
                 if (label.text != text) label.text = text;
             }

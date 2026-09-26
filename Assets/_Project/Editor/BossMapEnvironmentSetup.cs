@@ -65,11 +65,13 @@ namespace PushStars.Editor
                 label.raycastTarget = false;
             }
             var iceBiome = ice.GetComponent<BossMapBiome>() ?? ice.gameObject.AddComponent<BossMapBiome>();
-            ice.sizeDelta = new Vector2(390, 740);
+            if (ice.Find("IceBoss1") == null) ice.sizeDelta = new Vector2(390, 740); // BossMapRewardsSetup sizes the full path
             iceBiome.Background = new Color(.34f, .61f, .78f);
             iceBiome.Mist = new Color(.74f, .9f, .98f);
             iceBiome.Light = new Color(.8f, .97f, 1);
-            iceBiome.LightAnchors = new[] { (RectTransform)ice.Find("IceIsland"), (RectTransform)ice.Find("IceFace") };
+            iceBiome.LightAnchors = ice.Cast<Transform>()
+                .Where(t => t.name == "IceIsland" || t.name == "IceFace" || t.name.StartsWith("IceBoss"))
+                .Cast<RectTransform>().ToArray();
             var oldBackground = c.Background.GetComponent<Image>();
             if (oldBackground != null) oldBackground.enabled = false;
             foreach (Transform child in c.Background.transform)

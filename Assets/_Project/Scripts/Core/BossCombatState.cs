@@ -11,14 +11,24 @@ namespace PushStars.Core
         public int BossMaxHp { get; }
         public int BossHp { get; private set; }
         public int PlayerHp { get; private set; } = PlayerMaxHp;
+        /// <summary>Damage of one boss rep; lava bosses hit harder than <see cref="BossAttackDamage"/>.</summary>
+        public int AttackDamage { get; }
         public bool Knockout => BossHp == 0 || PlayerHp == 0;
-        public bool PlayerWins => BossHp == 0 && PlayerHp > 0 || !Knockout && PlayerHp > BossHp;
-        public bool Draw => PlayerHp == BossHp;
+        // On timeout the larger share of remaining HP wins: bosses have up to 3x the player's HP,
+        // so comparing raw HP would let a barely scratched boss beat an untouched player.
+        public bool PlayerWins => BossHp == 0 && PlayerHp > 0 || !Knockout && HpShareBalance > 0;
+        public bool Draw => !Knockout && HpShareBalance == 0;
+        private long HpShareBalance => (long)PlayerHp * BossMaxHp - (long)BossHp * PlayerMaxHp;
         public event Action<bool, int> Damaged;
         /// <summary>A clap push-up's second strike landed on the boss (argument: its damage). Fires
         /// right after the matching <see cref="Damaged"/>, so presentation can tell it apart.</summary>
         public event Action<int> ClapStrike;
-        public BossCombatState(string bossId) { BossMaxHp = BossCatalog.Find(bossId)?.MaxHp ?? 1000; BossHp = BossMaxHp; }
+        public BossCombatState(string bossId)
+        {
+            var profile = BossCatalog.Find(bossId);
+            BossMaxHp = profile?.MaxHp ?? 1000; BossHp = BossMaxHp;
+            AttackDamage = profile?.AttackDamage ?? BossAttackDamage;
+        }
         public static int RepDamage(float form)
             => 70 + Mathf.RoundToInt(30 * Mathf.Clamp01(float.IsNaN(form) || float.IsInfinity(form) ? 0 : form / 100));
         public void PlayerRep(float form)
@@ -37,7 +47,7 @@ namespace PushStars.Core
         public void BossAttack()
         {
             if (Knockout) return;
-            PlayerHp = Mathf.Max(0, PlayerHp - BossAttackDamage); Damaged?.Invoke(false, BossAttackDamage);
+            PlayerHp = Mathf.Max(0, PlayerHp - AttackDamage); Damaged?.Invoke(false, AttackDamage);
         }
     }
 }

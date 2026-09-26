@@ -75,7 +75,7 @@ namespace PushStars.Fight
             var bossIcon = Content.Find("BossIcon")?.GetComponent<Image>();
             var portrait = Resources.Load<Sprite>("Bosses/" + (BossCatalog.Find(id)?.PrefabId ?? id) + "-portrait");
             if (bossIcon != null && portrait != null) bossIcon.sprite = portrait;
-            if (Forest != null) Forest.Configure(!Preparation && BossCatalog.Find(id) != null);
+            if (Forest != null) Forest.Configure(!Preparation && BossCatalog.ChapterOf(id)?.Id == "forest");
             _health = !Preparation && _fight != null ? _fight.BossHealth : null;
             _health ??= new BossCombatState(id);
             _health.Damaged += OnDamage;
@@ -84,7 +84,7 @@ namespace PushStars.Fight
             if (!Preparation) StagePlayerOnGround();
             var profile = BossCatalog.Bosses.FirstOrDefault(b => b.Id == id) ?? BossCatalog.Current;
             BossName.text = profile.DisplayName;
-            Stars.Filled = Mathf.Clamp(BossCatalog.Bosses.ToList().IndexOf(profile) + 1, 1, 5); Stars.SetVerticesDirty();
+            Stars.Filled = Mathf.Clamp(BossCatalog.StageInChapter(profile.Id), 1, 5); Stars.SetVerticesDirty();
             if (Best != null) Best.text = LocalProfile.BestReps.ToString();
             if (Reward != null) Reward.text = "+" + FightConfig.BossWinXpBonus;
             Home.onClick.AddListener(() => FightScreenNavigation.Navigate(FightScreen.Home));

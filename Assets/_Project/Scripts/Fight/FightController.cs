@@ -546,7 +546,7 @@ namespace PushStars.Fight
             if (BossHealth != null) { win = BossHealth.PlayerWins; draw = BossHealth.Draw; }
             bool ghost = _mode == FightMode.Ghost;
 
-            if (win) xp += FightConfig.BossWinXpBonus;
+            if (win && _mode == FightMode.Boss) xp += FightConfig.BossWinXpBonus;
             int trophies = LocalProfile.RecordWorkout(_rewardSessionId, ghost ? "ghost" : "boss",
                 myReps, xp, oppReps, OpponentLabel, win, draw,
                 Mathf.Clamp(Mathf.RoundToInt(Time.time - _liveStartTime), 0, FightConfig.DuelDurationSec));
@@ -571,10 +571,13 @@ namespace PushStars.Fight
         {
             // Eligibility is settled once here. Presentation never rolls or grants another case.
             PendingCase awarded = null;
+            long aura = 0;
             try
             {
+                // The assessment credits its Aura with the award; any Aura credited by this fight
+                // is shown on its own screen after the summary.
                 if (data.Mode == FightMode.LevelTest)
-                    CaseRewards.TryAwardAssessmentCase(data.MyReps, out awarded);
+                    aura = CaseRewards.TryAwardAssessmentCase(data.MyReps, out awarded) ? CaseRewards.AssessmentAura : 0;
                 else
                     CaseRewards.TryAwardDailyWorkoutCase(_rewardSessionId, data.MyReps, out awarded);
             }
@@ -587,7 +590,7 @@ namespace PushStars.Fight
             var summary = new FightRewardFlow.Summary
             {
                 PlayerName = data.PlayerName, TotalReps = data.MyReps, Technique = data.MyForm / 100f,
-                EnergyXp = data.Xp, Trophies = data.Trophies, HasCase = awarded != null
+                EnergyXp = data.Xp, Trophies = data.Trophies, Aura = aura, HasCase = awarded != null
             };
             FightScreenNavigation.ShowResults(data, summary, awarded != null ? awarded.Id : null, FightRequest.ReturnScene);
         }
