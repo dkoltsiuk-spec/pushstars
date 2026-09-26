@@ -15,6 +15,9 @@ namespace PushStars.Core
         public bool PlayerWins => BossHp == 0 && PlayerHp > 0 || !Knockout && PlayerHp > BossHp;
         public bool Draw => PlayerHp == BossHp;
         public event Action<bool, int> Damaged;
+        /// <summary>A clap push-up's second strike landed on the boss (argument: its damage). Fires
+        /// right after the matching <see cref="Damaged"/>, so presentation can tell it apart.</summary>
+        public event Action<int> ClapStrike;
         public BossCombatState(string bossId) { BossMaxHp = BossCatalog.Find(bossId)?.MaxHp ?? 1000; BossHp = BossMaxHp; }
         public static int RepDamage(float form)
             => 70 + Mathf.RoundToInt(30 * Mathf.Clamp01(float.IsNaN(form) || float.IsInfinity(form) ? 0 : form / 100));
@@ -22,6 +25,14 @@ namespace PushStars.Core
         {
             if (Knockout) return;
             int damage = RepDamage(form); BossHp = Mathf.Max(0, BossHp - damage); Damaged?.Invoke(true, damage);
+        }
+        /// <summary>A clap push-up deals double damage: its rep already hit through
+        /// <see cref="PlayerRep"/>; the clap, confirmed on landing, strikes the same amount again.</summary>
+        public void PlayerClapStrike(float form)
+        {
+            if (Knockout) return;
+            int damage = RepDamage(form); BossHp = Mathf.Max(0, BossHp - damage);
+            Damaged?.Invoke(true, damage); ClapStrike?.Invoke(damage);
         }
         public void BossAttack()
         {

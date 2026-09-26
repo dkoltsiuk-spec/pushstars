@@ -40,6 +40,7 @@ namespace PushStars.CV
         public FootEventMonitor  FootMonitor { get; } = new FootEventMonitor();
         public AmplitudeTracker  Tracker     { get; } = new AmplitudeTracker();
         public WorkoutSetTracker SetTracker  { get; } = new WorkoutSetTracker();
+        public ClapDetector      Clap        { get; } = new ClapDetector();
         public PlankArmer        Armer       { get; private set; }
         public AntiCheatAuditor  Auditor     { get; private set; }
 
@@ -59,9 +60,19 @@ namespace PushStars.CV
         public event Action<RepVote> OnRepRejected;
         /// <summary>Raised every processed frame with the latest form reading.</summary>
         public event Action<FormReading> OnFormUpdated;
+        /// <summary>A credited rep turned out to be a clap push-up (argument: that rep's number).
+        /// Arrives on landing, ~0.2–0.4 s after its <see cref="OnRep"/>; at most once per rep.</summary>
+        public event Action<int> OnClapRep;
+
+        /// <summary>Clap push-ups credited this session.</summary>
+        public int ClapReps { get; private set; }
 
         private IPoseSource _source;
         private float _lastKappa = float.NaN; // per-frame κ, captured as baseline at OnArmed
+        private float _now;                   // session clock of the frame being processed
+        private float _lastRepSec = float.NegativeInfinity;
+        private int _lastClapRep;             // rep already tagged as a clap (once per rep)
+        private float _pendingClapUntil = float.NegativeInfinity; // clap landed before its rep credited
 
         /// <summary>Pose-frame arrival rate (inference results/sec) — NOT the render FPS. If this
         /// sits well below 30, the model/delegate is starving fast-rep detection.</summary>
@@ -78,6 +89,14 @@ namespace PushStars.CV
                 return;
             }
 
+            EnsureBuilt();
+        }
+
+        /// <summary>Creates the counter/armer/auditor chain. Awake does this live; offline callers
+        /// (see <see cref="ProcessOffline"/>) may call it first to subscribe to events.</summary>
+        public void EnsureBuilt()
+        {
+            if (Counter != null) return;
             Counter = new PushupRepCounter(Tracker);
             Auditor = new AntiCheatAuditor(KneeDrop, FootMonitor);
             Armer = new PlankArmer(WristAnchor, KneeBend, KneeDrop);
@@ -88,6 +107,9 @@ namespace PushStars.CV
             Counter.OnRepRejected += HandleRepRejected;
             // The audit seam: the pure-C# counter calls back when it would credit a rep.
             Counter.RepAuditor     = () => Auditor.AuditPendingRep();
+            Counter.ArcAbsorber    = IsClapLandingArc;
+            Counter.OnArcAbsorbed += HandleArcAbsorbed;
+            Clap.OnFlightLanded   += HandleFlightLanded;
         }
 
         private void OnEnable()
@@ -114,7 +136,10 @@ namespace PushStars.CV
                 Counter.OnRep         -= HandleRep;
                 Counter.OnRepRejected -= HandleRepRejected;
                 Counter.RepAuditor     = null;
+                Counter.ArcAbsorber    = null;
+                Counter.OnArcAbsorbed -= HandleArcAbsorbed;
             }
+            Clap.OnFlightLanded -= HandleFlightLanded;
             if (Armer != null)
             {
                 Armer.OnArmed    -= HandleArmed;
@@ -132,15 +157,32 @@ namespace PushStars.CV
             FootMonitor.Reset();
             Tracker.Reset();
             SetTracker.Reset();
+            Clap.Reset();
             Armer?.Reset();
             Auditor?.Clear();
+            ClapReps = 0;
+            _lastRepSec = float.NegativeInfinity;
+            _lastClapRep = 0;
+            _pendingClapUntil = float.NegativeInfinity;
         }
 
-        private void HandleFrame(PoseFrame frame)
+        private void HandleFrame(PoseFrame frame) => Process(frame, Time.time);
+
+        /// <summary>Offline seam (recording replays, editor validation): runs the full per-frame
+        /// chain on <paramref name="frame"/> at session clock <paramref name="now"/>, with no pose
+        /// source and no Unity lifecycle — Awake need not have run.</summary>
+        public void ProcessOffline(PoseFrame frame, TrackingQuality quality, float now)
         {
+            EnsureBuilt();
+            Quality = quality;
+            Process(frame, now);
+        }
+
+        private void Process(PoseFrame frame, float now)
+        {
+            _now = now;
             LastFrame = frame;
             bool trackingOk = Quality == TrackingQuality.Good;
-            float now = Time.time;
 
             _poseFrameCount++;
             float nowRt = Time.realtimeSinceStartup;
@@ -186,14 +228,19 @@ namespace PushStars.CV
             }
 
             bool isArmed = Armer != null && Armer.IsArmed;
+
+            // ── 3b. Clap push-up flight (reads armed; pairs with reps in HandleFlightLanded) ──
+            Clap.Tick(frame, isArmed, now);
+
             bool anchorOk = WristAnchor.LastVerdict == AnchorVerdict.Anchored;
 
             // Immediate counting suspension on a confident wrist-off-floor verdict (owner's
             // request: "both wrists lifted → counting stops"), but NOT mid-rep — at the bottom the
             // wrist landmarks jitter and a spurious Airborne window must not kill an honest arc.
             // An air "rep" that somehow started armed still faces the per-rep auditor.
+            // A push-up flight is the one legitimate reason for both hands to leave the floor.
             bool countingLive = isArmed
-                && !(WristAnchor.LastVerdict == AnchorVerdict.Airborne && !repInFlight);
+                && !(WristAnchor.LastVerdict == AnchorVerdict.Airborne && !repInFlight && !Clap.InFlight);
 
             // ── 4. Depth tracker (owns the top/bottom latches) ──
             Tracker.Tick(frame, trackingOk, countingLive, now, hasElbow, rawElbow, anchorOk);
@@ -295,6 +342,7 @@ namespace PushStars.CV
 
         private void HandleRep(int reps)
         {
+            _lastRepSec = _now;
             Tracker.CommitRepAccepted();
             // Grace the wrist anchor monitor so the user can shift hands between reps.
             WristAnchor.Reset(CVConstants.WristAnchorGraceFramesAfterRep);
@@ -306,6 +354,51 @@ namespace PushStars.CV
                 Debug.Log($"[PushupSession] Rep {reps} | phase={Phase} | form={Form:0} | tempo={TempoRpm:0} rpm | vote={voteTag}");
             }
             OnRep?.Invoke(reps);
+
+            // The top only latched on landing (no full lockout before takeoff): the clap that
+            // already landed belongs to this rep.
+            if (_now <= _pendingClapUntil) TagClap(reps);
+        }
+
+        /// <summary>The landing of a push-up flight dips into a deep bend and pushes back up —
+        /// that arc is the tail of the rep already credited, not a new rep. So is any "bottom"
+        /// the elbow angle fakes while the hands are in the air.</summary>
+        private bool IsClapLandingArc(float bottomSec)
+        {
+            if (Clap.InFlight) return bottomSec >= Clap.TakeoffSec;
+            var f = Clap.LastFlight;
+            return f.HasValue && bottomSec >= f.Value.TakeoffSec
+                   && bottomSec <= f.Value.LandingSec + CVConstants.ClapAbsorbWindowSec;
+        }
+
+        private void HandleArcAbsorbed()
+        {
+            // Drop the landing dip's frames so they don't bleed into the next rep's audit window.
+            Auditor.Clear();
+            if (_logReps) Debug.Log("[PushupSession] Landing arc absorbed into the flight rep");
+        }
+
+        private void HandleFlightLanded(ClapFlight flight)
+        {
+            // Hands just came back down: the anchor window is full of in-air positions.
+            WristAnchor.Reset(CVConstants.WristAnchorGraceFramesAfterRep);
+            if (_logReps) Debug.Log($"[PushupSession] {flight}");
+            if (!flight.IsClap) return;
+
+            if (Counter.Reps > 0 && _lastRepSec >= flight.TakeoffSec - CVConstants.ClapRepBeforeTakeoffSec)
+                TagClap(Counter.Reps);
+            else
+                _pendingClapUntil = flight.LandingSec + CVConstants.ClapRepAfterLandingSec;
+        }
+
+        private void TagClap(int rep)
+        {
+            _pendingClapUntil = float.NegativeInfinity;
+            if (rep <= _lastClapRep) return;
+            _lastClapRep = rep;
+            ClapReps++;
+            if (_logReps) Debug.Log($"[PushupSession] Rep {rep} is a CLAP push-up");
+            OnClapRep?.Invoke(rep);
         }
     }
 }

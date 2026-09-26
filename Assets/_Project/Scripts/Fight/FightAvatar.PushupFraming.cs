@@ -7,15 +7,70 @@ namespace PushStars.Fight
 {
     public sealed partial class FightAvatar
     {
-        // An elevated frontal view shows the face, both hands and the feet, as in the duel art.
-        private static readonly Quaternion PushupView = Quaternion.LookRotation(
-            -new Vector3(0f, .30f, 1f).normalized, Vector3.up);
+        /// <summary>Camera rise over the look direction for every push-up shot. The mockups (boss,
+        /// duel, training, assessment) all show the phone-on-the-floor view: feet between the
+        /// hands and the chest. From the old .30 the far floor rose toward the horizon and the
+        /// feet read at shoulder height.</summary>
+        private static float _pushupElevation = .04f;
+        private static Quaternion PushupView => Quaternion.LookRotation(
+            -new Vector3(0f, _pushupElevation, 1f).normalized, Vector3.up);
+        /// <summary>Lens for the push-up shot. The stage's 40° lens, pulled in to fit the span,
+        /// magnified the near head and shoulders and shrank the far feet; the mockups have the
+        /// flat perspective of a longer lens (big shoes under the chest). Restored on leaving.</summary>
+        private static float _pushupFieldOfView = 22f;
+        private float _stageFieldOfView = -1f;
         private PushupPoseCorrection _pushupCorrection;
         private Vector3[] _pushupSilhouette;
         private bool _pushupFramed;
         private float _pushupAspect, _pushupFov;
         private Rect _pushupUv;
         private Matrix4x4 _pushupRootMatrix;
+        // Fallback shot (no mockup size given): the whole motion fits with these margins.
+        private const float ShotMargin = .08f;
+        private float _shotHandSpan, _shotFloor;
+        private Vector2 _pushupImageUnits;
+
+        /// <summary>Stands the push-up exactly as its screen's mockup draws it, in the canvas's
+        /// 390-wide design units: the hands' outer span is <paramref name="handSpan"/> wide
+        /// (centred in the displayed image) and the lowest contacts rest
+        /// <paramref name="floor"/> above the image's bottom edge. Camera distance follows from
+        /// the span, so both bodies (and any skin) come out the same size.</summary>
+        public void SetPushupShot(float handSpan, float floor)
+        {
+            _shotHandSpan = Mathf.Max(0f, handSpan);
+            _shotFloor = Mathf.Max(0f, floor);
+            _pushupFramed = false;
+        }
+
+        /// <summary>The mockup hand span this stage was given (0 = fit the whole motion).</summary>
+        public float PushupHandSpan => _shotHandSpan;
+
+        /// <summary>Size of the surface showing this stage in root-canvas units (0 when unknown).</summary>
+        private static Vector2 DisplayUnits(CharacterStage stage)
+        {
+            var image = stage != null ? stage.TargetImage : null;
+            var canvas = image != null ? image.canvas : null;
+            if (canvas == null) return Vector2.zero;
+            var rootScale = canvas.rootCanvas.transform.lossyScale;
+            var scale = image.rectTransform.lossyScale;
+            var size = image.rectTransform.rect.size;
+            if (Mathf.Abs(rootScale.x) < 1e-6f || Mathf.Abs(rootScale.y) < 1e-6f) return Vector2.zero;
+            return new Vector2(Mathf.Abs(size.x * scale.x / rootScale.x), Mathf.Abs(size.y * scale.y / rootScale.y));
+        }
+
+        /// <summary>Hands in the push-up camera's orientation (root-relative metres) and a palm's
+        /// width. The pose correction pins the hands, so any depth gives the same answer.</summary>
+        private bool TryHandsInView(Transform root, Quaternion inverse, out Vector3 left, out Vector3 right, out float palm)
+        {
+            left = right = default; palm = 0f;
+            var l = _animator.GetBoneTransform(HumanBodyBones.LeftHand);
+            var r = _animator.GetBoneTransform(HumanBodyBones.RightHand);
+            if (l == null || r == null) return false;
+            left = inverse * (l.position - root.position);
+            right = inverse * (r.position - root.position);
+            palm = PalmWidth(HumanBodyBones.LeftIndexProximal, HumanBodyBones.LeftLittleProximal, l);
+            return true;
+        }
 
         private void CachePushupSilhouette()
         {
@@ -86,16 +141,25 @@ namespace PushStars.Fight
                     _framed = false;
                     _pushupFramed = false;
                 }
+                if (_stageFieldOfView > 0f)
+                {
+                    _stageCamera.fieldOfView = _stageFieldOfView;
+                    _stageFieldOfView = -1f;
+                }
                 return false;
             }
+            if (_stageFieldOfView < 0f) _stageFieldOfView = _stageCamera.fieldOfView;
+            _stageCamera.fieldOfView = _pushupFieldOfView;
 
             var stage = _stageCamera.GetComponentInParent<CharacterStage>();
             Rect uv = stage != null ? stage.DisplayUv : new Rect(0f, 0f, 1f, 1f);
             var root = _animator.transform;
             Matrix4x4 rootMatrix = root.localToWorldMatrix;
+            Vector2 imageUnits = DisplayUnits(stage);
             if (_pushupFramed && Mathf.Approximately(_pushupAspect, _stageCamera.aspect)
                 && Mathf.Approximately(_pushupFov, _stageCamera.fieldOfView)
-                && _pushupUv == uv && _pushupRootMatrix == rootMatrix) return true;
+                && _pushupUv == uv && _pushupRootMatrix == rootMatrix
+                && Vector2.Distance(_pushupImageUnits, imageUnits) < .5f) return true;
 
             Quaternion rotation = root.rotation * PushupView;
             Quaternion inverse = Quaternion.Inverse(rotation);
@@ -110,13 +174,12 @@ namespace PushStars.Fight
 
             // Fit inside the ACTUAL visible UVs. Duel's bottom-anchored 125% crop otherwise
             // clips the crown even when the uncropped render texture fits perfectly.
-            const float margin = .08f;
             float tanY = Mathf.Tan(_stageCamera.fieldOfView * Mathf.Deg2Rad * .5f);
             float tanX = tanY * _stageCamera.aspect;
-            float left = (uv.xMin + uv.width * margin - .5f) * 2f * tanX;
-            float right = (uv.xMax - uv.width * margin - .5f) * 2f * tanX;
-            float bottom = (uv.yMin + uv.height * margin - .5f) * 2f * tanY;
-            float top = (uv.yMax - uv.height * margin - .5f) * 2f * tanY;
+            float left = (uv.xMin + uv.width * ShotMargin - .5f) * 2f * tanX;
+            float right = (uv.xMax - uv.width * ShotMargin - .5f) * 2f * tanX;
+            float bottom = (uv.yMin + uv.height * ShotMargin - .5f) * 2f * tanY;
+            float top = (uv.yMax - uv.height * ShotMargin - .5f) * 2f * tanY;
 
             // Each vertex gives an interval of valid camera X/Y positions at a distance.
             // Their intersection fits the whole motion; midpoint centres that fixed shot.
@@ -132,18 +195,40 @@ namespace PushStars.Fight
                     yMin = Mathf.Max(yMin, p.y - top * z);
                     yMax = Mathf.Min(yMax, p.y - bottom * z);
                 }
-                centre = new Vector2((xMin + xMax) * .5f, (yMin + yMax) * .5f);
+                // Highest camera the interval allows = lowest body: contacts on the floor margin.
+                centre = new Vector2((xMin + xMax) * .5f, yMax);
                 return xMin <= xMax && yMin <= yMax;
             }
             float near = Mathf.Max(.01f, _stageCamera.nearClipPlane + .02f - minZ);
-            float far = Mathf.Max(1f, near);
-            while (!Fit(far, out _) && far < 1024f) far *= 2f;
-            for (int i = 0; i < 22; i++)
+            float far;
+            Vector2 centre;
+            if (_shotHandSpan > 0f && imageUnits.x > 1f && imageUnits.y > 1f
+                && TryHandsInView(root, inverse, out Vector3 leftHand, out Vector3 rightHand, out float palm))
             {
-                float middle = (near + far) * .5f;
-                if (Fit(middle, out _)) far = middle; else near = middle;
+                // Mockup shot: the distance puts the hands' outer span at the requested share of
+                // the image width, centred; the lowest point of the whole motion on the floor line.
+                float viewLeft = (uv.xMin - .5f) * 2f * tanX, viewRight = (uv.xMax - .5f) * 2f * tanX;
+                float span = Mathf.Abs(leftHand.x - rightHand.x) + 2f * palm;
+                float spanShare = Mathf.Clamp(_shotHandSpan / imageUnits.x, .05f, 1.5f);
+                float handsZ = (leftHand.z + rightHand.z) * .5f;
+                far = Mathf.Max(near, span / (spanShare * (viewRight - viewLeft)) - handsZ);
+                float handsDepth = far + handsZ;
+                float floorSlope = (uv.yMin + uv.height * Mathf.Clamp01(_shotFloor / imageUnits.y) - .5f) * 2f * tanY;
+                float cy = float.PositiveInfinity;
+                foreach (var p in points) cy = Mathf.Min(cy, p.y - floorSlope * (p.z + far));
+                centre = new Vector2((leftHand.x + rightHand.x) * .5f - (viewLeft + viewRight) * .5f * handsDepth, cy);
             }
-            Fit(far, out Vector2 centre);
+            else
+            {
+                far = Mathf.Max(1f, near);
+                while (!Fit(far, out _) && far < 1024f) far *= 2f;
+                for (int i = 0; i < 22; i++)
+                {
+                    float middle = (near + far) * .5f;
+                    if (Fit(middle, out _)) far = middle; else near = middle;
+                }
+                Fit(far, out centre);
+            }
             _stageCamera.transform.SetPositionAndRotation(
                 root.position + rotation * new Vector3(centre.x, centre.y, -far), rotation);
             _focus = root.position + rotation * new Vector3(centre.x, centre.y, 0f);
@@ -156,6 +241,8 @@ namespace PushStars.Fight
             _pushupFov = _stageCamera.fieldOfView;
             _pushupUv = uv;
             _pushupRootMatrix = rootMatrix;
+            _pushupImageUnits = imageUnits;
+            PlacePushupGroundShadow();
             return true;
         }
     }

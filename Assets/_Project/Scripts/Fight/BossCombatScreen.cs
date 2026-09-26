@@ -33,6 +33,11 @@ namespace PushStars.Fight
         private float _playerFill = 1, _bossFill = 1;
         private int _damageIndex;
         private readonly List<(TMP_Text label, float time, Vector2 origin)> _numbers = new();
+        private ClawSlashGraphic _clawSlash;
+        private TMP_Text _clapLabel;
+        private float _clapAt = -100f;
+        private Vector2 _bossPortraitHome;
+        private Color _bossPortraitTint = Color.white;
         private static RenderTexture _headSnapshot;
         private static Rect _headSnapshotUv;
         private float _headCaptureAt;
@@ -74,6 +79,9 @@ namespace PushStars.Fight
             _health = !Preparation && _fight != null ? _fight.BossHealth : null;
             _health ??= new BossCombatState(id);
             _health.Damaged += OnDamage;
+            _health.ClapStrike += OnClapStrike;
+            if (!Preparation) BuildClapStrike();
+            if (!Preparation) StagePlayerOnGround();
             var profile = BossCatalog.Bosses.FirstOrDefault(b => b.Id == id) ?? BossCatalog.Current;
             BossName.text = profile.DisplayName;
             Stars.Filled = Mathf.Clamp(BossCatalog.Bosses.ToList().IndexOf(profile) + 1, 1, 5); Stars.SetVerticesDirty();
@@ -152,6 +160,79 @@ namespace PushStars.Fight
                 number.label.rectTransform.localScale = Vector3.one * (1 + .22f * Mathf.Sin(Mathf.Clamp01(t * 3) * Mathf.PI));
                 number.label.alpha = 1 - t * t;
             }
+            AnimateClapStrike();
+        }
+
+        // ── Clap push-up: double claw strike ─────────────────────────────────────────────────────
+
+        /// <summary>Runtime-built so the authored scene needs no change: the slash sits right above
+        /// the boss portrait (below HP bars, numbers and the countdown); "×2" reuses the damage
+        /// number styling.</summary>
+        private void BuildClapStrike()
+        {
+            if (BossPortrait == null || _clawSlash != null) return;
+            var go = new GameObject("ClapClawSlash", typeof(RectTransform), typeof(CanvasRenderer), typeof(ClawSlashGraphic));
+            go.layer = gameObject.layer;
+            var rect = (RectTransform)go.transform;
+            rect.SetParent(BossPortrait.transform.parent, false);
+            rect.SetSiblingIndex(BossPortrait.transform.GetSiblingIndex() + 1);
+            rect.anchorMin = rect.anchorMax = rect.pivot = new Vector2(.5f, .5f);
+            rect.anchoredPosition = Vector2.zero; rect.sizeDelta = Vector2.zero;
+            _clawSlash = go.GetComponent<ClawSlashGraphic>();
+            _bossPortraitHome = BossPortrait.rectTransform.anchoredPosition;
+            _bossPortraitTint = BossPortrait.color;
+            if (DamageLabels.Length == 0 || DamageLabels[0] == null) return;
+            _clapLabel = Instantiate(DamageLabels[0], DamageLabels[0].transform.parent);
+            _clapLabel.name = "ClapX2";
+            _clapLabel.text = "×2";
+            _clapLabel.color = Color.white;
+            _clapLabel.alignment = TextAlignmentOptions.Center;
+            _clapLabel.rectTransform.localRotation = Quaternion.Euler(0, 0, -8);
+            _clapLabel.transform.SetAsLastSibling();
+            _clapLabel.gameObject.SetActive(false);
+        }
+
+        private void OnClapStrike(int damage)
+        {
+            if (_clawSlash == null) return;
+            var portrait = BossPortrait.rectTransform;
+            // Rake the torso: a touch above the portrait's centre, sized to the boss body.
+            var size = portrait.rect.size;
+            _clawSlash.Play(_bossPortraitHome + Vector2.up * (size.y * .06f), Mathf.Min(size.x, size.y) * .56f);
+            _clapAt = Time.unscaledTime;
+            if (_clapLabel != null) { _clapLabel.gameObject.SetActive(true); _clapLabel.alpha = 1; }
+        }
+
+        /// <summary>Hit-stop shake + red flash on the boss, and the "×2" pop; restores exactly.</summary>
+        private void AnimateClapStrike()
+        {
+            if (_clawSlash == null) return;
+            float t = Time.unscaledTime - _clapAt;
+            var portrait = BossPortrait.rectTransform;
+            if (t < .32f)
+            {
+                float k = 1 - t / .32f;
+                portrait.anchoredPosition = _bossPortraitHome + new Vector2(
+                    Mathf.Sin(t * 95f) * 7f * k, Mathf.Sin(t * 71f + 1.3f) * 4f * k);
+                float flash = Mathf.Clamp01(k * 1.4f);
+                BossPortrait.color = Color.Lerp(_bossPortraitTint, _bossPortraitTint * new Color(1f, .5f, .48f), flash);
+            }
+            else if (portrait.anchoredPosition != _bossPortraitHome || BossPortrait.color != _bossPortraitTint)
+            {
+                portrait.anchoredPosition = _bossPortraitHome;
+                BossPortrait.color = _bossPortraitTint;
+            }
+
+            if (_clapLabel == null || !_clapLabel.gameObject.activeSelf) return;
+            float u = t / .95f;
+            if (u >= 1) { _clapLabel.gameObject.SetActive(false); return; }
+            // Upper-left of the boss: the damage number already floats up on the right.
+            var origin = _bossPortraitHome + new Vector2(-portrait.rect.width * .40f, portrait.rect.height * .22f);
+            _clapLabel.rectTransform.anchoredPosition = origin + Vector2.up * (30 * u);
+            // Stamp in big, settle, then fade.
+            float pop = u < .12f ? Mathf.Lerp(2.1f, .92f, u / .12f) : Mathf.Lerp(.92f, 1f, Mathf.Clamp01((u - .12f) / .1f));
+            _clapLabel.rectTransform.localScale = Vector3.one * pop;
+            _clapLabel.alpha = 1 - Mathf.Clamp01((u - .6f) / .4f);
         }
 
         private readonly System.Collections.Generic.Dictionary<RawImage,
@@ -162,12 +243,12 @@ namespace PushStars.Fight
             if (target == null || avatar == null || avatar.StageCamera == null) return;
             var texture = avatar.StageCamera.targetTexture; target.texture = texture;
             if (texture == null) return;
-            // Preserve the camera viewport for the live player. Fitting a crop to the
-            // body cancels the mirror anchor's distance and position measurements.
+            // The live player's stage renders straight into this portrait (see
+            // StagePlayerOnGround): full texture, camera aspect matched to the rect. Cropping to
+            // the body would cancel the mirror anchor's distance and position measurements.
             if (smoothPlayer)
             {
-                target.uvRect = CameraViewport(target.rectTransform.rect.size,
-                    new Vector2(texture.width, texture.height));
+                target.uvRect = new Rect(0f, 0f, 1f, 1f);
                 return;
             }
             Vector2 size = target.rectTransform.rect.size;
@@ -190,6 +271,44 @@ namespace PushStars.Fight
             target.uvRect = new Rect(body.center.x - width * .5f, centerY - height * .5f, width, height);
             if (cropPortrait && avatar.IsPreparationFramed)
                 _preparationFrames[target] = (avatar, texture, size, target.uvRect);
+        }
+
+        /// <summary>The player's stage was authored for the duel half, hidden in a boss battle:
+        /// its camera kept that half's tall aspect and the push-up shot was fitted to that half's
+        /// crop, so the body came out small and floating once shrunk into this wide portrait.
+        /// Point the stage at the portrait itself and stand the push-up on its ground line.</summary>
+        private void StagePlayerOnGround()
+        {
+            if (PlayerStage == null || PlayerPortrait == null || PlayerStage.StageCamera == null) return;
+            PlayerStage.StageCamera.GetComponentInParent<PushStars.UI.CharacterStage>()?.SetDisplayTarget(PlayerPortrait);
+            // Mockup: the hands span ~213 of the 390-wide screen; palms just above the portrait's
+            // bottom edge (clear of the guidance band).
+            PlayerStage.SetPushupShot(213f, 24f);
+            // The push-up brings its own crisp contact ellipse (FightAvatar); the authored soft
+            // sprite under it would double it.
+            if (Content.Find("PlayerShadow") is RectTransform playerShadow) playerShadow.gameObject.SetActive(false);
+            CrispenShadow(Content.Find("BossShadow") as RectTransform);
+        }
+
+        /// <summary>Mockups draw contact shadows as flat, crisp ellipses; the authored soft
+        /// "ground_shadow" sprite reads as a blur. Same rect and tint, hard edge.</summary>
+        private static void CrispenShadow(RectTransform soft)
+        {
+            if (soft == null || !soft.TryGetComponent(out Image image) || !image.enabled) return;
+            var go = new GameObject(soft.name + "Crisp", typeof(RectTransform), typeof(CanvasRenderer),
+                typeof(PushStars.UI.HardEllipseGraphic));
+            go.layer = soft.gameObject.layer;
+            var rect = (RectTransform)go.transform;
+            rect.SetParent(soft.parent, false);
+            rect.SetSiblingIndex(soft.GetSiblingIndex());
+            rect.anchorMin = soft.anchorMin; rect.anchorMax = soft.anchorMax; rect.pivot = soft.pivot;
+            rect.anchoredPosition = soft.anchoredPosition;
+            // The soft sprite's visible core is narrower than its rect.
+            rect.sizeDelta = new Vector2(soft.sizeDelta.x * .9f, Mathf.Max(soft.sizeDelta.y, soft.sizeDelta.x * .17f));
+            var ellipse = go.GetComponent<PushStars.UI.HardEllipseGraphic>();
+            ellipse.color = new Color(0f, 0f, 0f, .45f);
+            ellipse.raycastTarget = false;
+            image.enabled = false;
         }
 
         internal static Rect CameraViewport(Vector2 display, Vector2 texture)
@@ -249,6 +368,11 @@ namespace PushStars.Fight
             var origin = new Vector2(120 + (_damageIndex % 2) * 10, boss ? 245 : -135);
             _numbers.Add((label, Time.unscaledTime, origin));
         }
-        private void OnDestroy() { if (_health != null) _health.Damaged -= OnDamage; }
+        private void OnDestroy()
+        {
+            if (_health == null) return;
+            _health.Damaged -= OnDamage;
+            _health.ClapStrike -= OnClapStrike;
+        }
     }
 }

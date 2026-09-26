@@ -208,6 +208,7 @@ namespace PushStars.Fight
             SetText(_playerReps, "0");
             ConfigureEditableHud(false);
             SetDuelAvatarZoom(true);
+            ApplyPushupShots();
         }
 
         /// <summary>
@@ -264,6 +265,7 @@ namespace PushStars.Fight
             }
             ConfigureSoloPresentation();
             ConfigureEditableHud(true);
+            ApplyPushupShots();
         }
 
         public void SetSoloRepsVisible(bool visible)

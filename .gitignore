@@ -120,3 +120,7 @@ layout_dump.txt
 .mcp.json
 .claude/settings.local.json
 .claude/skills/
+
+# CV acceptance recordings: raw videos stay local (faces); the extracted *.pose.csv are fixtures
+/CVRecordings/**/*.[Mm][Oo][Vv]
+/CVRecordings/**/*.[Mm][Pp]4

@@ -52,6 +52,14 @@ namespace PushStars.CV
         /// behaviour, preserved for unit tests that don't construct an auditor).</summary>
         public Func<RepVote> RepAuditor { get; set; }
 
+        /// <summary>Optional: given a completed arc's bottom-latch time, returns true when the arc
+        /// is part of a movement already credited — e.g. the landing dip of a clap push-up. Such an
+        /// arc is dropped silently, BEFORE the audit: no veto, no rep, just <see cref="OnArcAbsorbed"/>.</summary>
+        public Func<float, bool> ArcAbsorber { get; set; }
+
+        /// <summary>Fires when <see cref="ArcAbsorber"/> swallowed a rep arc.</summary>
+        public event Action OnArcAbsorbed;
+
         /// <summary>Fires with the new rep count each time a rep is CREDITED (Pass or SoftDock).</summary>
         public event Action<int> OnRep;
 
@@ -167,9 +175,11 @@ namespace PushStars.CV
                     && (timeSec - _bottomTime) >= CVConstants.MinAscentSeconds;
                 if (_reachedBottom && cycleOk && ascentOk)
                 {
+                    bool absorbed = ArcAbsorber != null && ArcAbsorber(_bottomTime);
                     _reachedBottom = false;
                     _bottomTime = -1f;
-                    CreditRep(timeSec);
+                    if (absorbed) OnArcAbsorbed?.Invoke();
+                    else CreditRep(timeSec);
                 }
                 else if (_reachedBottom)
                 {

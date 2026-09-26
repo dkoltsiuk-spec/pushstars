@@ -347,5 +347,51 @@ namespace PushStars.CV
         /// plane: |hip→ankle| / sw ≥ this. Frontally the knee angle is uninformative (sagittal
         /// bend projects collinear).</summary>
         public const float KneeBendSideProjMinFrac = 0.8f;
+
+        // ── Clap push-up (ClapDetector) ──
+        // Measured on the owner's frontal recording (CVRecordings/clap, 5 claps @ ~29 fps, full
+        // model): planted wrists-apart ≈ 1.9·sw; in the air the wrists rise 0.75–1.05·sw and the
+        // fingertips meet (0.02–0.07 of the planted distance); the hands are off the floor 0.20–0.30 s (6–9
+        // frames); wrist visibility never drops below 0.82. Rises/distances are in units of the
+        // PLANTED shoulder width (square space) — sw itself shrinks ~12% as the chest flies up.
+        /// <summary>Wrist mid-point rise (× planted sw) that opens a flight. Planted jitter ≈ 0.02.</summary>
+        public const float ClapTakeoffRiseSw = 0.30f;
+        /// <summary>Rise below this closes the flight (hands back on the floor).</summary>
+        public const float ClapLandRiseSw = 0.12f;
+        /// <summary>A flight must peak at least this high to count (hops below are hand shuffles).</summary>
+        public const float ClapMinPeakRiseSw = 0.45f;
+        /// <summary>…and must not peak above this: standing up / walking to the phone lifts the
+        /// wrists 1.9–2.7·sw, a push-up flight 0.75–1.05·sw.</summary>
+        public const float ClapMaxPeakRiseSw = 1.6f;
+        /// <summary>Flight duration window. Longer = the user got up / waved, not a push-up flight.</summary>
+        public const float ClapMinFlightSec = 0.08f;
+        public const float ClapMaxFlightSec = 0.80f;
+        /// <summary>Clap = the hands TOUCH: the closest pair of hand points (wrist, index, pinky,
+        /// thumb) falls to this fraction of the planted wrists-apart distance. Measured: claps
+        /// 0.02–0.07; explosive lifts without a clap 0.21–0.51 (their wrists alone swing in to
+        /// 0.32–0.62, which is why wrists are not the signal).</summary>
+        public const float ClapMaxHandGapOfPlanted = 0.15f;
+        /// <summary>…or stays within this on two consecutive frames (claps: ≥ 2 frames ≤ 0.19;
+        /// lifts: best consecutive pair 0.24–0.26). Rescues a clap whose contact frame fell
+        /// between samples at 15 fps.</summary>
+        public const float ClapMaxHandGapPairOfPlanted = 0.20f;
+        /// <summary>…and at most this many planted shoulder widths (absolute backstop for a
+        /// narrow planted grip, where the relative test alone would be too easy).</summary>
+        public const float ClapMaxHandGapSw = 0.35f;
+        /// <summary>Wrist visibility for a frame to take part (blur-tolerant, like the elbow chain).</summary>
+        public const float ClapWristMinVis = 0.35f;
+        /// <summary>EMA weight of the planted wrist baseline while the hands are on the floor.</summary>
+        public const float ClapBaselineAlpha = 0.1f;
+        /// <summary>Planted frames needed before flights can be judged.</summary>
+        public const int ClapBaselineMinFrames = 10;
+        /// <summary>A landing is absorbed into a deep dip (70–100° elbows) and pushed back up —
+        /// part of the SAME clap rep. A rep arc whose bottom latches from takeoff until this long
+        /// after landing is absorbed silently (measured landing→bottom 0.2–0.4 s).</summary>
+        public const float ClapAbsorbWindowSec = 0.7f;
+        /// <summary>The clap belongs to the rep credited at most this long before takeoff (the top
+        /// latches on the explosive push, 0.05–0.15 s before the hands leave the floor)…</summary>
+        public const float ClapRepBeforeTakeoffSec = 0.6f;
+        /// <summary>…or, if the top only latches on landing, to a rep credited this long after it.</summary>
+        public const float ClapRepAfterLandingSec = 0.4f;
     }
 }

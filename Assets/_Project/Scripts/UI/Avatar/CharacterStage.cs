@@ -92,6 +92,17 @@ namespace PushStars.UI
         public Camera StageCamera => _stageCamera;
         public Rect DisplayUv => _targetImage != null ? _targetImage.uvRect : new Rect(0f, 0f, 1f, 1f);
 
+        /// <summary>The surface showing this stage (for layout math in screen units).</summary>
+        public RawImage TargetImage => _targetImage;
+
+        /// <summary>Points aspect matching and <see cref="DisplayUv"/> at another surface showing
+        /// this stage's texture — e.g. the boss battle's portrait, while the authored duel half
+        /// that normally shows it is hidden.</summary>
+        public void SetDisplayTarget(RawImage image)
+        {
+            if (image != null) _targetImage = image;
+        }
+
         /// <summary>The live render target. Useful for snapshots or wardrobe previews later.</summary>
         public RenderTexture RenderTarget => _rt;
 

@@ -37,6 +37,11 @@ namespace PushStars.CV
         private Quaternion _hipsRotation, _headReferenceRotation;
         private float _shoulderHeight, _shoulderForward, _shoulderHalfWidth, _footHalfWidth;
         private float _armLength, _ankleHeight, _wristHeight, _ankleZ, _wristZ, _topHeight;
+        /// <summary>How far each hand is planted outside its shoulder, in arm lengths. The design
+        /// mockups draw a wide push-up — hands well outside the shoulders, arms angled out, the
+        /// body low and broad; at the old .12 the straight arms stood the figure ~1.5x taller
+        /// than the mockups for the same hand span.</summary>
+        private static float _handsOut = .34f;
         private bool _ready, _active, _hasShown;
         private float _depth, _fadeRemaining, _fadeDuration;
 
@@ -122,8 +127,8 @@ namespace PushStars.CV
                     + Vector3.Distance(Position(_legs[1].End), Position(Bone(HumanBodyBones.RightToes)))) * .5f;
                 _ankleHeight = footLength * .85f + _wristHeight * .3f;
                 _ankleZ = -legReach * .85f;
-                // Reserve a little vertical reach for the wider hand placement.
-                _topHeight = _wristHeight + _armLength * .987f;
+                // A straight arm reaching out to the wide hand placement: its vertical reach.
+                _topHeight = _wristHeight + _armLength * Mathf.Sqrt(Mathf.Max(.25f, .9935f * .9935f - _handsOut * _handsOut));
                 float angle = PlankAngle(_topHeight);
                 _wristZ = _ankleZ + Mathf.Cos(angle) * _shoulderHeight
                     + Mathf.Sin(angle) * _shoulderForward + _armLength * .06f;
@@ -212,7 +217,7 @@ namespace PushStars.CV
                 Solve(_legs[i], foot, Vector3.down);
                 _legs[i].End.rotation = _root.rotation * _footRotations[i];
 
-                var wrist = new Vector3(side * (_shoulderHalfWidth + _armLength * .12f), _wristHeight, _wristZ);
+                var wrist = new Vector3(side * (_shoulderHalfWidth + _armLength * _handsOut), _wristHeight, _wristZ);
                 // Elbows fold back and modestly out; the two sides use mirrored bend planes.
                 Solve(_arms[i], wrist, new Vector3(side * .55f, 0f, -1f));
                 _arms[i].End.rotation = _root.rotation * _handRotations[i];

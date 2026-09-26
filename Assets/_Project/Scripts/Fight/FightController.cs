@@ -131,7 +131,7 @@ namespace PushStars.Fight
             _hud.SetPlayerReps(0);
             _hud.SetTimer(FightConfig.DuelDurationSec);
 
-            if (_session != null) _session.OnRep += HandleRep;
+            if (_session != null) { _session.OnRep += HandleRep; _session.OnClapRep += HandleClapRep; }
             if (_exitButton != null) _exitButton.onClick.AddListener(ExitToCaller);
             if (_soloExitButton != null) _soloExitButton.onClick.AddListener(ExitToCaller);
             if (_soloPauseButton != null) _soloPauseButton.onClick.AddListener(PauseSet);
@@ -158,7 +158,7 @@ namespace PushStars.Fight
         {
             if (_boss != null) _boss.OnRep -= HandleBossAttack;
             StopScreenPreview();
-            if (_session != null) _session.OnRep -= HandleRep;
+            if (_session != null) { _session.OnRep -= HandleRep; _session.OnClapRep -= HandleClapRep; }
             if (_exitButton != null) _exitButton.onClick.RemoveListener(ExitToCaller);
             if (_soloExitButton != null) _soloExitButton.onClick.RemoveListener(ExitToCaller);
             if (_soloPauseButton != null) _soloPauseButton.onClick.RemoveListener(PauseSet);
@@ -260,6 +260,16 @@ namespace PushStars.Fight
             if (_mode == FightMode.Training && !_paused && !_layoutPaused)
                 ShowRepMilestone(totalReps - _baselineReps);
             if (BossHealth != null) { BossHealth.PlayerRep(_session.Form); CheckBossKnockout(); }
+        }
+
+        /// <summary>The clap of a clap push-up was confirmed on landing: the boss takes that rep's
+        /// damage a second time (x2 total). Only reps of this fight count.</summary>
+        private void HandleClapRep(int totalReps)
+        {
+            if (_phase != Phase.Live || _bossEnding || BossHealth == null) return;
+            int index = totalReps - _baselineReps - 1;
+            if (index < 0 || index >= _repForms.Count) return;
+            BossHealth.PlayerClapStrike(_repForms[index]); CheckBossKnockout();
         }
 
         private void HandleBossAttack(int reps)
