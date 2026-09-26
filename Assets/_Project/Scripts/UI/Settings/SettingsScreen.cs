@@ -24,9 +24,10 @@ namespace PushStars.UI
     /// </summary>
     public class SettingsScreen : MonoBehaviour
     {
-        // Replace with the real published URLs before store submission.
-        private const string PrivacyUrl = "https://pushstars.app/privacy";
-        private const string TermsUrl   = "https://pushstars.app/terms";
+        // Published from legal_site/ to the separate "pushstars" Firebase Hosting site
+        // (firebase deploy --only hosting --config firebase.legal.json).
+        private const string PrivacyUrl = "https://pushstars.web.app/privacy";
+        private const string TermsUrl   = "https://pushstars.web.app/terms";
         private const string BootSceneName = "Boot";
 
         [Header("Overlay (toggled root)")]

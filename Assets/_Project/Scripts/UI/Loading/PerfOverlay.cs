@@ -25,10 +25,11 @@ namespace PushStars.UI
         private const string PrefsKey = "debug.perf_overlay";
         private const float SampleWindowSec = 0.5f;
 
-        /// <summary>Whether the readout shows. Survives restarts; tapping it turns it off.</summary>
+        /// <summary>Whether the readout shows. Development builds only (never in a store build);
+        /// survives restarts; tapping it turns it off.</summary>
         public static bool Enabled
         {
-            get => PlayerPrefs.GetInt(PrefsKey, 1) != 0;
+            get => Debug.isDebugBuild && PlayerPrefs.GetInt(PrefsKey, 1) != 0;
             set { PlayerPrefs.SetInt(PrefsKey, value ? 1 : 0); PlayerPrefs.Save(); }
         }
 
