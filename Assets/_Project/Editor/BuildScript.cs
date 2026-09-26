@@ -47,6 +47,7 @@ namespace PushStars.Editor
             "Assets/_Project/Scenes/CaseAward.unity",
             "Assets/_Project/Scenes/CaseOpening.unity",
             "Assets/_Project/Scenes/CaseReward.unity",
+            "Assets/_Project/Scenes/AuraReward.unity",
         };
 
         // CI passes its own scene list to BuildPlayer; Editor Build Settings alone do not
