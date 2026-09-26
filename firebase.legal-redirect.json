@@ -1,0 +1,9 @@
+{
+  "hosting": {
+    "site": "pushstars",
+    "public": "legal_redirect",
+    "redirects": [
+      { "regex": "^/(?P<path>.*)$", "destination": "https://pushupstars-app.web.app/:path", "type": 301 }
+    ]
+  }
+}

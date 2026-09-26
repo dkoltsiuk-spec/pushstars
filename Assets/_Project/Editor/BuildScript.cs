@@ -236,7 +236,7 @@ namespace PushStars.Editor
 
         private static void ConfigureIOS()
         {
-            PlayerSettings.iOS.cameraUsageDescription = "Push Stars uses the camera to count your push-ups and check your form.";
+            PlayerSettings.iOS.cameraUsageDescription = "Pushup Stars uses the camera to count your push-ups and check your form.";
             PlayerSettings.iOS.targetOSVersionString  = "15.0";
             PlayerSettings.SetApplicationIdentifier(NamedBuildTarget.iOS, BundleId);
 
