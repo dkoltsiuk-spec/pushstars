@@ -28,31 +28,6 @@ namespace PushStars.Editor
         private const string SpritesDir = "Assets/_Project/UI/Sprites/";
         private const string ArtSprite = SpritesDir + "loading_bg.png";
 
-        // Preference order, not alternatives: the exported bar art is used the moment it exists,
-        // and the sprites SpriteFactory draws stand in until it does. Swapping in the real thing is
-        // therefore a file drop — no rewiring, and nothing here to keep in sync with it.
-        private static readonly string[] TrackSprites =
-            { SpritesDir + "bar_track.png", SpritesDir + "pill_bar_track.png" };
-        private static readonly string[] FillSprites =
-            { SpritesDir + "bar_fill.png", SpritesDir + "pill_bar_fill.png" };
-
-        // ── Layout, in the 390×844 reference units the canvas is authored against ───────────────
-        // Everything under the art is measured from the bottom of the SAFE area, not the screen:
-        // the bar clears the home indicator by design, and on a phone without one it simply sits
-        // that much lower.
-        private const float BarWidth = 320f;
-        private const float BarY = 34f;
-
-        // Height, corner radius and the rim around the gold are baked into the two sprites, so they
-        // are read back from the tool that draws them rather than restated here — restated, the
-        // trough would keep its rect while the art changed shape under it.
-        private const float BarHeight = SpriteFactory.BarHeight;
-        private const float BarPadding = SpriteFactory.BarPadding;
-        private const float PercentY = 85f;
-        private const float PercentSize = 44f;
-        private const float StatusY = 122f;
-        private const float VersionY = 8f;
-
         [MenuItem("Tools/Push Stars/Build Boot Screen", priority = 4)]
         public static void Build()
         {
@@ -97,79 +72,17 @@ namespace PushStars.Editor
             UiBuilder.Stretch(safe);
             safe.gameObject.AddComponent<SafeAreaFitter>();
 
-            // ── Wordmark (fallback only) ────────────────────────────────────────────────────────
-            // Spelled out in text only when the poster is missing, so a stripped or half-imported
-            // project still launches into something branded instead of a black screen. With the art
-            // present this would print a second wordmark over the painted one.
-            if (art == null)
-            {
-                var word = UiBuilder.Text(safe, "Wordmark", AppColors.TextPrimary, "PUSH STARS", 52, FontStyles.Bold);
-                word.characterSpacing = 6f;
-                word.enableWordWrapping = false;
-                word.enableAutoSizing = true;
-                word.fontSizeMin = 28f;
-                word.fontSizeMax = 52f;
-                UiBuilder.Place(word.rectTransform, new Vector2(0.5f, 0.5f), new Vector2(0f, 104f), new Vector2(340f, 72f));
-
-                var tagline = UiBuilder.Text(safe, "Tagline", AppColors.TextSecondary,
-                                             "PUSH-UPS · DUELS · RANKINGS", 13, FontStyles.Bold);
-                tagline.characterSpacing = 4f;
-                tagline.enableWordWrapping = false;
-                UiBuilder.Place(tagline.rectTransform, new Vector2(0.5f, 0.5f), new Vector2(0f, 46f), new Vector2(360f, 20f));
-            }
-
-            // ── Percentage ──────────────────────────────────────────────────────────────────────
-            // Carries the same black keyline as every other number in the game (UiBuilder.Text
-            // applies it), which is also what keeps it readable over the brightest part of the art.
-            var percent = UiBuilder.Text(safe, "Percent", AppColors.TextPrimary, "0%", PercentSize, FontStyles.Bold);
-            percent.enableWordWrapping = false;
-            UiBuilder.Place(percent.rectTransform, new Vector2(0.5f, 0f), new Vector2(0f, PercentY), new Vector2(260f, 56f));
-
-            // ── Progress bar ────────────────────────────────────────────────────────────────────
-            SpriteFactory.BuildBarSprites();
-            var trackSprite = LoadFirst(TrackSprites);
-            var fillSprite = LoadFirst(FillSprites);
-
-            var track = UiBuilder.Image(safe, "ProgressTrack", new Color(0.04f, 0.04f, 0.06f, 0.95f));
-            if (trackSprite != null) { track.sprite = trackSprite; track.type = Image.Type.Sliced; }
-            UiBuilder.Place(track.rectTransform, new Vector2(0.5f, 0f), new Vector2(0f, BarY),
-                            new Vector2(BarWidth, BarHeight));
-
-            // The fill is measured against this rather than against the trough, so the black rim
-            // stays an even width at both ends and the gold's own caps never sit on top of it.
-            var fillArea = UiBuilder.Rect(track.rectTransform, "FillArea");
-            UiBuilder.Stretch(fillArea, BarPadding, BarPadding, BarPadding, BarPadding);
-
-            // Tint white: the gradient is painted into the sprite, and any other tint multiplies it.
-            var fill = UiBuilder.Image(fillArea, "Fill", Color.white);
-            if (fillSprite != null) { fill.sprite = fillSprite; fill.type = Image.Type.Sliced; }
-            // Anchored, not sized: LoadingScreen drives anchorMax.x, so the width follows the track
-            // on every screen size without the scene having to know how wide the track ended up.
-            fill.rectTransform.anchorMin = Vector2.zero;
-            fill.rectTransform.anchorMax = new Vector2(0f, 1f);
-            fill.rectTransform.pivot = new Vector2(0f, 0.5f);
-            fill.rectTransform.offsetMin = Vector2.zero;
-            fill.rectTransform.offsetMax = Vector2.zero;
-
-            // ── Diagnostics ─────────────────────────────────────────────────────────────────────
-            // Not in the comp, and deliberately quiet: the status line is the only thing that says
-            // WHICH startup step is the slow one when a launch stalls, and it starts counting
-            // seconds out loud after one. Dim enough to read as part of the art until it matters.
-            var status = UiBuilder.Text(safe, "Status", new Color(1f, 1f, 1f, 0.42f), "Starting…", 11, FontStyles.Normal);
-            UiBuilder.Place(status.rectTransform, new Vector2(0.5f, 0f), new Vector2(0f, StatusY), new Vector2(320f, 18f));
-
-            var version = UiBuilder.Text(safe, "Version", new Color(1f, 1f, 1f, 0.25f), "v0.1", 9, FontStyles.Normal);
-            UiBuilder.Place(version.rectTransform, new Vector2(0.5f, 0f), new Vector2(0f, VersionY), new Vector2(200f, 14f));
-
+            var percent = UiBuilder.Text(safe, "Percent", Color.white, "0%", 44f, FontStyles.Bold);
+            ConfigurePercent(percent);
+            var progress = UiBuilder.Rect(safe, "ProgressTrack").gameObject.AddComponent<LoadingProgressGraphic>();
+            ConfigureProgress(progress);
             // ── Behaviours ──────────────────────────────────────────────────────────────────────
             var group = root.gameObject.AddComponent<CanvasGroup>();
 
             var loading = root.gameObject.AddComponent<LoadingScreen>();
             var loadingSO = new SerializedObject(loading);
-            UiBuilder.Set(loadingSO, "_progressFill", fill);
+            UiBuilder.Set(loadingSO, "_progress", progress);
             UiBuilder.Set(loadingSO, "_percent", percent);
-            UiBuilder.Set(loadingSO, "_status", status);
-            UiBuilder.Set(loadingSO, "_version", version);
             UiBuilder.Set(loadingSO, "_group", group);
             loadingSO.ApplyModifiedPropertiesWithoutUndo();
 
@@ -186,24 +99,62 @@ namespace PushStars.Editor
 
             EditorSceneManager.SaveScene(scene, ScenePath);
             UiBuilder.EnsureSceneInBuildSettings(ScenePath);
-            Debug.Log($"[BootSceneSetup] Boot.unity built (art: {(art != null ? "loading_bg" : "missing — text wordmark")}).");
+            Debug.Log($"[BootSceneSetup] Boot.unity built (art: {(art != null ? "loading_bg" : "missing")}).");
         }
 
-        /// <summary>First of <paramref name="paths"/> that resolves to a sprite. The list is a
-        /// preference order — the exported art first, the generated stand-in behind it — so a path
-        /// that is simply not there yet is expected and passed over quietly.</summary>
-        private static Sprite LoadFirst(params string[] paths)
+        /// <summary>Updates only the loading UI in an existing authored Boot scene.</summary>
+        public static void ApplyReferenceLayout(UnityEngine.SceneManagement.Scene scene)
         {
-            foreach (var path in paths)
+            LoadingScreen loading = null;
+            foreach (var root in scene.GetRootGameObjects())
+                if ((loading = root.GetComponentInChildren<LoadingScreen>(true)) != null) break;
+            if (loading == null) throw new System.InvalidOperationException("Boot LoadingScreen is missing.");
+            var safe = (RectTransform)loading.transform.Find("SafeArea");
+            foreach (string name in new[] { "Status", "Version", "Wordmark", "Tagline" })
             {
-                if (!File.Exists(path)) continue;
-                var sprite = SpriteImporter.Load(path);
-                if (sprite != null) return sprite;
+                var extra = safe.Find(name);
+                if (extra != null) Object.DestroyImmediate(extra.gameObject);
             }
-
-            Debug.LogWarning($"[BootSceneSetup] No sprite among: {string.Join(", ", paths)}");
-            return null;
+            var percent = safe.Find("Percent").GetComponent<TextMeshProUGUI>();
+            ConfigurePercent(percent);
+            var track = (RectTransform)safe.Find("ProgressTrack");
+            for (int i = track.childCount - 1; i >= 0; i--)
+                Object.DestroyImmediate(track.GetChild(i).gameObject);
+            var oldImage = track.GetComponent<Image>();
+            if (oldImage != null) Object.DestroyImmediate(oldImage);
+            var progress = track.GetComponent<LoadingProgressGraphic>();
+            if (progress == null) progress = track.gameObject.AddComponent<LoadingProgressGraphic>();
+            ConfigureProgress(progress);
+            var data = new SerializedObject(loading);
+            UiBuilder.Set(data, "_progress", progress);
+            UiBuilder.Set(data, "_percent", percent);
+            data.ApplyModifiedPropertiesWithoutUndo();
+            EditorSceneManager.MarkSceneDirty(scene);
         }
 
+        private static void ConfigureProgress(LoadingProgressGraphic progress)
+        {
+            progress.color = Color.white;
+            progress.raycastTarget = false;
+            progress.Progress = 0f;
+            UiBuilder.Place(progress.rectTransform, new Vector2(.5f, 0f),
+                new Vector2(0f, 45f), new Vector2(340f, 46f));
+            progress.rectTransform.pivot = new Vector2(.5f, .5f);
+        }
+
+        private static void ConfigurePercent(TextMeshProUGUI percent)
+        {
+            var font = AssetDatabase.LoadAssetAtPath<TMP_FontAsset>(FontSetup.BoldAsset);
+            if (font != null) { percent.font = font; percent.fontStyle = FontStyles.Normal; }
+            percent.color = Color.white;
+            percent.fontSize = 44f;
+            percent.enableAutoSizing = false;
+            percent.enableWordWrapping = false;
+            percent.text = "0%";
+            percent.raycastTarget = false;
+            UiBuilder.Place(percent.rectTransform, new Vector2(.5f, 0f),
+                new Vector2(0f, 108f), new Vector2(260f, 56f));
+            percent.rectTransform.pivot = new Vector2(.5f, .5f);
+        }
     }
 }

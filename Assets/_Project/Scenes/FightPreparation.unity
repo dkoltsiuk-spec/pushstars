@@ -4199,7 +4199,7 @@ RectTransform:
   m_LocalEulerAnglesHint: {x: 0, y: 0, z: 0}
   m_AnchorMin: {x: 0.5, y: 0.5}
   m_AnchorMax: {x: 0.5, y: 0.5}
-  m_AnchoredPosition: {x: 104, y: 179}
+  m_AnchoredPosition: {x: 88, y: 179}
   m_SizeDelta: {x: 205, y: 312}
   m_Pivot: {x: 0.5, y: 0.5}
 --- !u!1 &516982213
@@ -9848,6 +9848,9 @@ MonoBehaviour:
     type: 3}
   _femalePrefab: {fileID: 7208194473291000001, guid: d5e68a4ad9f761c45bd116e3c191849c,
     type: 3}
+  _sonicPrefab: {fileID: 0}
+  _gladiatorPrefab: {fileID: 0}
+  _robotPrefab: {fileID: 0}
   _fightController: {fileID: 9100000, guid: be0429e8625c6bd41afa5a0a36ea7274, type: 2}
   _shadow: 0
   _opponentStage: 0
@@ -14994,6 +14997,9 @@ MonoBehaviour:
     type: 3}
   _femalePrefab: {fileID: 7208194473291000001, guid: d5e68a4ad9f761c45bd116e3c191849c,
     type: 3}
+  _sonicPrefab: {fileID: 0}
+  _gladiatorPrefab: {fileID: 0}
+  _robotPrefab: {fileID: 0}
   _fightController: {fileID: 9100000, guid: be0429e8625c6bd41afa5a0a36ea7274, type: 2}
   _shadow: 0
   _opponentStage: 1

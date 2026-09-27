@@ -1,28 +1,33 @@
 namespace PushStars.Core
 {
     /// <summary>
-    /// Aura (premium currency) faucets. Aura is intentionally rare: it is earned only from progression
-    /// milestones — never from raw reps — and otherwise bought via IAP. Spending (cosmetics, boosts) is
-    /// handled by the shop once it exists. Each payout here is one-shot; the caller is responsible for
-    /// not double-awarding (e.g. tracking which league promotions were already paid). See
-    /// <c>docs/design/economy.md</c>.
+    /// One-off Aura for progression: level-ups, first league promotions, streak milestones. Each
+    /// payout is keyed by a stable receipt (<see cref="LevelReceipt"/>, <see cref="LeagueReceipt"/>)
+    /// so the ledger pays it exactly once, whatever screen notices it first. Fight Aura is priced by
+    /// <see cref="AuraCalculator"/>. See <c>docs/design/economy.md</c> §3.
     /// </summary>
     public static class AuraRewards
     {
+        public static string LevelReceipt(int level) => "level:" + level + ":aura:v1";
+        public static string LeagueReceipt(string leagueId) => "league:" + leagueId + ":aura:v1";
+
+        /// <summary>Aura for reaching exactly <paramref name="level"/> (0 for level 1).</summary>
+        public static long ForLevel(int level)
+        {
+            if (level <= 1) return 0;
+            long aura = EconomyConfig.AuraPerLevel;
+            if (level % EconomyConfig.AuraMilestoneInterval == 0) aura += EconomyConfig.AuraMilestoneBonus;
+            return aura;
+        }
+
         /// <summary>
         /// Aura granted for advancing from <paramref name="oldLevel"/> to <paramref name="newLevel"/>.
         /// Handles multi-level jumps and adds the milestone bonus on every level divisible by the interval.
         /// </summary>
         public static long ForLevelUp(int oldLevel, int newLevel)
         {
-            if (newLevel <= oldLevel) return 0;
             long aura = 0;
-            for (int l = oldLevel + 1; l <= newLevel; l++)
-            {
-                aura += EconomyConfig.AuraPerLevel;
-                if (l % EconomyConfig.AuraMilestoneInterval == 0)
-                    aura += EconomyConfig.AuraMilestoneBonus;
-            }
+            for (int l = System.Math.Max(1, oldLevel) + 1; l <= newLevel; l++) aura += ForLevel(l);
             return aura;
         }
 

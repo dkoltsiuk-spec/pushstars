@@ -14,8 +14,6 @@ namespace PushStars.Fight
         [SerializeField] private AuraStampPresentation _stamp;
         [SerializeField] private FightScreen _caseDestination = FightScreen.CaseOpening;
         [SerializeField] private FightScreen _homeDestination = FightScreen.Home;
-        [Tooltip("Shown when the scene is launched directly in the editor.")]
-        [SerializeField] private int _sampleAura = CaseRewards.AssessmentAura;
         private bool _busy = true;
 
         public AuraStampPresentation Stamp => _stamp;
@@ -28,11 +26,13 @@ namespace PushStars.Fight
             if (HasCase) FightScreenNavigation.CaseId = FightScreenNavigation.AwardedCaseId;
             FightScreenNavigation.Preload(HasCase ? _caseDestination : _homeDestination);
             yield return ScreenTransition.Settle();
-            long aura = FightScreenNavigation.RewardSummary.Aura;
-            if (aura <= 0 && FightScreenNavigation.IsPreview) aura = _sampleAura;
-            _stamp.Configure((int)Mathf.Min(aura, int.MaxValue));
-            float time = 0;
-            while (time < AuraStampPresentation.RevealSeconds)
+            var summary = FightScreenNavigation.RewardSummary;
+            long aura = summary.Aura;
+            string[] moments = summary.AuraMoments;
+            if (aura == 0 && FightScreenNavigation.IsPreview) { aura = FightScreenNavigation.SampleAura; moments = FightScreenNavigation.SampleAuraMoments; }
+            _stamp.Configure(aura, moments);
+            float time = 0, reveal = Mathf.Max(AuraStampPresentation.RevealSeconds, _stamp.MomentsRevealSeconds);
+            while (time < reveal)
             {
                 if (ScreenLayoutRoot.IsAnyEditing) { yield return null; continue; }
                 time += Time.unscaledDeltaTime;

@@ -45,12 +45,12 @@ namespace PushStars.Editor
             var art = UiBuilder.Rect(safe, "Art");
             art.anchorMin = art.anchorMax = art.pivot = new Vector2(.5f, 1);
             art.sizeDelta = new Vector2(390, 780); screen.Art = art;
-            screen.Back = Button(art, "Back", Profile("Group 549"), "", 20, 48, 57, 44);
-            screen.Home = Button(art, "Home", Profile("Group 550"), "", 313, 48, 57, 44);
-            Text(art, "Title", "SHOP", 90, 49, 210, 44, 25);
-            screen.Balance = Text(art, "GemBalance", "0", 263, 103, 85, 23, 13);
+            screen.Back = Button(art, "Back", Profile("Group 549"), "", 20, 30, 57, 44);
+            screen.Home = Button(art, "Home", Profile("Group 550"), "", 313, 30, 57, 44);
+            Text(art, "Title", "SHOP", 90, 31, 210, 44, 25);
+            screen.Balance = Text(art, "GemBalance", "0", 263, 85, 85, 23, 13);
             screen.Balance.alignment = TextAlignmentOptions.Right;
-            Pic(art, "GemIcon", AssetDatabase.LoadAssetAtPath<Sprite>("Assets/_Project/UI/Sprites/gem.png"), 352, 104, 18, 20).preserveAspect = true;
+            Pic(art, "GemIcon", AssetDatabase.LoadAssetAtPath<Sprite>("Assets/_Project/UI/Sprites/gem.png"), 352, 86, 18, 20).preserveAspect = true;
 
             var viewport = UiBuilder.Rect(art, "Viewport");
             Place(viewport, 0, 128, 390, 560); screen.Viewport = viewport;

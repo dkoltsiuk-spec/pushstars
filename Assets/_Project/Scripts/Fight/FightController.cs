@@ -84,6 +84,10 @@ namespace PushStars.Fight
         private readonly List<float> _repForms = new List<float>();
         private readonly List<float> _repTimes = new List<float>();
         private readonly string _rewardSessionId = System.Guid.NewGuid().ToString("N");
+        // Aura inputs gathered live: clap push-ups landed, and the opponent's largest lead from the
+        // comeback window on (a win after trailing there is a COMEBACK).
+        private int _clapReps, _lateDeficit;
+        private List<AuraMoment> _auraMoments;
 
         /// <summary>How long a level test may fail to start before the screen offers a way past
         /// it. A player whose camera cannot see them never reaches the result screen — the plank
@@ -117,6 +121,8 @@ namespace PushStars.Fight
             if (TryStartScreenPreview()) return;
             _sceneStartTime = Time.time;
             _mode = ResolveMode();
+            if (_mode == FightMode.LevelTest)
+                GameAudio.SetMusicOverride(GameAudio.AssessmentMusicName, GameAudio.WorkoutMusicVolume);
             ApplyBackgroundForMode();
             if (_mode == FightMode.Boss)
             {
@@ -156,6 +162,7 @@ namespace PushStars.Fight
 
         private void OnDestroy()
         {
+            GameAudio.ClearMusicOverride(GameAudio.AssessmentMusicName);
             if (_boss != null) _boss.OnRep -= HandleBossAttack;
             StopScreenPreview();
             if (_session != null) { _session.OnRep -= HandleRep; _session.OnClapRep -= HandleClapRep; }
@@ -266,9 +273,11 @@ namespace PushStars.Fight
         /// damage a second time (x2 total). Only reps of this fight count.</summary>
         private void HandleClapRep(int totalReps)
         {
-            if (_phase != Phase.Live || _bossEnding || BossHealth == null) return;
+            if (_phase != Phase.Live || _bossEnding) return;
             int index = totalReps - _baselineReps - 1;
             if (index < 0 || index >= _repForms.Count) return;
+            _clapReps++;
+            if (BossHealth == null) return;
             BossHealth.PlayerClapStrike(_repForms[index]); CheckBossKnockout();
         }
 
@@ -454,6 +463,7 @@ namespace PushStars.Fight
             _repMilestone?.ResetSet();
             _repForms.Clear();
             _repTimes.Clear();
+            _clapReps = _lateDeficit = 0;
             _opponent?.Begin();
             _hud.FlashGo();
         }
@@ -467,6 +477,8 @@ namespace PushStars.Fight
             {
                 _opponent.Tick(elapsed);
                 _hud.SetOpponentReps(_opponent.Reps);
+                if (elapsed >= EconomyConfig.AuraComebackAfterSec)
+                    _lateDeficit = Mathf.Max(_lateDeficit, _opponent.Reps - _repTimes.Count);
             }
             if (_bossEnding) return;
             _hud.SetPlayerForm(_session.Form);
@@ -547,6 +559,23 @@ namespace PushStars.Fight
             bool ghost = _mode == FightMode.Ghost;
 
             if (win && _mode == FightMode.Boss) xp += FightConfig.BossWinXpBonus;
+            // Aura is priced against the player as they were before this fight.
+            var aura = new AuraFightInput
+            {
+                Kind = ghost ? AuraFightKind.Duel : AuraFightKind.Boss, Won = win, Draw = draw,
+                MyReps = myReps, OpponentReps = oppReps, AverageForm = AverageForm(), ClapReps = _clapReps,
+                PersonalBestBefore = LocalProfile.BestReps, RatedFightsBefore = LocalProfile.Games,
+                LateDeficit = _lateDeficit, LeagueId = LocalProfile.League.Id
+            };
+            if (!ghost)
+            {
+                string bossId = FightRequest.BossId ?? BossCatalog.Current.Id;
+                int ladder = -1;
+                for (int i = 0; i < BossCatalog.Bosses.Count; i++) if (BossCatalog.Bosses[i].Id == bossId) ladder = i;
+                var chapter = BossCatalog.ChapterOf(bossId);
+                aura.FirstBossWin = ladder >= 0 && !BossCatalog.IsCleared(ladder);
+                aura.IslandKing = chapter != null && chapter.Bosses[chapter.Bosses.Count - 1].Id == bossId;
+            }
             int trophies = LocalProfile.RecordWorkout(_rewardSessionId, ghost ? "ghost" : "boss",
                 myReps, xp, oppReps, OpponentLabel, win, draw,
                 Mathf.Clamp(Mathf.RoundToInt(Time.time - _liveStartTime), 0, FightConfig.DuelDurationSec));
@@ -556,6 +585,8 @@ namespace PushStars.Fight
             bool newRecord = GhostStore.SaveIfBest(NewRecord("duel"));
 
             if (!ghost) BossCatalog.ReportResult(win);
+            aura.WinStreakAfter = LocalProfile.WinStreak;
+            _auraMoments = AuraCalculator.ForFight(aura);
 
             PresentResults(new FightResultData
             {
@@ -572,12 +603,19 @@ namespace PushStars.Fight
             // Eligibility is settled once here. Presentation never rolls or grants another case.
             PendingCase awarded = null;
             long aura = 0;
+            var auraLines = new List<AuraMoment>();
             try
             {
-                // The assessment credits its Aura with the award; any Aura credited by this fight
-                // is shown on its own screen after the summary.
+                // The assessment credits its welcome Aura with the award; any Aura credited by this
+                // fight is shown on its own screen after the summary.
                 if (data.Mode == FightMode.LevelTest)
-                    aura = CaseRewards.TryAwardAssessmentCase(data.MyReps, out awarded) ? CaseRewards.AssessmentAura : 0;
+                {
+                    if (CaseRewards.TryAwardAssessmentCase(data.MyReps, out awarded))
+                    {
+                        aura = CaseRewards.AssessmentAura;
+                        auraLines.Add(new AuraMoment("WELCOME AURA", aura));
+                    }
+                }
                 else
                     CaseRewards.TryAwardDailyWorkoutCase(_rewardSessionId, data.MyReps, out awarded);
             }
@@ -587,10 +625,24 @@ namespace PushStars.Fight
                 // has already been recorded. Keep the inventory intact and show that result.
                 Debug.LogException(exception, this);
             }
+            if (data.Mode != FightMode.Training)
+            {
+                try
+                {
+                    // Fight moments, then any level/league Aura not yet paid, in one save.
+                    var settled = AuraSettlement.Settle(_rewardSessionId, _auraMoments, LocalProfile.Xp, LocalProfile.Trophies);
+                    aura += settled.Change;
+                    auraLines.AddRange(settled.Moments);
+                }
+                catch (System.Exception exception) { Debug.LogException(exception, this); }
+            }
+            var receipt = LocalProfile.FindWorkout(_rewardSessionId);
             var summary = new FightRewardFlow.Summary
             {
                 PlayerName = data.PlayerName, TotalReps = data.MyReps, Technique = data.MyForm / 100f,
-                EnergyXp = data.Xp, Trophies = data.Trophies, Aura = aura, HasCase = awarded != null
+                EnergyXp = data.Xp, Trophies = data.Trophies, Aura = aura, HasCase = awarded != null, NewRecord = data.NewRecord,
+                StreakDays = receipt?.StreakDays ?? 0, StreakBonusTrophies = receipt?.StreakBonusTrophies ?? 0,
+                AuraMoments = auraLines.Select(m => m.ToString()).ToArray()
             };
             FightScreenNavigation.ShowResults(data, summary, awarded != null ? awarded.Id : null, FightRequest.ReturnScene);
         }
@@ -618,6 +670,24 @@ namespace PushStars.Fight
             // one that simply hasn't started yet changes nothing — they get it again next launch.
             if (_skipOffered && _mode == FightMode.LevelTest)
                 OnboardingState.CompleteLevelTest(0);
+
+            // Walking out of a live duel is a RAGE QUIT: the one Aura minus that is never waived
+            // for effort (the rookie shield still applies). Bosses never cost Aura.
+            if (_mode == FightMode.Ghost && _phase == Phase.Live)
+            {
+                try
+                {
+                    var quit = AuraCalculator.ForFight(new AuraFightInput
+                    {
+                        Kind = AuraFightKind.Duel, Quit = true,
+                        RatedFightsBefore = LocalProfile.Games, LeagueId = LocalProfile.League.Id
+                    });
+                    long change = CaseRewards.ApplyAura(new[] {
+                        new AuraGrant(AuraSettlement.FightReceipt(_rewardSessionId), AuraCalculator.Total(quit)) }).Change;
+                    HomeRewardFlight.QueueAuraLoss(-change);
+                }
+                catch (System.Exception exception) { Debug.LogException(exception, this); }
+            }
 
             FightScreenNavigation.ReturnTo(FightRequest.ReturnScene);
         }

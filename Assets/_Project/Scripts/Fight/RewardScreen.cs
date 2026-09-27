@@ -27,6 +27,20 @@ namespace PushStars.Fight
             public TextMeshProUGUI Title, Subtitle, ContinueLabel;
             public GameObject TrophyGroup;
             public Image ContinueIcon;
+            [Header("Staged entrance: header → hero → reps → cards → level → button")]
+            public RectTransform Header, Stage, RepsPanel, Cards, LevelGroup, Continue;
+            public RectTransform Rays, RecordBadge, LevelBadge;
+            public RewardStarGraphic[] TechniqueStars = new RewardStarGraphic[0];
+            public RectTransform LevelFill;
+            public TextMeshProUGUI Level, LevelProgress, LevelUp;
+            [Header("One screen after a fight: outcome tone, opponent, score, streak")]
+            public RewardToneBackdrop Backdrop;
+            public FightAvatar Opponent;
+            public RawImage OpponentPortrait;
+            public GameObject OpponentShadow;
+            public TextMeshProUGUI OpponentReps, ScoreSeparator, OpponentName;
+            public GameObject StreakBonusGroup;
+            public TextMeshProUGUI StreakDays, StreakBonusTrophies;
         }
         [Serializable] public sealed class CaseElements
         {
@@ -65,7 +79,9 @@ namespace PushStars.Fight
         [SerializeField] private FightRewardFlow.Summary _sampleSummary = new FightRewardFlow.Summary
         {
             PlayerName = "BEASTCORE_DEV", TotalReps = 57, Technique = 0.92f,
-            Trophies = 21, EnergyXp = 570, Aura = 32, HasCase = true
+            Trophies = 21, EnergyXp = 570, Aura = FightScreenNavigation.SampleAura, HasCase = true, NewRecord = true,
+            StreakDays = 2, StreakBonusTrophies = 1,
+            AuraMoments = FightScreenNavigation.SampleAuraMoments
         };
 
         private struct Pose { public Vector3 Scale; public Quaternion Rotation; }
@@ -80,6 +96,9 @@ namespace PushStars.Fight
         private Color _glowColor;
         private bool _summaryPortraitFramed;
         private Vector2 _summaryPortraitSize;
+        private bool _summaryEntering, _summarySkip;
+        private float _summaryRaysAngle;
+        private static readonly Color StarOff = new Color(1, 1, 1, .16f);
         private float _caseInactiveSeconds, _caseIdleSeconds, _caseRaysAngle, _caseIdleSince;
         private const float CaseHintDelay = 5f;
 
@@ -93,6 +112,9 @@ namespace PushStars.Fight
         {
             if (_caseMotion != null) _caseMotion.Initialize();
             Capture(_summaryUi.TrophyContent); Capture(_summaryUi.XpContent); Capture(_summaryUi.AuraContent);
+            foreach (var step in SummarySteps) Capture(step);
+            Capture(_summaryUi.Rays); Capture(_summaryUi.RecordBadge); Capture(_summaryUi.LevelBadge);
+            foreach (var star in _summaryUi.TechniqueStars) if (star != null) Capture(star.rectTransform);
             Capture(_caseUi.Content); Capture(_caseUi.StarsContent); Capture(_prizeUi.Content);
             Capture(_caseUi.Rays);
             Capture(_prizeUi.Rays);
@@ -137,6 +159,16 @@ namespace PushStars.Fight
             if (_caseUi.Glow != null) Scale(_caseUi.Glow.rectTransform, pulse);
             if (_prizeUi.Glow != null) Scale(_prizeUi.Glow.rectTransform, pulse);
             if (_screen == FightScreen.CaseOpening) UpdateCaseAttention(Time.unscaledDeltaTime);
+            if (_screen == FightScreen.RewardSummary)
+            {
+                _summaryRaysAngle = Mathf.Repeat(_summaryRaysAngle + Time.unscaledDeltaTime * 6f, 360f);
+                Rotate(_summaryUi.Rays, _summaryRaysAngle);
+                KeepCelebrating();
+                // A tap during the entrance skips straight to the settled screen.
+                if (_summaryEntering && (Input.GetMouseButtonDown(0) ||
+                    (Input.touchCount > 0 && Input.GetTouch(0).phase == TouchPhase.Began)))
+                    _summarySkip = true;
+            }
             if (_screen == FightScreen.CaseReward)
             {
                 _caseRaysAngle = Mathf.Repeat(_caseRaysAngle + Time.unscaledDeltaTime * 3, 360);
@@ -210,16 +242,25 @@ namespace PushStars.Fight
                 _summaryUi.Trophies.color = new Color32(255, 107, 95, 255);
             bool hasAward = FightScreenNavigation.IsPreview || !string.IsNullOrEmpty(FightScreenNavigation.AwardedCaseId);
             bool assessment = FightScreenNavigation.Result?.Mode == FightMode.LevelTest;
+            var result = FightScreenNavigation.Result;
+            if (result != null && !assessment)
+                Set(_summaryUi.Title, result.Mode == FightMode.Training ? "WORKOUT DONE!"
+                    : result.Draw ? "DRAW!" : result.Win ? "YOU WIN!" : "YOU LOSE!");
             if (assessment)
             {
                 Set(_summaryUi.Title, "ASSESSMENT COMPLETE!");
                 Set(_summaryUi.Subtitle, "Great result. Strong start!");
-                if (_summaryUi.TrophyGroup != null) _summaryUi.TrophyGroup.SetActive(data.Trophies != 0);
             }
+            // A card for nothing is noise: training and the assessment usually move no trophies.
+            if (_summaryUi.TrophyGroup != null) _summaryUi.TrophyGroup.SetActive(data.Trophies != 0);
+            if (_summaryUi.StreakBonusGroup != null) _summaryUi.StreakBonusGroup.SetActive(data.StreakBonusTrophies > 0);
+            Set(_summaryUi.StreakDays, data.StreakDays.ToString());
+            Set(_summaryUi.StreakBonusTrophies, Signed(data.StreakBonusTrophies));
+            FillOutcome(result, data);
             var theme = Resources.Load<PushStarsTheme>("PushStarsTheme");
-            Set(_summaryUi.ContinueLabel, data.Aura > 0 ? "CONTINUE" : hasAward ? "OPEN CASE" : "HOME");
+            Set(_summaryUi.ContinueLabel, assessment ? data.Aura != 0 ? "CONTINUE" : hasAward ? "OPEN CASE" : "HOME" : "HOME");
             if (_summaryUi.ContinueIcon != null)
-                _summaryUi.ContinueIcon.sprite = data.Aura > 0 ? theme?.IconAura
+                _summaryUi.ContinueIcon.sprite = !assessment ? theme?.IconHouse : data.Aura != 0 ? theme?.IconAura
                     : hasAward ? Resources.Load<Sprite>("Rewards/CaseCommon") : theme?.IconHouse;
             if (_summaryUi.CaseAwardButton != null) _summaryUi.CaseAwardButton.gameObject.SetActive(hasAward);
             // Keep the baked image for Edit Mode/fallback; this scene owns a live idle stage.
@@ -238,56 +279,350 @@ namespace PushStars.Fight
                 if (_summaryUi.Avatar.StageCamera != null) _summaryUi.Avatar.StageCamera.enabled = true;
                 _summaryPortraitFramed = false;
             }
-            StartCoroutine(CountSummary(data));
+            StartCoroutine(EnterSummary(data, data.NewRecord && !assessment));
+        }
+
+        private enum Outcome { Solo, Win, Loss, Draw }
+        private Outcome _outcome;
+        private float _celebrateAt;
+
+        /// <summary>This screen replaces the old duel card too: the tone says who won (our blue,
+        /// their red), the score is the big number, and the opponent stands behind the hero as a
+        /// muted figure, like Brawl Stars' teammates.</summary>
+        private void FillOutcome(FightResultData result, FightRewardFlow.Summary data)
+        {
+            var ui = _summaryUi;
+            bool duel = result != null && (result.Mode == FightMode.Ghost || result.Mode == FightMode.Boss);
+            _outcome = !duel ? Outcome.Solo : result.Draw ? Outcome.Draw : result.Win ? Outcome.Win : Outcome.Loss;
+            if (duel)
+            {
+                Set(ui.TotalReps, Mathf.Max(0, result.MyReps).ToString());
+                Set(ui.OpponentReps, Mathf.Max(0, result.OppReps).ToString());
+                Set(ui.OpponentName, "VS " + (string.IsNullOrWhiteSpace(result.OpponentName) ? "GHOST" : result.OpponentName));
+            }
+            else Set(ui.OpponentName, "REPS");
+            if (ui.OpponentReps != null) ui.OpponentReps.gameObject.SetActive(duel);
+            if (ui.ScoreSeparator != null) ui.ScoreSeparator.gameObject.SetActive(duel);
+            if (ui.OpponentPortrait != null) ui.OpponentPortrait.gameObject.SetActive(duel);
+            if (ui.OpponentShadow != null) ui.OpponentShadow.SetActive(duel);
+            if (ui.Opponent != null)
+            {
+                ui.Opponent.gameObject.SetActive(duel);
+                if (duel && ui.Opponent.StageCamera != null) ui.Opponent.StageCamera.enabled = true;
+            }
+            if (ui.Backdrop != null) Tint(ui.Backdrop, _outcome);
+        }
+
+        private static void Tint(RewardToneBackdrop backdrop, Outcome outcome)
+        {
+            if (outcome == Outcome.Loss)
+            {
+                backdrop.Top = new Color32(112, 24, 58, 255); backdrop.Middle = new Color32(196, 52, 82, 255);
+                backdrop.Bottom = new Color32(104, 22, 56, 255); backdrop.Light = new Color32(255, 186, 196, 120);
+                backdrop.Vignette = new Color32(52, 6, 26, 140);
+            }
+            else if (outcome == Outcome.Draw)
+            {
+                backdrop.Top = new Color32(52, 38, 150, 255); backdrop.Middle = new Color32(104, 84, 232, 255);
+                backdrop.Bottom = new Color32(48, 34, 142, 255); backdrop.Light = new Color32(210, 196, 255, 120);
+                backdrop.Vignette = new Color32(20, 10, 70, 140);
+            }
+            backdrop.SetVerticesDirty();
+        }
+
+        /// <summary>Brawl Stars keeps the win pose going for as long as the screen is open: after
+        /// each celebration and a short breath in StandIdle the hero celebrates again.</summary>
+        private void KeepCelebrating()
+        {
+            if (_outcome == Outcome.Loss || _outcome == Outcome.Draw || _summaryUi.Avatar == null) return;
+            var body = _summaryUi.Avatar.Character;
+            var animator = body != null ? body.GetComponentInChildren<Animator>() : null;
+            if (animator == null || _celebrateAt <= 0 || animator.IsInTransition(0)) return;
+            var state = animator.GetCurrentAnimatorStateInfo(0);
+            int victory = Animator.StringToHash("Victory"), idle = Animator.StringToHash("StandIdle");
+            if (state.IsName("Victory"))
+            {
+                // A replayed celebration has no one to send it home: breathe in StandIdle after it.
+                if (state.normalizedTime >= .98f && animator.HasState(0, idle)) animator.CrossFadeInFixedTime(idle, .25f, 0);
+                _celebrateAt = Time.unscaledTime + 1.4f;
+                return;
+            }
+            if (!state.IsName("StandIdle") || Time.unscaledTime < _celebrateAt) return;
+            if (animator.HasState(0, victory)) animator.CrossFadeInFixedTime(victory, .2f, 0, 0f);
+            _celebrateAt = Time.unscaledTime + 1.4f;
+        }
+
+        private void PresentAvatars()
+        {
+            var ui = _summaryUi;
+            if (ui.Avatar != null)
+            {
+                if (_outcome == Outcome.Loss) ui.Avatar.SetResultPresentation(true);
+                else if (_outcome != Outcome.Draw) { ui.Avatar.SetResultPresentation(false, true); _celebrateAt = Time.unscaledTime + 1.4f; }
+            }
+            if (ui.Opponent != null && ui.Opponent.gameObject.activeInHierarchy)
+            {
+                ui.Opponent.SetPreparationPresentation(true);
+                var animator = ui.Opponent.Character != null ? ui.Opponent.Character.GetComponentInChildren<Animator>() : null;
+                if (animator != null) animator.updateMode = AnimatorUpdateMode.UnscaledTime;
+                if (_outcome == Outcome.Win) ui.Opponent.SetResultPresentation(true);
+                else if (_outcome == Outcome.Loss) ui.Opponent.SetResultPresentation(false, true);
+            }
+        }
+
+        private RectTransform[] SummarySteps => new[]
+        {
+            _summaryUi.Header, _summaryUi.Stage, _summaryUi.RepsPanel,
+            _summaryUi.Cards, _summaryUi.LevelGroup, _summaryUi.Continue
+        };
+
+        /// <summary>One beat at a time, like a Brawl Stars result: the title lands, the hero
+        /// celebrates in front of the burst, the set counts up, rewards pop and count, the level
+        /// bar fills, then the button arrives. A tap skips to the settled screen.</summary>
+        private IEnumerator EnterSummary(FightRewardFlow.Summary data, bool record)
+        {
+            var ui = _summaryUi;
+            foreach (var step in SummarySteps) Show(step, 0);
+            if (ui.RecordBadge != null) ui.RecordBadge.gameObject.SetActive(false);
+            Set(ui.TotalReps, "0"); Set(ui.Technique, "0%");
+            Set(ui.Trophies, Signed(0)); Set(ui.EnergyXp, Signed(0) + " XP");
+            Set(ui.StreakBonusTrophies, Signed(0));
+            foreach (var star in ui.TechniqueStars) if (star != null) star.color = StarOff;
+            Set(ui.OpponentReps, "0");
+            LevelSpan(data, out long before, out long after);
+            ShowLevel(before, false);
+            _summaryEntering = true; _summarySkip = false;
+            yield return ScreenTransition.Settle();
+
+            StartCoroutine(Reveal(ui.Header, .4f, .7f));
+            yield return Beat(.12f);
+            GameAudio.Play(_outcome == Outcome.Loss ? SoundCue.Back : SoundCue.RewardBurst);
+            StartCoroutine(Reveal(ui.Stage, .45f, .88f));
+            PresentAvatars();
+            yield return Beat(.28f);
+            StartCoroutine(Reveal(ui.RepsPanel, .38f, .7f));
+            yield return Beat(.12f);
+            yield return CountSet(data);
+            if (record && ui.RecordBadge != null)
+            {
+                ui.RecordBadge.gameObject.SetActive(true);
+                GameAudio.Play(SoundCue.CaseUpgradeComplete);
+                yield return Pop(ui.RecordBadge, .3f, 1.9f);
+            }
+            // Trophies (under the title) and XP (under the score) arrive and count together.
+            StartCoroutine(Reveal(ui.Cards, .38f, .7f));
+            StartCoroutine(Reveal(ui.LevelGroup, .38f, .85f));
+            yield return Beat(.1f);
+            yield return CountSummary(data);
+            StartCoroutine(Reveal(ui.Continue, .4f, .7f, .2f));
+            yield return FillLevel(before, after);
+            _summaryEntering = false;
+        }
+
+        /// <summary>Reps count up with ticks; technique follows and earns its stars one by one.</summary>
+        private IEnumerator CountSet(FightRewardFlow.Summary data)
+        {
+            var ui = _summaryUi;
+            var result = FightScreenNavigation.Result;
+            bool duel = _outcome != Outcome.Solo && result != null;
+            int reps = Mathf.Max(0, duel ? result.MyReps : data.TotalReps);
+            int theirs = duel ? Mathf.Max(0, result.OppReps) : 0;
+            float form = Mathf.Clamp01(data.Technique);
+            int earned = form >= .9f ? 3 : form >= .75f ? 2 : form >= .5f ? 1 : 0, lit = 0;
+            const float duration = .75f;
+            float elapsed = 0, nextTick = 0;
+            while (elapsed < duration)
+            {
+                elapsed += Step();
+                float t = Mathf.Clamp01(elapsed / duration), eased = 1f - Mathf.Pow(1f - t, 3f);
+                if (reps > 0 && elapsed >= nextTick && elapsed < duration)
+                {
+                    GameAudio.Play(SoundCue.RewardTick, Mathf.Lerp(.85f, 1.25f, t));
+                    nextTick = elapsed + .07f;
+                }
+                Set(ui.TotalReps, Mathf.RoundToInt(reps * eased).ToString());
+                Set(ui.OpponentReps, Mathf.RoundToInt(theirs * eased).ToString());
+                Set(ui.Technique, $"{form * 100f * eased:0}%");
+                while (lit < Mathf.Min(earned, Mathf.FloorToInt(t * 3.2f))) LightStar(lit++);
+                yield return null;
+            }
+            while (lit < earned) LightStar(lit++);
+            Set(ui.TotalReps, reps.ToString());
+            Set(ui.OpponentReps, theirs.ToString());
+            Set(ui.Technique, $"{form * 100f:0}%");
+        }
+
+        private void LightStar(int index)
+        {
+            var stars = _summaryUi.TechniqueStars;
+            if (index >= stars.Length || stars[index] == null) return;
+            stars[index].color = Gold;
+            GameAudio.Play(SoundCue.CaseUpgrade, 1.1f + index * .12f);
+            StartCoroutine(Pop(stars[index].rectTransform, .28f, 1.6f));
+        }
+
+        /// <summary>Total XP before and after this set, for the level bar.</summary>
+        private static void LevelSpan(FightRewardFlow.Summary data, out long before, out long after)
+        {
+            long gained = Math.Max(0, data.EnergyXp);
+            if (FightScreenNavigation.IsPreview)
+            {
+                // Sample: part way into level 4, so the preview shows the bar crossing a level.
+                before = LevelCalculator.TotalXpForLevel(4) + (long)(LevelCalculator.XpForLevelUp(4) * .7f);
+                after = before + gained;
+                return;
+            }
+            // The ledger has already credited this set by the time the summary opens.
+            after = Math.Max(0, LocalProfile.Xp);
+            before = Math.Max(0, after - gained);
+        }
+
+        private void ShowLevel(long xp, bool levelledUp)
+        {
+            var ui = _summaryUi;
+            int level = LevelCalculator.LevelFromXp(xp);
+            Set(ui.Level, level.ToString());
+            if (ui.LevelFill != null)
+            {
+                var max = ui.LevelFill.anchorMax;
+                max.x = Mathf.Clamp01(LevelCalculator.LevelProgress(xp));
+                ui.LevelFill.anchorMax = max;
+            }
+            if (ui.LevelProgress != null) ui.LevelProgress.color = Color.white;
+            Set(ui.LevelUp, levelledUp ? "LEVEL UP!" : "");
+            long floor = LevelCalculator.TotalXpForLevel(level);
+            Set(ui.LevelProgress, level >= EconomyConfig.MaxLevel ? "MAX LEVEL"
+                : $"{xp - floor} / {LevelCalculator.XpForLevelUp(level)}");
+        }
+
+        private IEnumerator FillLevel(long before, long after)
+        {
+            int startLevel = LevelCalculator.LevelFromXp(before), shown = startLevel;
+            const float duration = .9f;
+            for (float elapsed = 0; elapsed < duration && after > before;)
+            {
+                elapsed += Step();
+                float t = Mathf.Clamp01(elapsed / duration), eased = 1f - Mathf.Pow(1f - t, 2.4f);
+                long xp = before + (long)Math.Round((after - before) * (double)eased);
+                ShowLevel(xp, false);
+                int level = LevelCalculator.LevelFromXp(xp);
+                if (level != shown)
+                {
+                    shown = level;
+                    GameAudio.Play(SoundCue.RewardComplete, 1.15f);
+                    StartCoroutine(Pop(_summaryUi.LevelBadge, .35f, 1.5f));
+                }
+                yield return null;
+            }
+            ShowLevel(after, LevelCalculator.LevelFromXp(after) > startLevel);
+        }
+
+        private float Step() => _summarySkip ? 100f : Time.unscaledDeltaTime;
+        private IEnumerator Beat(float seconds)
+        {
+            for (float elapsed = 0; elapsed < seconds; elapsed += Step()) yield return null;
+        }
+
+        /// <summary>Fade in with a soft overshoot (half a back-ease; big elastic pops read jerky).</summary>
+        private IEnumerator Reveal(RectTransform step, float duration, float from, float delay = 0)
+        {
+            if (step == null) yield break;
+            if (delay > 0) yield return Beat(delay);
+            for (float elapsed = 0; elapsed < duration;)
+            {
+                elapsed += Step();
+                float t = Mathf.Clamp01(elapsed / duration);
+                Show(step, Mathf.Clamp01(t * 2.2f));
+                Scale(step, Mathf.LerpUnclamped(from, 1, UITween.EaseOutBackSoft(t)));
+                yield return null;
+            }
+            Show(step, 1); Scale(step, 1);
+        }
+
+        /// <summary>A stamp-like punch: arrives oversized and settles.</summary>
+        private IEnumerator Pop(RectTransform target, float duration, float from)
+        {
+            if (target == null) yield break;
+            for (float elapsed = 0; elapsed < duration;)
+            {
+                elapsed += Step();
+                float t = Mathf.Clamp01(elapsed / duration);
+                Scale(target, Mathf.LerpUnclamped(from, 1, UITween.EaseOutBackSoft(t)));
+                yield return null;
+            }
+            Scale(target, 1);
+        }
+
+        private static void Show(RectTransform step, float alpha)
+        {
+            if (step == null) return;
+            var group = step.GetComponent<CanvasGroup>();
+            if (group == null) return;
+            group.alpha = alpha;
+            group.interactable = group.blocksRaycasts = alpha >= 1;
         }
 
         private void LateUpdate()
         {
             if (_screen != FightScreen.RewardSummary) return;
-            var avatar = _summaryUi.Avatar;
-            var portrait = _summaryUi.Portrait;
+            Frame(_summaryUi.Avatar, _summaryUi.Portrait, ref _summaryPortraitFramed, ref _summaryPortraitSize);
+            if (_summaryUi.OpponentPortrait != null && _summaryUi.OpponentPortrait.gameObject.activeInHierarchy)
+            {
+                Frame(_summaryUi.Opponent, _summaryUi.OpponentPortrait, ref _opponentPortraitFramed, ref _opponentPortraitSize);
+                _summaryUi.OpponentPortrait.color = _outcome == Outcome.Loss ? new Color(.62f, .36f, .5f, .9f) : OpponentTint;
+            }
+        }
+
+        private bool _opponentPortraitFramed;
+        private Vector2 _opponentPortraitSize;
+        /// <summary>The opponent stands behind the hero dimmed into the tone, like Brawl Stars'
+        /// teammates. Re-applied every frame: CharacterStage resets its image to white.</summary>
+        public static readonly Color OpponentTint = new Color(.3f, .38f, .7f, .9f);
+
+        private static void Frame(FightAvatar avatar, RawImage portrait, ref bool framed, ref Vector2 framedSize)
+        {
             if (avatar == null || portrait == null || avatar.StageCamera == null) return;
+            AvatarWideImage.Configure(portrait, avatar.StageCamera);
             var texture = avatar.StageCamera.targetTexture;
             if (texture == null) return;
             portrait.texture = texture;
             var size = portrait.rectTransform.rect.size;
             // Once framed, let the idle move inside a fixed crop instead of chasing each breath.
-            if (_summaryPortraitFramed && size == _summaryPortraitSize) return;
+            if (framed && size == framedSize) return;
             if (!avatar.IsPreparationFramed || !avatar.TryGetBodyViewport(out var body)) return;
-            float textureAspect = (float)texture.width / texture.height;
+            float textureAspect = AvatarWideCamera.TextureAspect(avatar.StageCamera, texture);
             float boxAspect = size.x / Mathf.Max(1, size.y);
-            float height = Mathf.Min(1, body.height / .94f);
-            float width = Mathf.Min(1, height * boxAspect / textureAspect);
-            height = Mathf.Min(height, width * textureAspect / boxAspect);
-            portrait.uvRect = new Rect(
-                Mathf.Clamp(body.center.x - width * .5f, 0, 1 - width),
-                Mathf.Clamp(body.yMin - (height - body.height) * .1f, 0, 1 - height), width, height);
-            _summaryPortraitFramed = true;
-            _summaryPortraitSize = size;
+            portrait.uvRect = AvatarFraming.FitPortrait(body, boxAspect, textureAspect,
+                body.height / .94f, .1f);
+            framed = true;
+            framedSize = size;
         }
 
         private IEnumerator CountSummary(FightRewardFlow.Summary data)
         {
             float elapsed = 0, nextTick = 0;
             bool hasReward = data.Trophies > 0 || data.EnergyXp > 0;
-            while (elapsed < 1.05f)
+            const float duration = .85f;
+            while (elapsed < duration)
             {
-                elapsed += Time.unscaledDeltaTime;
-                if (hasReward && elapsed >= nextTick)
+                elapsed += Step();
+                if (hasReward && elapsed >= nextTick && elapsed < duration)
                 {
-                    GameAudio.Play(SoundCue.RewardTick, Mathf.Lerp(.9f, 1.3f, elapsed / 1.05f));
+                    GameAudio.Play(SoundCue.RewardTick, Mathf.Lerp(.9f, 1.3f, elapsed / duration));
                     nextTick = elapsed + .075f;
                 }
-                float t = Mathf.Clamp01(elapsed / 1.05f), eased = 1f - Mathf.Pow(1f - t, 3f);
-                Set(_summaryUi.Trophies, Signed((long)Math.Round(data.Trophies * eased)));
-                Set(_summaryUi.EnergyXp, Signed((long)Math.Round(data.EnergyXp * eased)));
+                float t = Mathf.Clamp01(elapsed / duration), eased = 1f - Mathf.Pow(1f - t, 3f);
+                Set(_summaryUi.Trophies, Signed((long)Math.Round((data.Trophies - data.StreakBonusTrophies) * eased)));
+                Set(_summaryUi.StreakBonusTrophies, Signed((long)Math.Round(data.StreakBonusTrophies * eased)));
+                Set(_summaryUi.EnergyXp, Signed((long)Math.Round(data.EnergyXp * eased)) + " XP");
                 float punch = 1f + Mathf.Sin(t * Mathf.PI) * 0.07f;
                 Scale(_summaryUi.TrophyContent, punch); Scale(_summaryUi.XpContent, punch);
                 yield return null;
             }
             if (hasReward) GameAudio.Play(SoundCue.RewardComplete);
-            Set(_summaryUi.Trophies, Signed(data.Trophies));
-            Set(_summaryUi.EnergyXp, Signed(data.EnergyXp));
+            Set(_summaryUi.Trophies, Signed(data.Trophies - data.StreakBonusTrophies));
+            Set(_summaryUi.StreakBonusTrophies, Signed(data.StreakBonusTrophies));
+            Set(_summaryUi.EnergyXp, Signed(data.EnergyXp) + " XP");
             Scale(_summaryUi.TrophyContent, 1); Scale(_summaryUi.XpContent, 1);
         }
 
@@ -578,10 +913,18 @@ namespace PushStars.Fight
         public void Home()
         {
             if (ScreenLayoutRoot.IsAnyEditing) return;
+            if (_summaryEntering) { _summarySkip = true; return; }
             if (_screen == FightScreen.RewardSummary)
             {
-                // Any Aura this fight credited gets its own screen, which then continues to the case.
-                if (_summary.Aura > 0)
+                // Fight rewards are already credited; HOME returns to the hub. The initial
+                // assessment retains its guided Aura/case reveal sequence.
+                if (FightScreenNavigation.Result?.Mode != FightMode.LevelTest)
+                {
+                    LeaveHome();
+                    return;
+                }
+                // Any Aura this fight changed (plus or minus) gets its own screen, which then continues to the case.
+                if (_summary.Aura != 0)
                 {
                     // Straight to black: the stamp's own riser and slam come out of the dark.
                     FightScreenNavigation.Navigate(FightScreen.AuraReward, .22f, ScreenTransition.Reveal.Instant);

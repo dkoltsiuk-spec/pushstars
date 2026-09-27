@@ -61,7 +61,8 @@ namespace PushStars.UI
                 if (!HudBalanceHold.TryGet(pill, out long value))
                     value = pill == "TrophyPill" ? LocalProfile.Trophies
                         : pill == "GemPill" ? CaseRewards.GemsBalance : CaseRewards.AuraBalance;
-                string text = value.ToString("N0");
+                // Aura is a meme-scale score: 10K, 150K, 1.5M. The other pills stay exact.
+                string text = pill == "AuraPill" ? AuraFormat.Short(value) : value.ToString("N0");
                 if (label.text != text) label.text = text;
             }
         }

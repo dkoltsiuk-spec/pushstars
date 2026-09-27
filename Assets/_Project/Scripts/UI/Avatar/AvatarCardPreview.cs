@@ -88,10 +88,13 @@ namespace PushStars.UI
             _camera.useOcclusionCulling = false;
             _camera.allowHDR = false;
             _camera.depth = -5;
-            _texture = new RenderTexture(FullBody ? 560 : 512, FullBody ? 800 : 512, 24, RenderTextureFormat.ARGB32)
+            _texture = new RenderTexture((FullBody ? 560 : 512) * (int)AvatarWideCamera.WidthMultiplier, FullBody ? 800 : 512, 24, RenderTextureFormat.ARGB32)
             { name = "AvatarCard_" + Slot, antiAliasing = 2 };
             _texture.Create();
             _camera.targetTexture = _texture;
+            _camera.aspect = FullBody ? 560f / 800f : 1f;
+            AvatarWideCamera.Configure(_camera, true);
+            AvatarWideImage.Configure(Image, _camera);
             Image.texture = _texture;
             Image.color = Tint;
             _camera.Render();

@@ -251,15 +251,18 @@ namespace PushStars.Editor
             Stretch(mirror, 0, 0, 0, 0);
             mirror.gameObject.AddComponent<DeviceSimulatorMirrorFix>();
 
-            // Background image (Figma) or solid dark fallback + lightning pattern.
+            // The authored home image already contains the background detail.
+            // Keep the moving pattern only for the plain-color fallback.
             var bg = _theme.BgImage != null
                 ? MakeImage(mirror, "Background", Color.white, _theme.BgImage)
                 : MakeImage(mirror, "Background", _theme.BgDark);
             Stretch(bg.rectTransform, 0, 0, 0, 0);
-            // Staggered lightning pattern (theme slot, else load the sprite directly).
-            var boltBg = _theme.IconLightningBG != null ? _theme.IconLightningBG : ProcSprite("icon_lightning_BG");
-            if (boltBg != null)
-                BuildLightningPattern(mirror, boltBg);
+            if (_theme.BgImage == null)
+            {
+                var boltBg = _theme.IconLightningBG != null ? _theme.IconLightningBG : ProcSprite("icon_lightning_BG");
+                if (boltBg != null)
+                    BuildLightningPattern(mirror, boltBg);
+            }
 
             var safe = MakeRect(mirror, "SafeArea");
             Stretch(safe, 0, 0, 0, 0);

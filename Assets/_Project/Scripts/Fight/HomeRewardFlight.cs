@@ -13,7 +13,7 @@ namespace PushStars.Fight
     /// <summary>One-shot presentation of rewards already saved by the reward flow.</summary>
     public sealed class HomeRewardFlight : MonoBehaviour
     {
-        private static long _aura, _trophies, _xp, _gems;
+        private static long _aura, _auraLoss, _trophies, _xp, _gems;
         private static string _destination;
         private readonly List<Arrival> _arrivals = new List<Arrival>();
         private RectTransform _overlay;
@@ -42,19 +42,22 @@ namespace PushStars.Fight
 
         public static void Clear()
         {
-            _aura = _trophies = _xp = _gems = 0;
+            _aura = _auraLoss = _trophies = _xp = _gems = 0;
             _destination = null;
         }
 
         public static void QueueSummary(FightRewardFlow.Summary summary)
         {
             _aura = System.Math.Max(0, summary.Aura);
+            _auraLoss = System.Math.Max(0, -summary.Aura);
             _trophies = System.Math.Max(0, summary.Trophies);
             _xp = System.Math.Max(0, summary.EnergyXp);
         }
 
         public static void QueueGems(int amount) => _gems += System.Math.Max(0, amount);
         public static void QueueAura(int amount) => _aura += System.Math.Max(0, amount);
+        /// <summary>Aura already debited (a loss or a rage quit): home counts the pill down to it.</summary>
+        public static void QueueAuraLoss(long amount) => _auraLoss += System.Math.Max(0, amount);
 
         public static void ReturnTo(string scene) => _destination = scene;
 
@@ -63,10 +66,11 @@ namespace PushStars.Fight
             if (string.IsNullOrEmpty(_destination) ||
                 (scene.name != _destination && scene.name != _destination + "Remote")) return;
             _destination = null;
-            if (_aura <= 0 && _trophies <= 0 && _xp <= 0 && _gems <= 0) return;
+            if (_aura <= 0 && _auraLoss <= 0 && _trophies <= 0 && _xp <= 0 && _gems <= 0) return;
             // Balances are already saved. Show them as they were until the icons land, from the
             // very first frame of home, so the counters never jump ahead of the flight.
             if (_aura > 0) HudBalanceHold.Set("AuraPill", CaseRewards.AuraBalance - _aura);
+            else if (_auraLoss > 0) HudBalanceHold.Set("AuraPill", CaseRewards.AuraBalance + _auraLoss);
             if (_gems > 0) HudBalanceHold.Set("GemPill", CaseRewards.GemsBalance - _gems);
             if (_trophies > 0) HudBalanceHold.Set("TrophyPill", LocalProfile.Trophies - _trophies);
             var host = new GameObject("HomeRewardFlight");
@@ -76,7 +80,7 @@ namespace PushStars.Fight
 
         private IEnumerator Start()
         {
-            long aura = _aura, trophies = _trophies, xp = _xp, gems = _gems;
+            long aura = _aura, auraLoss = _auraLoss, trophies = _trophies, xp = _xp, gems = _gems;
             Clear(); // Consume before playback: leaving home early cannot replay the award.
             if (ScreenTransition.IsBusy)
             {
@@ -111,6 +115,7 @@ namespace PushStars.Fight
             AddGroup(trophies, "TrophyPill", "Cup", theme != null ? theme.IconCup : null, ref groups);
             AddGroup(gems, "GemPill", "Icon", theme != null ? theme.IconGem : null, ref groups);
             AddGroup(xp, "XpTrack", null, theme != null ? theme.IconXP : null, ref groups);
+            if (auraLoss > 0 && aura <= 0) StartCoroutine(DrainAura(auraLoss));
             if (groups > 0)
             {
                 // The burst out of the opening screen has its own sound; arrivals then tick.
@@ -118,6 +123,7 @@ namespace PushStars.Fight
                 yield return new WaitForSecondsRealtime(1.9f + groups * .18f);
                 GameAudio.Play(SoundCue.RewardComplete);
             }
+            else if (auraLoss > 0) yield return new WaitForSecondsRealtime(1.3f);
             Destroy(gameObject);
         }
 
@@ -210,7 +216,7 @@ namespace PushStars.Fight
             long shown = arrival.From + arrival.Amount * arrival.Landed / arrival.Count;
             if (arrival.Landed >= arrival.Count) HudBalanceHold.Release(arrival.Pill);
             else HudBalanceHold.Set(arrival.Pill, shown);
-            if (arrival.Number != null) arrival.Number.text = shown.ToString("N0");
+            if (arrival.Number != null) arrival.Number.text = arrival.Pill == "AuraPill" ? AuraFormat.Short(shown) : shown.ToString("N0");
         }
 
         private IEnumerator AmountLabel(long amount, RectTransform target, float delay)
@@ -220,7 +226,7 @@ namespace PushStars.Fight
             var label = new GameObject("RewardAmount", typeof(RectTransform), typeof(TextMeshProUGUI)).GetComponent<TextMeshProUGUI>();
             label.transform.SetParent(_overlay, false);
             FightTypography.Apply(label, FightTypography.Role.Caption);
-            label.text = "+" + amount;
+            label.text = IsAuraTarget(target) ? AuraFormat.Delta(amount) : "+" + amount;
             label.fontSize = 19;
             label.fontStyle = FontStyles.Bold;
             label.alignment = TextAlignmentOptions.Center;
@@ -236,6 +242,50 @@ namespace PushStars.Fight
                 label.color = new Color(1, 1, 1, 1 - Mathf.InverseLerp(.4f, .8f, elapsed));
                 yield return null;
             }
+            Destroy(label.gameObject);
+        }
+
+        private static bool IsAuraTarget(RectTransform target) => target != null &&
+            (target.name == "AuraPill" || target.parent != null && target.parent.name == "AuraPill");
+
+        /// <summary>Minus Aura: no icons fly. The pill shakes, a red "-500" drops from it and the
+        /// number counts down to the saved balance.</summary>
+        private IEnumerator DrainAura(long loss)
+        {
+            RectTransform pill = null;
+            foreach (var root in gameObject.scene.GetRootGameObjects())
+            foreach (var rect in root.GetComponentsInChildren<RectTransform>(false))
+                if (rect.name == "AuraPill" && rect.gameObject.activeInHierarchy) { pill = rect; break; }
+            if (pill == null || !HudBalanceHold.TryGet("AuraPill", out long from)) { HudBalanceHold.Release("AuraPill"); yield break; }
+            var number = pill.Find("Number")?.GetComponent<TMP_Text>();
+            var label = new GameObject("AuraLoss", typeof(RectTransform), typeof(TextMeshProUGUI)).GetComponent<TextMeshProUGUI>();
+            label.transform.SetParent(_overlay, false);
+            FightTypography.Apply(label, FightTypography.Role.Caption);
+            label.text = AuraFormat.Delta(-loss);
+            label.fontSize = 21;
+            label.fontStyle = FontStyles.Bold;
+            label.alignment = TextAlignmentOptions.Center;
+            label.raycastTarget = false;
+            label.rectTransform.sizeDelta = new Vector2(140, 32);
+            GameAudio.Play(SoundCue.AuraWhoosh, .8f);
+            Haptics.Light();
+            var home = pill.anchoredPosition;
+            const float duration = 1.1f;
+            for (float elapsed = 0; elapsed < duration && pill != null; elapsed += Time.unscaledDeltaTime)
+            {
+                float t = Mathf.Clamp01(elapsed / duration), ease = 1 - Mathf.Pow(1 - t, 3);
+                long shown = from - (long)(loss * (double)ease);
+                HudBalanceHold.Set("AuraPill", shown);
+                if (number != null) number.text = AuraFormat.Short(shown);
+                pill.anchoredPosition = home + new Vector2(Mathf.Sin(elapsed * 70) * 5 * (1 - t), 0);
+                var position = Position(pill) + new Vector2(0, -34 - ease * 26);
+                position.x = Mathf.Clamp(position.x, _overlay.rect.xMin + 72, _overlay.rect.xMax - 72);
+                label.rectTransform.anchoredPosition = position;
+                label.color = new Color(1f, .32f, .3f, 1 - Mathf.InverseLerp(.6f, 1f, t));
+                yield return null;
+            }
+            if (pill != null) pill.anchoredPosition = home;
+            HudBalanceHold.Release("AuraPill");
             Destroy(label.gameObject);
         }
 

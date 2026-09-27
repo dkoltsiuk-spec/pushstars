@@ -7,7 +7,8 @@ using UnityEngine.UI;
 namespace PushStars.Fight
 {
     /// <summary>"+N AURA" meme stamp: the number slams into a black screen with a flash, shake and
-    /// RGB split, then the skull glitches in and the screen drops to black and white. On collect
+    /// RGB split, then the skull glitches in and the screen drops to black and white. A loss stamps
+    /// a red "-N". Under the stamp, the fight's Aura moments tick in one line at a time. On collect
     /// the skull flies into the camera and the rest eases out after it.
     /// Authored by AssessmentRewardSetup; this only animates.</summary>
     public sealed class AuraStampPresentation : MonoBehaviour
@@ -33,6 +34,16 @@ namespace PushStars.Fight
         public FightRewardBackdrop Backdrop;
         public RawImage[] SkullSlices = new RawImage[0];
         public TextMeshProUGUI Number, Word, GhostNumberA, GhostWordA, GhostNumberB, GhostWordB, ClaimHint;
+        [Tooltip("Captioned Aura moments under the stamp (\"VICTORY +1000\"). Optional.")]
+        public TextMeshProUGUI Moments;
+        /// <summary>Seconds between moment lines; the first lands just after the stamp.</summary>
+        public const float MomentStep = .14f;
+        private const float MomentsStart = Impact + .3f;
+        private static readonly Color LossRed = new Color(1f, .27f, .3f);
+        private int _momentCount;
+        /// <summary>When the last moment line has landed (the reveal holds taps until then).</summary>
+        public float MomentsRevealSeconds => _momentCount > 0 ? MomentsStart + _momentCount * MomentStep : 0;
+        private float _numberSize = -1;
 
         private bool _active, _idle, _impacted, _skullPlayed, _locked, _captured;
         private float _idleTime;
@@ -41,7 +52,9 @@ namespace PushStars.Fight
         private Texture _outlineGradient;
         private static readonly Color MonoOutline = new Color(.3f, .3f, .32f);
 
-        public void Configure(int amount)
+        public void Configure(int amount) => Configure(amount, null);
+
+        public void Configure(long amount, string[] moments)
         {
             if (!_captured) { _stampHome = Stamp.anchoredPosition; _skullHome = Skull.anchoredPosition; _captured = true; }
             _active = true; _idle = _impacted = _skullPlayed = _locked = false;
@@ -57,10 +70,29 @@ namespace PushStars.Fight
                 _outlineGradient = _material.GetTexture(ShaderUtilities.ID_OutlineTex);
                 Number.fontSharedMaterial = Word.fontSharedMaterial = _material;
             }
-            string value = "+" + amount;
-            foreach (var label in new[] { Number, GhostNumberA, GhostNumberB }) label.text = value;
+            string value = AuraFormat.Delta(amount);
+            // The authored size fits "+1000"; longer numbers shrink to the same width.
+            if (_numberSize < 0) _numberSize = Number.fontSize;
+            float size = _numberSize * Mathf.Min(1f, 5f / Mathf.Max(1, value.Length));
+            foreach (var label in new[] { Number, GhostNumberA, GhostNumberB }) { label.text = value; label.fontSize = size; }
+            Number.color = amount < 0 ? LossRed : Color.white;
+            _momentCount = 0;
+            if (Moments != null)
+            {
+                var lines = new System.Text.StringBuilder();
+                foreach (string moment in moments ?? System.Array.Empty<string>())
+                {
+                    if (string.IsNullOrWhiteSpace(moment)) continue;
+                    if (_momentCount++ > 0) lines.Append('\n');
+                    lines.Append(MomentLine(moment));
+                }
+                Moments.text = lines.ToString();
+                Moments.maxVisibleLines = 0;
+                Moments.gameObject.SetActive(_momentCount > 0);
+            }
             foreach (var label in new[] { Word, GhostWordA, GhostWordB }) label.text = "AURA";
-            ClaimHint.text = "TAP TO COLLECT";
+            // A minus is not collected, it is taken.
+            ClaimHint.text = amount < 0 ? "TAP TO CONTINUE" : "TAP TO COLLECT";
             GameAudio.Play(SoundCue.AuraStamp);
             Sample(0);
         }
@@ -174,6 +206,17 @@ namespace PushStars.Fight
             MonoShade.color = new Color(.025f, .025f, .03f, mono);
             ClaimHint.color = Grey(new Color(.83f, .72f, 1), mono);
             ClaimHint.alpha = _idle ? .65f + .35f * Mathf.Sin(clock * 4) : Mathf.Clamp01((l - .15f) / .25f);
+            if (Moments != null && _momentCount > 0)
+            {
+                int shown = time < MomentsStart ? 0 : Mathf.Min(_momentCount, 1 + Mathf.FloorToInt((time - MomentsStart) / MomentStep));
+                if (_idle) shown = _momentCount;
+                if (shown != Moments.maxVisibleLines)
+                {
+                    if (shown > Moments.maxVisibleLines && !_idle) Haptics.Light();
+                    Moments.maxVisibleLines = shown;
+                }
+                Moments.color = Grey(Color.white, mono * .35f);
+            }
             Fx.Sample(d, Mathf.Max(0, clock - Impact), mono, glitch);
         }
 
@@ -197,6 +240,7 @@ namespace PushStars.Fight
             float v = Mathf.Clamp01((seconds - .2f) / (ClaimSeconds - .2f)), ease = 1 - Mathf.Pow(1 - v, 3);
             Body.alpha = 1 - ease;
             Stamp.localScale = Vector3.one * (1 + .6f * ease);
+            if (Moments != null) Moments.alpha = 1 - ease;
             ClaimHint.alpha = 1 - Mathf.Clamp01(seconds / .15f);
         }
 
@@ -227,10 +271,22 @@ namespace PushStars.Fight
             foreach (var slice in SkullSlices) slice.rectTransform.anchoredPosition = Vector2.zero;
             Shaker.anchoredPosition = Vector2.zero; Shaker.localRotation = Quaternion.identity;
             Body.alpha = 1; SkullGroup.alpha = 0;
+            if (Moments != null) { Moments.alpha = 1; Moments.maxVisibleLines = 99; }
             Fx.Sample(-1, 0);
         }
 
         private void OnDisable() => ResetPresentation();
+
+        /// <summary>"VICTORY +1000" → caption, then the amount tinted green (gain) or red (loss).
+        /// A line without an amount ("ROBOT UNLOCKED!") is gold.</summary>
+        private static string MomentLine(string moment)
+        {
+            int split = moment.LastIndexOf(' ');
+            string tail = split > 0 ? moment.Substring(split + 1) : "";
+            if (tail.Length > 1 && (tail[0] == '+' || tail[0] == '-') && char.IsDigit(tail[1]))
+                return moment.Substring(0, split) + "  <color=" + (tail[0] == '+' ? "#5CFF7A" : "#FF4D55") + ">" + tail + "</color>";
+            return "<color=#FFC93C>" + moment + "</color>";
+        }
 
         private static void Tint(TMP_Text label, Color color, float mono, float alpha)
         {

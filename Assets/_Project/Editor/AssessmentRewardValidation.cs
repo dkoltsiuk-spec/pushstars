@@ -26,7 +26,7 @@ namespace PushStars.Editor
             Render("CaseOpening");
             Render("CaseReward");
             Render("AuraReward");
-            File.WriteAllText(Output + "validation.txt", "PASS: economy regression; summary without Aura; level-1 case without Aura rig; gem prize without stamp; deterministic +200 AURA stamp and skull; interrupted stamp reset; 390x844, 320x568, 430x932 renders.\n");
+            File.WriteAllText(Output + "validation.txt", "PASS: economy regression; summary without Aura; level-1 case without Aura rig; gem prize without stamp; deterministic +4250 AURA stamp with its moment lines, red -1000 loss stamp, skull; interrupted stamp reset; 390x844, 320x568, 430x932 renders.\n");
             Debug.Log("[AssessmentRewardValidation] PASS");
         }
         /// <summary>Frames of the full stamp → skull → idle → collect sequence at 60 fps, for review
@@ -72,8 +72,10 @@ namespace PushStars.Editor
                         tap.onClick.GetPersistentMethodName(0) == nameof(AuraRewardScreen.Collect), "Collect tap is not wired");
                     var random = UnityEngine.Random.state;
                     var home = stamp.Stamp.anchoredPosition;
-                    stamp.Configure(CaseRewards.AssessmentAura);
-                    Require(stamp.Number.text == "+200" && stamp.Word.text == "AURA", "Stamp shows wrong amount");
+                    stamp.Configure(FightScreenNavigation.SampleAura, FightScreenNavigation.SampleAuraMoments);
+                    Require(stamp.Number.text == "+4250" && stamp.Word.text == "AURA", "Stamp shows wrong amount");
+                    Require(stamp.Moments != null && stamp.Moments.gameObject.activeSelf && stamp.Moments.maxVisibleLines == 0, "Moment lines missing or shown before the slam");
+                    Require(stamp.MomentsRevealSeconds > AuraStampPresentation.Impact, "Moment reveal timing");
                     foreach (float time in new[] { .06f, .14f, .17f, .22f, .32f, .5f, .95f, 1.1f, 1.3f, 1.54f })
                     {
                         stamp.Sample(time);
@@ -81,6 +83,8 @@ namespace PushStars.Editor
                     }
                     Require(JsonUtility.ToJson(random) == JsonUtility.ToJson(UnityEngine.Random.state), "Presentation consumed gameplay randomness");
                     stamp.Settle();
+                    Require(stamp.Moments.maxVisibleLines == FightScreenNavigation.SampleAuraMoments.Length, "Settled stamp hides moment lines");
+                    Capture(camera, target, name + "-settled");
                     foreach (float claim in new[] { .1f, .25f, .4f, .6f })
                     {
                         stamp.SampleClaim(claim);
@@ -89,7 +93,13 @@ namespace PushStars.Editor
                     stamp.ResetPresentation();
                     Require(stamp.Stamp.localScale == Vector3.one && stamp.Shaker.anchoredPosition == Vector2.zero, "Interrupted stamp did not reset");
                     Require(stamp.Stamp.anchoredPosition == home && stamp.Body.alpha == 1, "Stamp lost its authored position");
-                    stamp.Configure(CaseRewards.AssessmentAura); stamp.Settle();
+                    stamp.Configure(-1000, new[] { "DESTROYED -1000", "PERFECT FORM +500", "CLAP PUSH-UP +250" });
+                    Require(stamp.Number.text == "-1000" && stamp.Number.color.r > .9f && stamp.Number.color.g < .5f &&
+                        stamp.ClaimHint.text == "TAP TO CONTINUE", "Loss stamp is not a red minus");
+                    stamp.Settle();
+                    Capture(camera, target, name + "-loss");
+                    stamp.ResetPresentation();
+                    stamp.Configure(FightScreenNavigation.SampleAura, FightScreenNavigation.SampleAuraMoments); stamp.Settle();
                 }
                 else
                 {

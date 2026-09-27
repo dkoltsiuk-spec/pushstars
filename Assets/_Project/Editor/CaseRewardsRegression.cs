@@ -16,7 +16,7 @@ namespace PushStars.Editor
         {
             var report = new StringBuilder("Case rewards regression — " + DateTime.UtcNow.ToString("u") + "\n");
             int passed = 0, failed = 0;
-            Check("Assessment credits 200 Aura once and awards an ordinary level-1 case", AssessmentAura, report, ref passed, ref failed);
+            Check("Assessment credits the welcome Aura once and awards an ordinary level-1 case", AssessmentAura, report, ref passed, ref failed);
             Check("Reward roll ranges and rarity upgrade boundaries", Rules, report, ref passed, ref failed);
             Check("Only positive completed workouts award; duplicate callbacks survive reload", Awards, report, ref passed, ref failed);
             Check("Daily eligibility is consumed on award and survives claim/reload", DailyEligibility, report, ref passed, ref failed);
@@ -105,11 +105,12 @@ namespace PushStars.Editor
             migrated = null;
             var v4 = new CaseRewardLedger(sealedCase, () => .9, json => migrated = json);
             var converted = v4.Find(id);
-            Require(v4.AuraBalance == 210 && converted.Rarity == CaseRarity.Common && converted.UpgradeTapsUsed == 0 && !converted.Opened,
+            // v4 pays the sealed legacy 200, then v6 tops the welcome up to the new amount.
+            Require(v4.AuraBalance == 10 + CaseRewards.AssessmentAura && converted.Rarity == CaseRarity.Common && converted.UpgradeTapsUsed == 0 && !converted.Opened,
                 "Sealed Aura case was not migrated.");
             Require(v4.TryCreditAura("probe", 1), "Migrated ledger cannot commit.");
             v4 = new CaseRewardLedger(migrated, () => .9, _ => { });
-            Require(v4.AuraBalance == 211 && v4.Find(id).Rarity == CaseRarity.Common, "Migration paid the sealed Aura twice.");
+            Require(v4.AuraBalance == 11 + CaseRewards.AssessmentAura && v4.Find(id).Rarity == CaseRarity.Common, "Migration paid the sealed Aura twice.");
         }
 
         private static void Awards()

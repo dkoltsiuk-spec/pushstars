@@ -41,7 +41,36 @@ namespace PushStars.UI
                 int index = i;
                 Packs[i].onClick.AddListener(() => ShowPack(index));
             }
+            HideUnlistedOffers();
             Hide();
+        }
+
+        /// <summary>Hides offers whose catalog slot is retired. When none are left, the
+        /// SPECIAL OFFERS header (the sibling right above the first offer) goes too and every row
+        /// below moves up into its space, so the shop never shows an empty section.</summary>
+        private void HideUnlistedOffers()
+        {
+            bool anyListed = false;
+            for (int i = 0; i < Offers.Length; i++)
+            {
+                bool listed = AvatarCatalog.IsListed(i);
+                Offers[i].gameObject.SetActive(listed);
+                anyListed |= listed;
+            }
+            if (anyListed || Offers.Length == 0) return;
+
+            var first = Offers[0].transform;
+            int headerIndex = first.GetSiblingIndex() - 1;
+            int nextIndex = first.GetSiblingIndex() + 1;
+            while (nextIndex < Content.childCount && System.Array.Exists(Offers, o => o.transform == Content.GetChild(nextIndex))) nextIndex++;
+            if (first.parent != Content || headerIndex < 0 || nextIndex >= Content.childCount) return;
+
+            var header = (RectTransform)Content.GetChild(headerIndex);
+            float lift = header.anchoredPosition.y - ((RectTransform)Content.GetChild(nextIndex)).anchoredPosition.y;
+            header.gameObject.SetActive(false);
+            for (int s = nextIndex; s < Content.childCount; s++)
+                ((RectTransform)Content.GetChild(s)).anchoredPosition += new Vector2(0, lift);
+            Content.SetSizeWithCurrentAnchors(RectTransform.Axis.Vertical, Mathf.Max(0, Content.rect.height - lift));
         }
 
         private void Update()
@@ -84,7 +113,8 @@ namespace PushStars.UI
         {
             Balance.text = $"{CaseRewards.GemsBalance:N0}";
             for (int i = 0; i < Offers.Length; i++)
-                OfferActions[i].text = Collection.IsLocked(i) ? AvatarCollectionScreen.PriceLabel(i)
+                if (AvatarCatalog.IsListed(i))
+                    OfferActions[i].text = Collection.IsLocked(i) ? AvatarCollectionScreen.PriceLabel(i)
                     : Collection.IsSelected(i) ? "SELECTED" : "OWNED";
         }
 

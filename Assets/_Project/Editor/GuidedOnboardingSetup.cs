@@ -91,6 +91,9 @@ namespace PushStars.Editor
             var title = UiBuilder.Text((RectTransform)selection.transform, "Title", Color.white, "CHOOSE YOUR HERO", 16);
             UiBuilder.Place(title.rectTransform, new Vector2(.5f, 1), new Vector2(0, -25), new Vector2(290, 24));
             for (int i = 0; i < cards.Length; i++) ConfigureCard(cards[i], (RectTransform)selection.transform, i, stages[i]);
+            var changeHeroHint = UiBuilder.Text((RectTransform)selection.transform, "ChangeHeroHint",
+                new Color32(190, 204, 234, 255), "You can change your hero at any time.", 13, FontStyles.Normal);
+            UiBuilder.PlaceWide(changeHeroHint.rectTransform, 1, -486, 30, 20);
             var hero = UiBuilder.Rect(safe, "PersistentHero"); UiBuilder.Stretch(hero);
             var target = UiBuilder.Rect(safe, "AssessmentHeroTarget");
             UiBuilder.Place(target, new Vector2(.5f, .53f), Vector2.zero, new Vector2(235, 470));

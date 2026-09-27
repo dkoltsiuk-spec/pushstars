@@ -3,7 +3,7 @@ using UnityEngine;
 
 namespace PushStars.Editor
 {
-    /// <summary>Stream the loop; decompress short cues up front for low-latency mobile playback.</summary>
+    /// <summary>Stream the music loops; decompress short cues up front for low-latency mobile playback.</summary>
     public sealed class GameAudioImporter : AssetPostprocessor
     {
         public const string Folder = "Assets/_Project/Resources/Audio/";
@@ -11,7 +11,7 @@ namespace PushStars.Editor
         {
             if (!assetPath.StartsWith(Folder, System.StringComparison.Ordinal)) return;
             var importer = (AudioImporter)assetImporter;
-            bool music = System.IO.Path.GetFileNameWithoutExtension(assetPath) == Core.GameAudio.MusicName;
+            bool music = System.IO.Path.GetFileNameWithoutExtension(assetPath).StartsWith("music_", System.StringComparison.Ordinal);
             var settings = importer.defaultSampleSettings;
             settings.loadType = music ? AudioClipLoadType.Streaming : AudioClipLoadType.DecompressOnLoad;
             settings.compressionFormat = music ? AudioCompressionFormat.Vorbis : AudioCompressionFormat.PCM;

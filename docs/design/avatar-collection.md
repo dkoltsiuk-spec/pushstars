@@ -1,5 +1,17 @@
 # Avatar collection
 
+## Aura unlock bars (late September 2026 — supersedes the prices below)
+
+Aura is now a status score that is never spent (docs/design/economy.md §3). Robot and Gladiator
+are not bought: each has an Aura goal (`Price` in `AvatarCatalog.asset`: 50 000 and 250 000) and a
+bar that fills with the player's **peak** Aura plus that hero's cards at `Price / RequiredCards`
+(1K) each. Losing Aura never empties the bar. The card bar reads `42K / 50K`, the footer and the
+detail button read `8K <aura> TO GO`, and the detail status says where the Aura comes from. The
+detail button is disabled while locked. When a fight, level or card claim fills the bar, the ledger
+marks the hero owned in the same save (`CaseRewardLedger.ApplyAura` / `TryClaim`) and the Aura
+screen adds a "ROBOT UNLOCKED!" line. Heroes already bought with old Aura stay owned (save v6).
+Gems heroes still use their price; `TryBuyAvatar` only spends gems.
+
 ## Hero cards and unlock prices (September 2026)
 
 The saved Main scene has five avatars. Sonic, Madam Engry and Fighter remain

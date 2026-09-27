@@ -210,6 +210,9 @@ namespace PushStars.Fight
             _resultWon = false;
             _resultReturnAt = 0f;
             _preparation = preparation;
+            AvatarWideCamera.Configure(_stageCamera, preparation);
+            if (_stageCamera != null)
+                AvatarWideImage.Configure(_stageCamera.GetComponentInParent<CharacterStage>()?.TargetImage, _stageCamera);
             // A completed training set may have forced the seated rest pose. Any later return to
             // a preparation/result card must release that override before showing StandIdle.
             if (_driverBehaviour is PushupAvatarDriver pushupDriver)

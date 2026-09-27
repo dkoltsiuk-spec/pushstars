@@ -39,6 +39,8 @@ namespace PushStars.Core
         public const int MaxLevel = 100;
 
         // ── Streak (consecutive active days) ─────────────────────────────────────────
+        /// <summary>Extra trophies per active day after the first, on rated duel wins.</summary>
+        public const int StreakTrophyBonusPerDay = 1;
         /// <summary>XP bonus added per streak day (0.05 = +5%/day).</summary>
         public const float StreakXpBonusPerDay = 0.05f;
         /// <summary>Cap on the streak XP bonus (0.50 = +50%, reached at 10 days).</summary>
@@ -52,17 +54,71 @@ namespace PushStars.Core
         public const int TrophyGhostWin = 12;  // floor(TrophyWin / 2)
         public const int TrophyGhostLoss = 7;  // floor(TrophyLoss / 2)
 
-        // ── Aura (premium currency) — earned only via progression, never raw reps ─────
-        public const int AuraPerLevel = 5;
+        // ── Aura — the meme status score ("+1000 aura"). Never spent; fights move it both ways ──
+        // Balance floors at 0. Peak (the highest balance ever reached) never drops and unlocks the
+        // Aura heroes. Rationale and the player-journey estimates: docs/design/economy.md §3.
+
+        // Duel (PvP and ghost pay the same).
+        public const int AuraWin = 1000;
+        /// <summary>Win with at least <see cref="AuraCrushRatio"/>× the opponent's reps and a
+        /// margin of <see cref="AuraCrushMargin"/>+. Replaces <see cref="AuraWin"/>.</summary>
+        public const int AuraCrushWin = 1500;
+        public const float AuraCrushRatio = 1.5f;
+        public const int AuraCrushMargin = 5;
+        /// <summary>Won after trailing by <see cref="AuraComebackDeficit"/>+ reps at some point
+        /// from <see cref="AuraComebackAfterSec"/> seconds on.</summary>
+        public const int AuraComeback = 1000;
+        public const int AuraComebackDeficit = 3;
+        public const float AuraComebackAfterSec = 20f;
+        /// <summary>Won by exactly one rep.</summary>
+        public const int AuraClutch = 500;
+        public const int AuraDraw = 250;
+        public const int AuraLoss = 500;          // applied as −500
+        /// <summary>Lost with the opponent on the crush ratio and margin. Replaces <see cref="AuraLoss"/>.</summary>
+        public const int AuraCrushedLoss = 1000;  // applied as −1000
+        /// <summary>Left a live duel. The largest penalty on purpose: finishing always beats quitting.</summary>
+        public const int AuraQuit = 2000;         // applied as −2000
+        /// <summary>"Gave it all": a loss with at least this share of the personal best costs nothing.</summary>
+        public const float AuraEffortShare = .9f;
+        /// <summary>The first rated fights never cost Aura.</summary>
+        public const int AuraRookieFights = 5;
+
+        // Performance moments (win, draw or loss; never on a quit).
+        public const int AuraPerfectForm = 500;
+        public const float AuraPerfectFormMin = 90f;
+        public const int AuraPerfectFormMinReps = 5;
+        public const int AuraPerClap = 250;
+        public const int AuraMaxClaps = 5;
+        public const int AuraNewRecord = 2000;
+        public const int AuraStreak3 = 1000;
+        public const int AuraStreak5 = 2500;
+        /// <summary>Paid at 10 wins in a row and every further 10.</summary>
+        public const int AuraStreak10 = 10000;
+
+        // League stakes: every duel moment is multiplied (wins and losses alike).
+        public const float AuraStakesBronze = 1f;
+        public const float AuraStakesSilver = 1.5f;
+        public const float AuraStakesGold = 2f;
+        public const float AuraStakesDiamond = 3f;
+
+        // Bosses (PvE): no stakes multiplier and never a minus.
+        public const int AuraBossFirstWin = 2000;
+        public const int AuraIslandKingFirstWin = 10000;
+        public const int AuraBossRepeatWin = 500;
+
+        // One-off progression rewards (no multiplier).
+        /// <summary>Welcome Aura for the first assessment: Home shows "10K" straight away.</summary>
+        public const int AuraAssessment = 10000;
+        public const int AuraPerLevel = 1000;
         /// <summary>Every level divisible by this grants an extra <see cref="AuraMilestoneBonus"/>.</summary>
         public const int AuraMilestoneInterval = 5;
-        public const int AuraMilestoneBonus = 25;
-        // First-time league promotion rewards (one league = one payout, tracked by the caller).
-        public const int AuraPromoSilver = 50;
-        public const int AuraPromoGold = 75;
-        public const int AuraPromoDiamond = 100;
-        // Streak milestone rewards.
-        public const int AuraStreakMilestoneA = 30;  // 7-day
-        public const int AuraStreakMilestoneB = 150; // 30-day
+        public const int AuraMilestoneBonus = 5000;
+        // First-time league promotion rewards (one league = one payout, by receipt).
+        public const int AuraPromoSilver = 25000;
+        public const int AuraPromoGold = 50000;
+        public const int AuraPromoDiamond = 100000;
+        // Streak milestone rewards (daily streak system not wired yet).
+        public const int AuraStreakMilestoneA = 10000;  // 7-day
+        public const int AuraStreakMilestoneB = 50000;  // 30-day
     }
 }

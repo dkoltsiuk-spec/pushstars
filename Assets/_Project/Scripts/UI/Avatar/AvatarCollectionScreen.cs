@@ -122,8 +122,8 @@ namespace PushStars.UI
             for (int i = 0; i < Cards.Length; i++)
             {
                 var kind = AvatarCatalog.At(i)?.Kind;
-                bool visible = _filter == 0 || (_filter == 1 && !IsLocked(i)) ||
-                    (_filter == 2 && (kind == AvatarPurchaseKind.Gems || kind == AvatarPurchaseKind.Dollars));
+                bool visible = AvatarCatalog.IsListed(i) && (_filter == 0 || (_filter == 1 && !IsLocked(i)) ||
+                    (_filter == 2 && (kind == AvatarPurchaseKind.Gems || kind == AvatarPurchaseKind.Dollars)));
                 Cards[i].gameObject.SetActive(visible);
             }
             bool any = false;
@@ -155,7 +155,7 @@ namespace PushStars.UI
 
         public void Select(int index)
         {
-            if (IsLocked(index)) return;
+            if (IsLocked(index) || !AvatarCatalog.IsListed(index)) return;
             if (index == 0) Roster.SetSonic();
             else if (index == 3) Roster.SetRobot();
             else if (index == 4) Roster.SetGladiator();
@@ -165,7 +165,7 @@ namespace PushStars.UI
 
         public void RefreshSelection()
         {
-            if (Balance != null) Balance.text = $"{CaseRewards.AuraBalance:N0} <sprite name=\"aura\">";
+            if (Balance != null) Balance.text = $"{AuraFormat.Short(CaseRewards.AuraBalance)} <sprite name=\"aura\">";
             for (int i = 0; i < Cards.Length; i++)
             {
                 bool selected = IsSelected(i);
@@ -192,7 +192,9 @@ namespace PushStars.UI
             var offer = AvatarCatalog.At(index);
             if (offer == null) return "UNAVAILABLE";
             if (offer.Kind == AvatarPurchaseKind.Dollars) return "$" + (offer.Price / 100m).ToString("0.00", System.Globalization.CultureInfo.InvariantCulture);
-            return $"{CaseRewards.AvatarPrice(offer.Id):N0} {(offer.Kind == AvatarPurchaseKind.Gems ? "GEMS" : "<sprite name=\"aura\">")}";
+            // Aura heroes are never bought: the label is how much Aura is still missing.
+            if (offer.UnlocksByAura) return $"{AuraFormat.Short(CaseRewards.AvatarPrice(offer.Id))} <sprite name=\"aura\"> TO GO";
+            return $"{CaseRewards.AvatarPrice(offer.Id):N0} GEMS";
         }
 
         public void ShowInfo(int index)
@@ -208,7 +210,7 @@ namespace PushStars.UI
                 return;
             }
             string[] descriptions = {
-                "Sonic is coming to your collection.\n\nPreview only for now.",
+                "Not available.",
                 "Available in your collection.\n\nTap SELECT to use this avatar.",
                 "Available in your collection.\n\nTap SELECT to use this avatar.",
                 "Robot is coming to your collection.\n\nPreview only for now.",

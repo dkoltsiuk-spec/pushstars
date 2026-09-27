@@ -59,8 +59,8 @@ namespace PushStars.Editor
                     _originalLedger = typeof(CaseRewards).GetField("_ledger", BindingFlags.NonPublic | BindingFlags.Static).GetValue(null);
                     typeof(CaseRewards).GetField("_ledger", BindingFlags.NonPublic | BindingFlags.Static).SetValue(null, _ledger);
                     screen.Show();
-                    Require(screen.Actions[3].text == "300 <sprite name=\"aura\">", "Initial price and Aura icon");
-                    Require(screen.Cards[3].GetComponent<AvatarUnlockView>().Count.text == "0 / 60", "Zero progress");
+                    Require(screen.Actions[3].text == "50K <sprite name=\"aura\"> TO GO", "Initial goal and Aura icon");
+                    Require(screen.Cards[3].GetComponent<AvatarUnlockView>().Count.text == "0 / 50K", "Zero progress");
                 }
                 else if (_step == 1)
                 {
@@ -72,9 +72,12 @@ namespace PushStars.Editor
                         for (int tap = 0; tap < 3; tap++) _ledger.TryUpgrade(id, tap, out _);
                         _ledger.TryOpen(id, out _); _ledger.TryClaim(id, out _);
                     }
+                    // 30 cards (30K) plus a 12K peak; the later loss lowers the balance, never the bar.
+                    _ledger.ApplyAura(new[] { new AuraGrant("visual-win", 12000) });
+                    _ledger.ApplyAura(new[] { new AuraGrant("visual-loss", -5000) });
                     screen.RefreshSelection();
-                    Require(screen.Actions[3].text == "150 <sprite name=\"aura\">", "Partial price and Aura icon");
-                    Require(screen.Cards[3].GetComponent<AvatarUnlockView>().Count.text == "30 / 60", "Partial progress");
+                    Require(screen.Actions[3].text == "8K <sprite name=\"aura\"> TO GO", "Remaining Aura and icon");
+                    Require(screen.Cards[3].GetComponent<AvatarUnlockView>().Count.text == "42K / 50K", "Partial progress");
                 }
                 else if (_step == 2)
                 {
@@ -85,11 +88,14 @@ namespace PushStars.Editor
                 else if (_step == 3)
                 {
                     AvatarCollectionValidation.Capture(screen, 780, 1688, "robot-unlock-preview.png");
+                    Require(!screen.PreviewPage.Action.interactable && screen.PreviewPage.Status.text.StartsWith("UNLOCKS AT 50K"), "Locked Aura hero is not buyable");
                     screen.PreviewPage.Action.onClick.Invoke();
-                    Require(!_ledger.OwnsAvatar("robot") && screen.PreviewPage.Status.text.StartsWith("NOT ENOUGH"), "Insufficient balance feedback");
-                    _ledger.TryCreditAura("visual-balance", 150);
+                    Require(!_ledger.OwnsAvatar("robot") && _ledger.AuraBalance == 7000, "Aura was spent");
+                    var unlock = _ledger.ApplyAura(new[] { new AuraGrant("visual-goal", 13000) });
+                    Require(unlock.Unlocked.Contains("robot") && _ledger.OwnsAvatar("robot") && _ledger.AuraPeak == 20000, "Reaching the goal unlocks without spending");
+                    screen.ShowInfo(3);
                     screen.PreviewPage.Action.onClick.Invoke();
-                    Require(_ledger.OwnsAvatar("robot") && screen.Roster.IsRobot && _ledger.AuraBalance == 0, "Purchase and equip");
+                    Require(screen.Roster.IsRobot, "Unlock and equip");
                     screen.CloseInfo();
                 }
                 else if (_step == 4)
@@ -122,7 +128,7 @@ namespace PushStars.Editor
                 }
                 else
                 {
-                    File.WriteAllText("output/avatar-collection/unlocks-validation.txt", "PASS: zero/partial progress, prices, insufficient Aura feedback, purchase/equip Robot, progress hidden after unlock, owned/premium filters, persisted case reward icon/count and UI claim; mobile renders at 780x1688 and 750x1334. Test wallet discarded; saved selection restored.\n");
+                    File.WriteAllText("output/avatar-collection/unlocks-validation.txt", "PASS: zero/partial Aura progress, remaining-Aura labels, locked hero not buyable, loss keeps the bar, goal unlock without spending, equip Robot, progress hidden after unlock, owned/premium filters, persisted case reward icon/count and UI claim; mobile renders at 780x1688 and 750x1334. Test wallet discarded; saved selection restored.\n");
                     Finish(); return;
                 }
                 _step++;

@@ -78,7 +78,7 @@ namespace PushStars.Editor
                 c.GuidanceText = (TMP_Text)Ref(host,"_bannerText");
                 c.Countdown = (TMP_Text)Ref(host,"_countdown");
             }
-            c.BossPortrait = Raw(content, "BossPortrait", prep ? 104 : 15, prep ? 179 : 153, prep ? 205 : 252, prep ? 312 : 276);
+            c.BossPortrait = Raw(content, "BossPortrait", prep ? 88 : 15, prep ? 179 : 153, prep ? 205 : 252, prep ? 312 : 276);
             c.PlayerPortrait = Raw(content, "PlayerPortrait", prep ? -105 : 0, prep ? -213 : -177, prep ? 205 : 324, prep ? 290 : 280);
             if (!prep)
             {

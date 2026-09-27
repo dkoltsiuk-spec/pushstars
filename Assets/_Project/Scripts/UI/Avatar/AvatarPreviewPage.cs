@@ -27,10 +27,12 @@ namespace PushStars.UI
             if (Collection.IsLocked(_index))
             {
                 if (offer.Kind == AvatarPurchaseKind.Dollars) { Status.text = "STORE COMING SOON"; return; }
+                // Aura heroes cannot be bought: they unlock by themselves when the bar fills.
+                if (offer.UnlocksByAura) return;
                 try
                 {
                     if (!CaseRewards.TryBuyAvatar(offer.Id))
-                    { Status.text = offer.Kind == AvatarPurchaseKind.Aura ? "NOT ENOUGH AURA · COLLECT CARDS IN CASES" : "NOT ENOUGH GEMS"; return; }
+                    { Status.text = "NOT ENOUGH GEMS"; return; }
                 }
                 catch (System.Exception exception) { Debug.LogException(exception, this); Status.text = "COULDN'T SAVE · TAP TO RETRY"; return; }
             }
@@ -51,10 +53,13 @@ namespace PushStars.UI
             bool available = !Collection.IsLocked(_index);
             bool selected = Collection.IsSelected(_index);
             var offer = AvatarCatalog.At(_index);
-            Action.interactable = !selected && (available || offer.Kind != AvatarPurchaseKind.Dollars);
-            ActionText.text = !available ? "BUY · " + AvatarCollectionScreen.PriceLabel(_index) : selected ? "SELECTED" : "SELECT";
-            Status.text = available ? "IN YOUR COLLECTION" : offer.UsesCards
-                ? $"COLLECT CARDS OR BUY WITH AURA\nYOUR BALANCE: {CaseRewards.AuraBalance:N0} <sprite name=\"aura\">"
+            bool byAura = offer.UnlocksByAura;
+            Action.interactable = !selected && (available || offer.Kind == AvatarPurchaseKind.Gems);
+            ActionText.text = available ? (selected ? "SELECTED" : "SELECT")
+                : byAura ? AvatarCollectionScreen.PriceLabel(_index) : "BUY · " + AvatarCollectionScreen.PriceLabel(_index);
+            Status.text = available ? "IN YOUR COLLECTION" : byAura
+                ? $"UNLOCKS AT {AuraFormat.Short(offer.AuraGoal)} <sprite name=\"aura\"> · WIN FIGHTS TO FILL THE BAR" +
+                  (offer.UsesCards ? $"\nEVERY {offer.Name} CARD FROM CASES ADDS {AuraFormat.Short(offer.CardAura)}" : "")
                 : offer.Kind == AvatarPurchaseKind.Gems ? "GEMS EXCLUSIVE" : "STORE COMING SOON";
             if (UnlockView != null) UnlockView.Refresh(offer);
         }

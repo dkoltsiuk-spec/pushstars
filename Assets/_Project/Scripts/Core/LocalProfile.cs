@@ -22,6 +22,9 @@ namespace PushStars.Core
         public static int Wins => Ledger.Snapshot.Wins;
         public static int Losses => Ledger.Snapshot.Losses;
         public static int WinStreak => Ledger.Snapshot.WinStreak;
+        public static int DailyStreak => DateTime.UtcNow.Date.Ticks - Ledger.Snapshot.LastActiveDayTicks <= TimeSpan.TicksPerDay
+            ? Ledger.Snapshot.DailyStreak : 0;
+        public static LocalWorkout FindWorkout(string id) => Ledger.FindWorkout(id);
         public static long Xp => Ledger.Snapshot.Xp;
         public static int Games => Wins + Losses;
         public static int WinRatePercent => Games > 0 ? Mathf.RoundToInt(100f * Wins / Games) : 0;

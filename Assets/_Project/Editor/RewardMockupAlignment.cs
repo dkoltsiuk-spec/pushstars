@@ -275,7 +275,7 @@ namespace PushStars.Editor
                 screen.SummaryUi.CaseAwardButton.gameObject.SetActive(false);
                 screen.SummaryUi.CaseAwardButton = null;
             }
-            var home = Find(scene, "continue-button"); Place(home, 195, 771, 138, 52); Button(home, true);
+            var home = Find(scene, "continue-button"); Place(home, 195, 771, 138, 52); Button(home, true); RewardSummaryRedesign.Redesign(screen); // current Brawl-style layout builds on this pass
             EditorUtility.SetDirty(screen);
         }
 

@@ -1,5 +1,6 @@
 using System.Collections;
 using PushStars.Core;
+using PushStars.CV;
 using PushStars.UI;
 using PushStars.OTA;
 using TMPro;
@@ -61,11 +62,14 @@ namespace PushStars.Fight
         private Coroutine _sequence;
         private Coroutine _dismiss;
         private bool _greetingDismissed;
+        private IPoseSourceWarmup _warmup;
+        private const float WarmupTimeoutSec = 10f;
 
         private void Awake()
         {
             _coachHome = _coach.rectTransform.anchoredPosition;
             _bubbleHome = ((RectTransform)_bubble.transform).anchoredPosition;
+            _warmup = _workout.GetComponentInChildren<IPoseSourceWarmup>(true);
             _workout.SetActive(false);
             _unusedPlayerStage.SetActive(false);
             SetGroup(_wash, 0); SetGroup(_coachGroup, 0); SetGroup(_bubble, 0);
@@ -234,6 +238,10 @@ namespace PushStars.Fight
             yield return Animate(Mathf.Min(.7f, count * .012f), t => _speech.maxVisibleCharacters = Mathf.CeilToInt(count * t));
             _speech.maxVisibleCharacters = int.MaxValue;
             IsTransitioning = false; SetInput(true);
+            // The camera and pose model take whole frames to start. Spend them here, on a still
+            // screen while the player walks the phone to the floor, not in the hero's hand-off.
+            if (step == Step.Placement) _warmup?.Warmup(this);
+            else _warmup?.CancelWarmup();
         }
 
         private IEnumerator HideCoach(bool clearWash)
@@ -302,6 +310,19 @@ namespace PushStars.Fight
 #endif
         }
 
+        private void OnApplicationPause(bool paused)
+        {
+            // An inactive source gets no pause messages, so its warm-up follows this screen.
+            if (_warmup == null || CurrentStep == Step.Live) return;
+            if (paused) _warmup.CancelWarmup();
+            else if (CurrentStep == Step.Placement && !IsTransitioning) _warmup.Warmup(this);
+        }
+
+        private void OnDestroy()
+        {
+            if (CurrentStep != Step.Live) _warmup?.CancelWarmup();
+        }
+
         private void OnApplicationFocus(bool focused)
         {
             if (!focused || !_openingSettings || IsTransitioning || _leaving) return;
@@ -349,6 +370,15 @@ namespace PushStars.Fight
         {
             IsTransitioning = true; SetInput(false);
             yield return HideCoach(true);
+            if (_warmup != null)
+            {
+                // A quick I'M READY lands before the warm-up is through: finish it while nothing
+                // moves. Past the timeout, hand over cold rather than orphan a half-started camera.
+                _warmup.Warmup(this);
+                for (float waited = 0; !_warmup.IsWarm && waited < WarmupTimeoutSec; waited += Time.unscaledDeltaTime)
+                    yield return null;
+                if (!_warmup.IsWarm) _warmup.CancelWarmup();
+            }
             FightRequest.LevelTest(FightConfig.MainSceneName);
             _player.UseOnboardingStage(SelectedStage);
             SetGroup(_workoutCanvas, 0);
@@ -417,6 +447,7 @@ namespace PushStars.Fight
         {
             if (IsTransitioning || _permissionPending || _leaving) return;
             _leaving = true;
+            _warmup?.CancelWarmup();
             OnboardingState.IntroSeen = true;
             OnboardingState.LevelTestSkipped = true;
             OtaSceneLoader.LoadScene(FightConfig.MainSceneName);

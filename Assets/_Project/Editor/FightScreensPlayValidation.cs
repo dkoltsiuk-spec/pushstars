@@ -148,7 +148,7 @@ namespace PushStars.Editor
                 {
                     Require(SummaryAnimator().GetCurrentAnimatorStateInfo(0).normalizedTime > _summaryIdleTime,
                         "Summary idle did not advance between rendered frames.");
-                    _report.AppendLine("PASS: summary renders its own live StandIdle animation.");
+                    _report.AppendLine("PASS: summary renders its own live celebrating/idle animation.");
                 }
                 Capture(Names[_screenIndex]);
                 AssertPreferencesUnchanged();
@@ -163,17 +163,18 @@ namespace PushStars.Editor
             {
                 case 0:
                     FightScreenNavigation.Preview(FightScreen.RewardSummary);
-                    Delay(1.5);
+                    // Let the staged entrance finish: HOME during it only skips ahead.
+                    Delay(5);
                     break;
                 case 1:
                     RequireRewardScreen(FightScreen.RewardSummary).Home();
                     Delay(1.5);
                     break;
                 case 2:
-                    RequireScene(FightScreen.CaseOpening);
-                    _report.AppendLine("PASS: summary HOME opens the awarded case directly.");
+                    RequireScene(FightScreen.Home);
+                    _report.AppendLine("PASS: summary HOME returns home even when the result awards a case.");
                     FightScreenNavigation.Preview(FightScreen.RewardSummary);
-                    Delay(1);
+                    Delay(5);
                     break;
                 case 3:
                     var noCase = RequireRewardScreen(FightScreen.RewardSummary);
@@ -248,8 +249,9 @@ namespace PushStars.Editor
             Require(ui.Portrait.texture is RenderTexture && ui.Portrait.texture == ui.Avatar.StageCamera.targetTexture,
                 "Summary portrait is still a static image or points at another stage.");
             var animator = ui.Avatar.Character.GetComponentInChildren<Animator>();
-            Require(animator != null && animator.enabled && animator.GetCurrentAnimatorStateInfo(0).IsName("StandIdle"),
-                "Summary character is not playing StandIdle.");
+            var state = animator != null ? animator.GetCurrentAnimatorStateInfo(0) : default;
+            Require(animator != null && animator.enabled && (state.IsName("Victory") || state.IsName("StandIdle")),
+                "Summary character is not celebrating (Victory) or back in StandIdle.");
             return animator;
         }
 

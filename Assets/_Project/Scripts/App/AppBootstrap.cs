@@ -65,9 +65,6 @@ namespace PushStars.App
             // still shows a full sweep rather than a flash and a bar already at the end.
             _loading?.PaceOver(_minVisibleSec);
 
-            // Up before anything else, and it outlives every scene load — the first screen is
-            // exactly where a performance problem has to be measurable, not just felt.
-            PerfOverlay.Ensure();
         }
 
         private async void Start()
@@ -164,6 +161,8 @@ namespace PushStars.App
                 await UniTask.Yield();
 
             await OtaSceneLoader.LoadSceneAsync(sceneName);
+            // Keep the loading artwork free of development readouts.
+            PerfOverlay.Ensure();
         }
 
         /// <summary>Runs the app at the display's own refresh rate, bounded.

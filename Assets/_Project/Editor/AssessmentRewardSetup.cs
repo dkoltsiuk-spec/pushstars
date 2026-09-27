@@ -1,4 +1,5 @@
 using System;
+using System.IO;
 using System.Linq;
 using PushStars.Fight;
 using PushStars.UI;
@@ -107,8 +108,15 @@ namespace PushStars.Editor
                 if (loaded.isDirty) throw new InvalidOperationException("Save AuraReward edits before regenerating it.");
                 EditorSceneManager.CloseScene(loaded, true);
             }
-            if (AssetDatabase.LoadAssetAtPath<SceneAsset>(AuraScenePath) != null) AssetDatabase.DeleteAsset(AuraScenePath);
-            if (!AssetDatabase.CopyAsset(SceneFolder + "CaseReward.unity", AuraScenePath))
+            // Overwrite the existing file in place: its .meta, and so the GUID that Build Settings
+            // and scene references key on, survives regeneration. CopyAsset would mint a new GUID.
+            const string source = SceneFolder + "CaseReward.unity";
+            if (AssetDatabase.LoadAssetAtPath<SceneAsset>(AuraScenePath) != null)
+            {
+                File.Copy(source, AuraScenePath, true);
+                AssetDatabase.ImportAsset(AuraScenePath, ImportAssetOptions.ForceUpdate);
+            }
+            else if (!AssetDatabase.CopyAsset(source, AuraScenePath))
                 throw new InvalidOperationException("Could not copy CaseReward into AuraReward");
             var scene = EditorSceneManager.OpenScene(AuraScenePath, OpenSceneMode.Additive);
             try
@@ -148,14 +156,33 @@ namespace PushStars.Editor
                 FightPresentationSceneBuilder.PersistTextMaterials(root);
                 EditorSceneManager.MarkSceneDirty(scene);
                 if (!EditorSceneManager.SaveScene(scene)) throw new InvalidOperationException("Could not save AuraReward");
-                if (!EditorBuildSettings.scenes.Any(s => s.path == AuraScenePath))
-                    EditorBuildSettings.scenes = EditorBuildSettings.scenes.Concat(new[] { new EditorBuildSettingsScene(AuraScenePath, true) }).ToArray();
+                RegisterAuraScene();
             }
             finally
             {
                 EditorSceneManager.CloseScene(scene, true);
                 if (previous.IsValid() && previous.isLoaded) SceneManager.SetActiveScene(previous);
             }
+        }
+        /// <summary>Adds AuraReward to Build Settings, or repairs an entry whose path matches but
+        /// whose GUID is stale (left behind when the scene used to be recreated with a new GUID).</summary>
+        private static void RegisterAuraScene()
+        {
+            var guid = new GUID(AssetDatabase.AssetPathToGUID(AuraScenePath));
+            var scenes = EditorBuildSettings.scenes.ToList();
+            int index = scenes.FindIndex(s => s.path == AuraScenePath || s.guid == guid);
+            if (index >= 0 && scenes[index].guid == guid && scenes[index].path == AuraScenePath) return;
+            bool enabled = index < 0 || scenes[index].enabled;
+            if (index >= 0)
+            {
+                // The setter keeps an entry's old GUID while its path is unchanged, so an in-place
+                // replacement is ignored: drop the stale entry first, then add the right one.
+                scenes.RemoveAt(index);
+                EditorBuildSettings.scenes = scenes.ToArray();
+            }
+            else index = scenes.Count;
+            scenes.Insert(index, new EditorBuildSettingsScene(guid, enabled));
+            EditorBuildSettings.scenes = scenes.ToArray();
         }
 
         private const string StampMaterialPath = "Assets/_Project/Resources/Rewards/AuraStampText.mat";
@@ -236,6 +263,13 @@ namespace PushStars.Editor
 
             rig.ClaimHint = Label(rig.Root, "ClaimHint", new Vector2(195, -768), new Vector2(330, 30), "TAP TO COLLECT", 15, new Color(.83f, .72f, 1));
             rig.ClaimHint.alignment = TextAlignmentOptions.Center;
+            // The fight's Aura moments, one per line between the stamp and the tap hint.
+            rig.Moments = Label(rig.Body.transform, "Moments", new Vector2(195, -680), new Vector2(340, 150),
+                "VICTORY  +1000\nPERFECT FORM  +500", 20, Color.white);
+            rig.Moments.alignment = TextAlignmentOptions.Top;
+            rig.Moments.fontSizeMin = 13;
+            rig.Moments.lineSpacing = 4;
+            rig.Moments.richText = true;
             rig.Root.gameObject.SetActive(false);
             rig.Backdrop = backdrop;
             EditorUtility.SetDirty(rig);

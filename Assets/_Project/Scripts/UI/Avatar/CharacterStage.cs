@@ -105,6 +105,7 @@ namespace PushStars.UI
 
         /// <summary>The live render target. Useful for snapshots or wardrobe previews later.</summary>
         public RenderTexture RenderTarget => _rt;
+        public float RenderAspect => (float)_width / _height;
 
         private void Awake()
         {
@@ -160,7 +161,14 @@ namespace PushStars.UI
 
             SetLayerRecursive(avatar, _avatarRoot.gameObject.layer);
             _avatarBaseLocalPos = _avatarRoot.localPosition;
+            FitAvatarFraming();
             ApplyStylizedRim();
+        }
+
+        public void FitAvatarFraming()
+        {
+            AvatarWideCamera.Configure(_stageCamera, true);
+            AvatarWideImage.Configure(_targetImage, _stageCamera);
         }
 
         /// <summary>Pushes the authored rim-light direction into this stage's renderers without
@@ -210,7 +218,8 @@ namespace PushStars.UI
 
         private void CreateRenderTexture()
         {
-            _rt = new RenderTexture(_width, _height, 24, RenderTextureFormat.ARGB32)
+            // Overscan adds pixels, not stretch: retain the original texel density across the body.
+            _rt = new RenderTexture(_width * (int)AvatarWideCamera.WidthMultiplier, _height, 24, RenderTextureFormat.ARGB32)
             {
                 name         = "CharacterStageRT",
                 antiAliasing = Mathf.Max(1, _antiAliasing),
@@ -220,6 +229,7 @@ namespace PushStars.UI
             if (_stageCamera != null)
             {
                 _stageCamera.targetTexture   = _rt;
+                _stageCamera.aspect          = RenderAspect;
                 _stageCamera.clearFlags      = CameraClearFlags.SolidColor;
                 _stageCamera.backgroundColor = new Color(0f, 0f, 0f, 0f); // transparent
             }

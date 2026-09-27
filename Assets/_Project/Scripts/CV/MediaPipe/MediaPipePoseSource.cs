@@ -29,7 +29,7 @@ namespace PushStars.CV
     /// a buffer; <see cref="Update"/> raises <see cref="OnFrame"/> / <see cref="OnQualityChanged"/> on
     /// the main thread.
     /// </summary>
-    public sealed class MediaPipePoseSource : MonoBehaviour, IPoseSource, ICameraFeed, ICameraFrameOrientationProvider
+    public sealed class MediaPipePoseSource : MonoBehaviour, IPoseSource, ICameraFeed, ICameraFrameOrientationProvider, IPoseSourceWarmup
     {
         [Header("Model")]
         [Tooltip("pose_landmarker_lite.bytes / _full.bytes / _heavy.bytes. FULL is the default: " +
@@ -109,6 +109,8 @@ namespace PushStars.CV
         private TextureFramePool  _framePool;
         private int _framePoolWidth, _framePoolHeight;
         private Coroutine         _loop;
+        // Who runs _loop: this, or the warm-up host while this object is still inactive.
+        private MonoBehaviour     _loopRunner, _warmupHost;
         private bool _trackingRequested;
         private bool _resumeTracking;
         private readonly Stopwatch _clock = new Stopwatch();
@@ -150,7 +152,37 @@ namespace PushStars.CV
             }
         }
 
-        private void OnEnable()  => StartTracking();
+        public bool IsWarm { get; private set; }
+
+        public void Warmup(MonoBehaviour host)
+        {
+            if (IsRunning || isActiveAndEnabled) return;
+            _warmupHost = host;
+            StartTracking();
+        }
+
+        public void CancelWarmup()
+        {
+            // Once this object is live it owns tracking; only an orphaned warm-up is released. During
+            // a scene unload this component may already be destroyed — the camera still is not.
+            bool live = this != null && isActiveAndEnabled;
+            if (!live && (IsRunning || _trackingRequested)) StopTracking();
+            _warmupHost = null;
+        }
+
+        private void OnEnable()
+        {
+            // Adopt a warm-up finished while this object was inactive: the camera and model are up,
+            // only the capture loop (which feeds this object's Update) is still to start.
+            if (IsRunning && IsWarm && _loop == null)
+            {
+                _trackingRequested = true;
+                StartCaptureLoop();
+                return;
+            }
+            StartTracking();
+        }
+
         private void OnDisable() => StopTracking();
 
         private void OnApplicationPause(bool paused)
@@ -174,12 +206,14 @@ namespace PushStars.CV
             _trackingRequested = true;
             if (IsRunning) return;
             IsRunning = true;
+            IsWarm = false;
             ResetFrameDelivery();
             // The user is mid-push-up and cannot touch the screen — never sleep while tracking.
             // Also covers the testCV build, which boots straight into this scene without
             // AppBootstrap (where the app-wide NeverSleep is set).
             Screen.sleepTimeout = SleepTimeout.NeverSleep;
-            _loop = StartCoroutine(RunAsync());
+            _loopRunner = isActiveAndEnabled || _warmupHost == null ? this : _warmupHost;
+            _loop = _loopRunner.StartCoroutine(RunAsync());
         }
 
         public void StopTracking()
@@ -187,10 +221,13 @@ namespace PushStars.CV
             _trackingRequested = false;
             _resumeTracking = false;
             IsRunning = false;
+            IsWarm = false;
             // Invalidate callbacks before closing native resources; Close can finish old work.
             ResetFrameDelivery();
 
-            if (_loop != null) { StopCoroutine(_loop); _loop = null; }
+            if (_loop != null && _loopRunner != null) _loopRunner.StopCoroutine(_loop);
+            _loop = null;
+            _loopRunner = null;
 
             try { _poseLandmarker?.Close(); } catch (Exception e) { Debug.LogWarning($"[MediaPipe] Close: {e.Message}"); }
             _poseLandmarker = null;
@@ -256,6 +293,8 @@ namespace PushStars.CV
             {
                 SetStatus("CAMERA PERMISSION DENIED");
                 IsRunning = false;
+                IsWarm = true;
+                _loop = null;
                 yield break;
             }
 
@@ -357,14 +396,32 @@ namespace PushStars.CV
                     if (_poseLandmarker != null)
                     {
                         _imageProcessingOptions = new Mediapipe.Tasks.Vision.Core.ImageProcessingOptions(rotationDegrees: 0);
+                        // The first DetectAsync builds this protobuf descriptor on the main thread;
+                        // build it now, with the rest of the start-up.
+                        _ = RectReflection.Descriptor;
                         SetStatus("running " + modelTag);
                     }
                 }
             }
 
             _clock.Start();
+            IsWarm = true;
+            _loop = null;
+            // A warm-up host ran the start-up while this object was inactive; OnEnable starts the
+            // capture here, so the loop never outlives a host that is switched off.
+            if (isActiveAndEnabled) StartCaptureLoop();
+        }
 
-            // ── 4) Capture loop. If the landmarker failed, we still keep the camera preview alive. ──
+        private void StartCaptureLoop()
+        {
+            _warmupHost = null;
+            _loopRunner = this;
+            _loop = StartCoroutine(CaptureLoop());
+        }
+
+        // ── 4) Capture loop. If the landmarker failed, we still keep the camera preview alive. ──
+        private IEnumerator CaptureLoop()
+        {
             var waitForEndOfFrame = new WaitForEndOfFrame();
             while (IsRunning)
             {

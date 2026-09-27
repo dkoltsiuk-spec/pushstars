@@ -13,7 +13,7 @@ namespace PushStars.UI
         {
             long balance = CaseRewards.AuraBalance;
             if (Label == null || balance == _shown) return;
-            _shown = balance; Label.text = balance.ToString("N0");
+            _shown = balance; Label.text = AuraFormat.Short(balance);
         }
     }
 }

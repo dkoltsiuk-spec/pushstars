@@ -14,7 +14,7 @@ MonoBehaviour:
   m_EditorClassIdentifier: PushStars.Core::PushStars.Core.AvatarCatalog
   Offers:
   - Id: sonic
-    Name: SONIC
+    Name: RETIRED
     HeadIcon: 
     Kind: 3
     Price: 599
@@ -38,13 +38,13 @@ MonoBehaviour:
     Name: ROBOT
     HeadIcon: AvatarCollection/RobotHead
     Kind: 1
-    Price: 300
-    RequiredCards: 60
+    Price: 50000
+    RequiredCards: 50
     StoreProductId: 
   - Id: gladiator
     Name: GLADIATOR
     HeadIcon: AvatarCollection/GladiatorHead
     Kind: 1
-    Price: 600
-    RequiredCards: 120
+    Price: 250000
+    RequiredCards: 250
     StoreProductId: 

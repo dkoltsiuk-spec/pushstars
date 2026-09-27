@@ -286,6 +286,7 @@ namespace PushStars.Fight
             // fixed fraction off both ends (what this used to do) therefore spent the zoom on the
             // feet and cut them off. Fitting the body's own rect spends it on the empty sky instead.
             var avatar = AvatarBehind(source);
+            AvatarWideImage.Configure(target, avatar != null ? avatar.StageCamera : null);
             Vector2 displaySize = target.rectTransform.rect.size;
             if (avatar != null && avatar.IsPreparationFramed
                 && _portraitFrames.TryGetValue(target, out var held)
@@ -304,7 +305,7 @@ namespace PushStars.Fight
                 return;
             }
 
-            float texAspect = (float)source.texture.width / source.texture.height;
+            float texAspect = AvatarWideCamera.TextureAspect(avatar.StageCamera, source.texture);
             float boxAspect = target.rectTransform.rect.width /
                               Mathf.Max(1f, target.rectTransform.rect.height);
 

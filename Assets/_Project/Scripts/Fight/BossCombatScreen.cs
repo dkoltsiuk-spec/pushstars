@@ -69,7 +69,7 @@ namespace PushStars.Fight
             _headCaptureAt = Time.unscaledTime + .6f;
             foreach (var item in Legacy) if (item != null) item.SetActive(false);
             foreach (var avatar in new[] { PlayerStage, BossStage })
-                if (avatar != null && avatar.StageCamera != null) avatar.StageCamera.ResetAspect();
+                if (avatar != null && avatar.StageCamera != null) avatar.StageCamera.aspect = PushStars.UI.AvatarWideCamera.TextureAspect(avatar.StageCamera, avatar.StageCamera.targetTexture);
             _fight = FindObjectsByType<FightController>(FindObjectsSortMode.None).FirstOrDefault(f => f.gameObject.scene == gameObject.scene);
             string id = FightRequest.BossId ?? BossCatalog.Current.Id;
             var bossIcon = Content.Find("BossIcon")?.GetComponent<Image>();
@@ -241,6 +241,7 @@ namespace PushStars.Fight
         private void CopyBody(RawImage target, FightAvatar avatar, bool cropPortrait, bool grounded = false, bool smoothPlayer = false)
         {
             if (target == null || avatar == null || avatar.StageCamera == null) return;
+            PushStars.UI.AvatarWideImage.Configure(target, avatar.StageCamera);
             var texture = avatar.StageCamera.targetTexture; target.texture = texture;
             if (texture == null) return;
             // The live player's stage renders straight into this portrait (see
@@ -260,13 +261,18 @@ namespace PushStars.Fight
                 return;
             }
             _preparationFrames.Remove(target);
-            if (!avatar.TryGetBodyViewport(out var body)) return;
+            bool preparationBoss = cropPortrait && avatar == BossStage;
+            if (!avatar.TryGetBodyViewport(out var body, includePerspectiveExtents: preparationBoss)) return;
             float aspect = target.rectTransform.rect.width / target.rectTransform.rect.height;
-            float textureAspect = (float)texture.width / texture.height;
-            float height = body.height * (cropPortrait ? .64f : 1.10f);
-            if (!cropPortrait) height = Mathf.Max(height, body.width * textureAspect / aspect * 1.08f);
+            float textureAspect = PushStars.UI.AvatarWideCamera.TextureAspect(avatar.StageCamera, texture);
+            // The boss needs a full-body shot; the player gets a closer upper-body portrait.
+            // Fit width as well as height so broad shoulders and ears stay inside the frame.
+            float height = body.height * (preparationBoss ? 1.10f : cropPortrait ? .52f : 1.10f);
+            height = Mathf.Max(height, body.width * textureAspect / aspect * 1.08f);
             float width = height * aspect / textureAspect;
-            float centerY = body.center.y + (cropPortrait ? body.height * .20f : 0);
+            float centerY = cropPortrait && !preparationBoss
+                ? body.yMax + body.height * .04f - height * .5f
+                : body.center.y;
             if (grounded) centerY = body.yMin + height * .45f;
             target.uvRect = new Rect(body.center.x - width * .5f, centerY - height * .5f, width, height);
             if (cropPortrait && avatar.IsPreparationFramed)
@@ -323,6 +329,7 @@ namespace PushStars.Fight
 
         private void CopyHead()
         {
+            PushStars.UI.AvatarWideImage.Configure(PlayerIcon, null);
             if (_headSnapshot != null && (!Preparation || _headCaptured))
             {
                 PlayerIcon.texture = _headSnapshot; PlayerIcon.uvRect = _headSnapshotUv; return;
@@ -333,7 +340,11 @@ namespace PushStars.Fight
             if (head == null || !PlayerStage.TryGetBodyViewport(out var body)) return;
             var camera = PlayerStage.StageCamera; var tex = camera.targetTexture;
             var point = camera.WorldToViewportPoint(head.position);
-            float h = body.height * .18f, w = h * tex.height / tex.width * PlayerIcon.rectTransform.rect.width / PlayerIcon.rectTransform.rect.height;
+            float h = body.height * .18f, w = h / PushStars.UI.AvatarWideCamera.TextureAspect(camera, tex) * PlayerIcon.rectTransform.rect.width / PlayerIcon.rectTransform.rect.height;
+            // A head icon keeps its small UI box; compensate in UVs so its saved snapshot
+            // also stays proportional after the battle camera leaves preparation mode.
+            if (camera.TryGetComponent<PushStars.UI.AvatarWideCamera>(out var lens) && lens.enabled)
+                w /= PushStars.UI.AvatarWideCamera.WidthMultiplier;
             var uv = new Rect(point.x - w * .5f, point.y - h * .27f, w, h);
             PlayerIcon.texture = tex; PlayerIcon.uvRect = uv;
             // Keep the standing preparation portrait when the live body goes into a push-up.

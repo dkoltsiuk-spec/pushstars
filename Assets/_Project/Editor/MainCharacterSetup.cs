@@ -1781,13 +1781,14 @@ namespace PushStars.Editor
                 if (material.HasProperty("_Color"))     material.SetColor("_Color", fallback);
             }
 
-            // Only meaningful on the plain lit fallback: the Tripo bake already has light and
-            // occlusion painted into the albedo, so any gloss on top reads as plastic. The toon
-            // shader has none of these properties — its look lives in the material's own outline
-            // and shade settings, which a re-import must leave exactly as the artist tuned them.
-            if (material.HasProperty("_Smoothness")) material.SetFloat("_Smoothness", 0.1f);
-            if (material.HasProperty("_Glossiness")) material.SetFloat("_Glossiness", 0.1f);
-            if (material.HasProperty("_Metallic"))   material.SetFloat("_Metallic", 0f);
+            // The toon shader's surface values are artist-tuned per character. Only initialise
+            // the plain lit fallback; re-importing must not erase the robot's metal finish.
+            if (material.shader == null || material.shader.name != ToonShaderName)
+            {
+                if (material.HasProperty("_Smoothness")) material.SetFloat("_Smoothness", 0.1f);
+                if (material.HasProperty("_Glossiness")) material.SetFloat("_Glossiness", 0.1f);
+                if (material.HasProperty("_Metallic"))   material.SetFloat("_Metallic", 0f);
+            }
         }
 
         /// <summary>Loads one character's prefab, falling back to the raw FBX when the import tool

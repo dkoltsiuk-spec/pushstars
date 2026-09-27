@@ -42,10 +42,14 @@ namespace PushStars.Core
     public static class CaseRewards
     {
         public const int UpgradeTapCount = 3;
-        public const int AssessmentAura = 200;
+        public const int AssessmentAura = EconomyConfig.AuraAssessment;
+        /// <summary>What the assessment paid before Aura moved to meme scale (saves v3–v5).</summary>
+        public const int LegacyAssessmentAura = 200;
         public const string AssessmentReceipt = "assessment:welcome:v1";
         /// <summary>Wallet receipt of the assessment's Aura, credited with the award itself.</summary>
         public const string AssessmentAuraReceipt = "assessment:welcome:aura:v1";
+        /// <summary>Tops a legacy 200 welcome up to <see cref="AssessmentAura"/> once (save v6).</summary>
+        public const string AssessmentAuraTopUpReceipt = "assessment:welcome:aura:topup:v2";
         // Keep the original key so existing inventories are migrated in place, never abandoned.
         private const string SaveKey = "rewards.case_ledger.v1";
         private static readonly System.Random Random = new System.Random();
@@ -65,11 +69,19 @@ namespace PushStars.Core
         public static bool HasPendingCase => PendingCount > 0;
         public static long GemsBalance => Ledger.GemsBalance;
         public static long AuraBalance => Ledger.AuraBalance;
+        /// <summary>Highest Aura balance ever reached. Never drops; fills the Aura heroes' unlock bars.</summary>
+        public static long AuraPeak => Ledger.AuraPeak;
         public static int CardsFor(string id) => Ledger.CardsFor(id);
         public static bool OwnsAvatar(string id) => Ledger.OwnsAvatar(id);
-        public static int AvatarPrice(string id) => Ledger.AvatarPrice(id);
+        /// <summary>Gems price, or for an Aura hero the Aura still missing from its goal.</summary>
+        public static long AvatarPrice(string id) => Ledger.AvatarPrice(id);
+        public static long AvatarUnlockProgress(string id) => Ledger.AvatarUnlockProgress(id);
         public static bool TryBuyAvatar(string id) => Ledger.TryBuyAvatar(id);
         public static bool TryCreditAura(string receipt, int amount) => Ledger.TryCreditAura(receipt, amount);
+        /// <summary>Applies several receipted Aura changes (plus or minus) in one save.
+        /// See <see cref="CaseRewardLedger.ApplyAura"/>.</summary>
+        public static AuraApplyResult ApplyAura(IReadOnlyList<AuraGrant> grants) => Ledger.ApplyAura(grants);
+        public static bool HasAuraReceipt(string receipt) => Ledger.HasAuraReceipt(receipt);
         /// <summary>One-shot gem payout keyed by a stable receipt (e.g. a boss-map gem islet).</summary>
         public static bool TryCreditGems(string receipt, int amount) => Ledger.TryCreditGems(receipt, amount);
         public static bool HasGemReceipt(string receipt) => Ledger.HasGemReceipt(receipt);
@@ -194,6 +206,25 @@ namespace PushStars.Core
         }
     }
 
+    /// <summary>One receipted Aura change. Negative deltas are losses; the balance floors at 0.</summary>
+    public readonly struct AuraGrant
+    {
+        public readonly string Receipt;
+        public readonly long Delta;
+        public AuraGrant(string receipt, long delta) { Receipt = receipt; Delta = delta; }
+    }
+
+    public sealed class AuraApplyResult
+    {
+        /// <summary>Receipts that were new and are now committed.</summary>
+        public readonly List<string> Applied = new List<string>();
+        /// <summary>Actual balance change after the zero floor.</summary>
+        public long Change;
+        public long Balance, Peak;
+        /// <summary>Aura heroes whose unlock goal this change reached.</summary>
+        public readonly List<string> Unlocked = new List<string>();
+    }
+
     /// <summary>
     /// The actual save-state machine, with injectable randomness and persistence for deterministic
     /// regression checks that never touch the player's PlayerPrefs. Runtime UI uses CaseRewards.
@@ -229,9 +260,11 @@ namespace PushStars.Core
         [Serializable]
         private sealed class SaveData
         {
-            public int version = 5;
+            public int version = 6;
             public long gems;
             public long aura;
+            /// <summary>Highest Aura ever reached (save v6). Never drops.</summary>
+            public long peakAura;
             public List<string> auraReceipts = new List<string>();
             /// <summary>Added within v5; older saves load it as null and are given an empty list.</summary>
             public List<string> gemReceipts = new List<string>();
@@ -246,7 +279,7 @@ namespace PushStars.Core
             {
                 var copy = new SaveData
                 {
-                    version = version, gems = gems, aura = aura, auraReceipts = new List<string>(auraReceipts),
+                    version = version, gems = gems, aura = aura, peakAura = peakAura, auraReceipts = new List<string>(auraReceipts),
                     gemReceipts = new List<string>(gemReceipts), awardedWorkouts = new List<string>(awardedWorkouts),
                     processedWorkoutIds = new List<string>(processedWorkoutIds),
                     dailyWorkoutUtcDay = dailyWorkoutUtcDay, dailyWorkoutCount = dailyWorkoutCount
@@ -289,8 +322,9 @@ namespace PushStars.Core
             }
             if (_state.version < 5) MigrateSealedAura(_state);
             if (_state.gemReceipts == null) _state.gemReceipts = new List<string>();
+            if (_state.version < 6) MigrateMemeAura(_state);
             _awardedWorkouts = new HashSet<string>(_state.awardedWorkouts, StringComparer.Ordinal);
-            _state.version = 5;
+            _state.version = 6;
             _processedWorkouts = new HashSet<string>(_state.processedWorkoutIds, StringComparer.Ordinal);
         }
 
@@ -312,28 +346,88 @@ namespace PushStars.Core
             }
         }
 
+        /// <summary>v6: Aura became the meme status score. The legacy 200 welcome is topped up to
+        /// the new welcome, the peak starts at the balance, and heroes a v5 save already owns stay owned.</summary>
+        private static void MigrateMemeAura(SaveData state)
+        {
+            if (state.auraReceipts.Contains(CaseRewards.AssessmentAuraReceipt) &&
+                !state.auraReceipts.Contains(CaseRewards.AssessmentAuraTopUpReceipt))
+            {
+                state.aura = checked(state.aura + CaseRewards.AssessmentAura - CaseRewards.LegacyAssessmentAura);
+                state.auraReceipts.Add(CaseRewards.AssessmentAuraTopUpReceipt);
+            }
+            state.peakAura = Math.Max(state.peakAura, state.aura);
+        }
+
         public PendingCase Pending => PendingCount > 0 ? _state.cases[0].Snapshot() : null;
         public int PendingCount => _state.cases.Count;
         public long GemsBalance => _state.gems;
         public long AuraBalance => _state.aura;
+        public long AuraPeak => _state.peakAura;
         private AvatarOffer Offer(string id) => Array.Find(_offers, offer => offer.Id == id);
         public int CardsFor(string id) => _state.avatars.Find(a => a.id == id)?.cards ?? 0;
-        public bool OwnsAvatar(string id)
+        public bool OwnsAvatar(string id) => Owns(_state, Offer(id));
+        private static bool Owns(SaveData state, AvatarOffer offer)
+        {
+            if (offer == null) return false;
+            var progress = state.avatars.Find(a => a.id == offer.Id);
+            return offer.Kind == AvatarPurchaseKind.Included || (progress != null && progress.owned) ||
+                offer.Unlocked(state.peakAura, progress?.cards ?? 0);
+        }
+
+        /// <summary>Filled part of an Aura hero's bar (peak Aura + cards), 0..goal.</summary>
+        public long AvatarUnlockProgress(string id)
         {
             var offer = Offer(id);
-            return offer != null && (offer.Kind == AvatarPurchaseKind.Included ||
-                _state.avatars.Exists(a => a.id == id && a.owned) || offer.UsesCards && CardsFor(id) >= offer.RequiredCards);
+            if (offer == null || !offer.UnlocksByAura) return 0;
+            return OwnsAvatar(id) ? offer.AuraGoal : offer.UnlockProgress(_state.peakAura, CardsFor(id));
         }
-        public int AvatarPrice(string id) => Offer(id)?.PriceAfterCards(CardsFor(id)) ?? 0;
+
+        /// <summary>Gems price, or the Aura an Aura hero still misses (0 once unlocked).</summary>
+        public long AvatarPrice(string id)
+        {
+            var offer = Offer(id);
+            if (offer == null) return 0;
+            return offer.UnlocksByAura ? offer.AuraGoal - AvatarUnlockProgress(id) : offer.Price;
+        }
+
+        public bool HasAuraReceipt(string receipt)
+            => !string.IsNullOrWhiteSpace(receipt) && _state.auraReceipts.Contains(receipt.Trim());
 
         public bool TryCreditAura(string receipt, int amount)
+            => amount > 0 && ApplyAura(new[] { new AuraGrant(receipt, amount) }).Applied.Count > 0;
+
+        /// <summary>
+        /// Commits every grant whose receipt is new, in order, in one save. The balance floors at 0
+        /// after each grant, the peak follows the highest balance, and any Aura hero whose goal is
+        /// reached becomes owned in the same save. Replayed receipts change nothing.
+        /// </summary>
+        public AuraApplyResult ApplyAura(IReadOnlyList<AuraGrant> grants)
         {
-            if (string.IsNullOrWhiteSpace(receipt) || amount <= 0 || _state.auraReceipts.Contains(receipt.Trim())) return false;
+            var result = new AuraApplyResult();
             var next = _state.Copy();
-            next.aura = checked(next.aura + amount);
-            next.auraReceipts.Add(receipt.Trim());
+            var seen = new HashSet<string>(next.auraReceipts, StringComparer.Ordinal);
+            foreach (var grant in grants ?? Array.Empty<AuraGrant>())
+            {
+                if (string.IsNullOrWhiteSpace(grant.Receipt) || grant.Delta == 0) continue;
+                string receipt = grant.Receipt.Trim();
+                if (!seen.Add(receipt)) continue;
+                next.aura = Math.Max(0, checked(next.aura + grant.Delta));
+                next.peakAura = Math.Max(next.peakAura, next.aura);
+                next.auraReceipts.Add(receipt);
+                result.Applied.Add(receipt);
+            }
+            result.Change = next.aura - _state.aura;
+            result.Balance = next.aura; result.Peak = next.peakAura;
+            if (result.Applied.Count == 0) return result;
+            foreach (var offer in _offers)
+                if (offer.UnlocksByAura && !Owns(_state, offer) && Owns(next, offer))
+                {
+                    Progress(next, offer.Id).owned = true;
+                    result.Unlocked.Add(offer.Id);
+                }
             Commit(next);
-            return true;
+            return result;
         }
 
         public bool TryCreditGems(string receipt, int amount)
@@ -355,12 +449,12 @@ namespace PushStars.Core
         public bool TryBuyAvatar(string id)
         {
             var offer = Offer(id);
-            if (offer == null || OwnsAvatar(id) || (offer.Kind != AvatarPurchaseKind.Aura && offer.Kind != AvatarPurchaseKind.Gems)) return false;
-            int price = AvatarPrice(id);
-            if (price < 0 || (offer.Kind == AvatarPurchaseKind.Aura ? _state.aura : _state.gems) < price) return false;
+            // Aura is a status score, never spent: Aura heroes unlock by reaching their goal.
+            if (offer == null || OwnsAvatar(id) || offer.Kind != AvatarPurchaseKind.Gems) return false;
+            int price = offer.Price;
+            if (price < 0 || _state.gems < price) return false;
             var next = _state.Copy();
-            if (offer.Kind == AvatarPurchaseKind.Aura) next.aura -= price;
-            else next.gems -= price;
+            next.gems -= price;
             Progress(next, id).owned = true;
             Commit(next);
             return true;
@@ -453,7 +547,11 @@ namespace PushStars.Core
             if (!next.auraReceipts.Contains(CaseRewards.AssessmentAuraReceipt))
             {
                 next.aura = checked(next.aura + CaseRewards.AssessmentAura);
+                next.peakAura = Math.Max(next.peakAura, next.aura);
                 next.auraReceipts.Add(CaseRewards.AssessmentAuraReceipt);
+                // The new welcome is already the full amount; never top it up again.
+                if (!next.auraReceipts.Contains(CaseRewards.AssessmentAuraTopUpReceipt))
+                    next.auraReceipts.Add(CaseRewards.AssessmentAuraTopUpReceipt);
             }
             Commit(next);
             _awardedWorkouts.Add(CaseRewards.AssessmentReceipt);
@@ -519,7 +617,7 @@ namespace PushStars.Core
             {
                 var progress = Progress(next, offer.Id);
                 progress.cards = (int)Math.Min(offer.RequiredCards, (long)progress.cards + prize.avatarCards);
-                progress.owned = progress.cards >= offer.RequiredCards;
+                progress.owned = offer.Unlocked(next.peakAura, progress.cards);
             }
             next.cases.RemoveAt(index);
             Commit(next);
@@ -543,7 +641,7 @@ namespace PushStars.Core
 
         private static void ValidateSave(SaveData state)
         {
-            if (state == null || state.version < 1 || state.version > 5 || state.gems < 0 || state.cases == null || state.awardedWorkouts == null)
+            if (state == null || state.version < 1 || state.version > 6 || state.gems < 0 || state.cases == null || state.awardedWorkouts == null)
                 throw new InvalidOperationException("Invalid case ledger. Saved rewards were not overwritten.");
             foreach (string id in state.awardedWorkouts)
                 if (string.IsNullOrWhiteSpace(id))
@@ -561,7 +659,8 @@ namespace PushStars.Core
             }
             if (state.version >= 3)
             {
-                if (state.aura < 0 || state.avatars == null || state.auraReceipts == null)
+                if (state.aura < 0 || state.avatars == null || state.auraReceipts == null ||
+                    (state.version >= 6 && state.peakAura < state.aura))
                     throw new InvalidOperationException("Invalid avatar wallet. Saved rewards were not overwritten.");
                 var ids = new HashSet<string>(StringComparer.Ordinal);
                 foreach (var avatar in state.avatars)
@@ -585,7 +684,7 @@ namespace PushStars.Core
                 {
                     // Only a v4 save may still hold the sealed assessment Aura; v5 pays it out.
                     if (state.version != 4 || entry.id != CaseRewards.AssessmentReceipt ||
-                        entry.aura != CaseRewards.AssessmentAura || entry.gems != 0 ||
+                        entry.aura != CaseRewards.LegacyAssessmentAura || entry.gems != 0 ||
                         entry.avatarCards != 0 || !string.IsNullOrEmpty(entry.avatarId) ||
                         entry.rarity != CaseRarity.Legendary || entry.taps != CaseRewards.UpgradeTapCount ||
                         !caseIds.Add(entry.id) || !awards.Contains(entry.id))

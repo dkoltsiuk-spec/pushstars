@@ -16,13 +16,24 @@ namespace PushStars.Core
     {
         public const string ResourceFolder = "Audio/";
         public const string MusicName = "music_action_groove";
+        public const string OnboardingMusicName = "music_onboarding_welcome";
+        public const string AssessmentMusicName = "music_assessment_pulse";
+        /// <summary>Music level under a live set: room for the rep and hit cues.</summary>
+        public const float WorkoutMusicVolume = .15f;
         private const int VoiceCount = 8;
+        private const float CrossfadeOutRate = .25f;
         private static GameAudio _instance;
         private static bool _quitting;
+        private static string _musicOverride;
+        private static float _musicOverrideVolume;
         private static readonly ISettingsStore Settings = new PlayerPrefsSettingsStore();
         private readonly Dictionary<SoundCue, ClipGroup> _groups = new Dictionary<SoundCue, ClipGroup>();
+        private readonly Dictionary<string, AudioClip> _themes = new Dictionary<string, AudioClip>();
         private readonly AudioSource[] _effects = new AudioSource[VoiceCount];
-        private AudioSource _music;
+        // Two music sources: the current theme, and the previous one fading out under it.
+        private AudioSource _music, _musicOut;
+        private AudioClip _mainTheme;
+        private float _mainThemeResume, _musicStartAt;
         private AudioListener _fallbackListener;
         private bool _wasEnabled, _background, _workoutPaused;
         private float _duckUntil;
@@ -44,7 +55,7 @@ namespace PushStars.Core
         }
 
         [RuntimeInitializeOnLoadMethod(RuntimeInitializeLoadType.SubsystemRegistration)]
-        private static void ResetStatics() { _instance = null; _quitting = false; }
+        private static void ResetStatics() { _instance = null; _quitting = false; _musicOverride = null; }
 
         [RuntimeInitializeOnLoadMethod(RuntimeInitializeLoadType.BeforeSceneLoad)]
         private static void Boot() => Ensure();
@@ -72,16 +83,33 @@ namespace PushStars.Core
             if (audio != null) audio._workoutPaused = paused;
         }
 
+        /// <summary>Plays <paramref name="theme"/> instead of the scene's own music until the owner
+        /// clears it. A mode inside a shared scene (the assessment in Onboarding or Fight) uses this;
+        /// scene themes come from <see cref="SceneTheme"/>.</summary>
+        public static void SetMusicOverride(string theme, float volume)
+        {
+            _musicOverride = theme;
+            _musicOverrideVolume = volume;
+            Ensure()?.RefreshMusic();
+        }
+
+        public static void ClearMusicOverride(string theme)
+        {
+            if (_musicOverride != theme) return;
+            _musicOverride = null;
+            if (_instance != null && !_quitting) _instance.RefreshMusic();
+        }
+
         private void Awake()
         {
             if (_instance != null && _instance != this) { Destroy(gameObject); return; }
             _instance = this;
             DontDestroyOnLoad(gameObject);
             _music = NewSource(200);
-            _music.loop = true;
-            _music.volume = 0f;
-            _music.clip = Resources.Load<AudioClip>(ResourceFolder + MusicName);
-            if (_music.clip == null) Debug.LogWarning("[GameAudio] Missing music loop.");
+            _musicOut = NewSource(200);
+            _music.loop = _musicOut.loop = true;
+            _music.volume = _musicOut.volume = 0f;
+            _mainTheme = Theme(MusicName);
             for (int i = 0; i < VoiceCount; i++) _effects[i] = NewSource(128);
             Add(SoundCue.Tap, .28f, .045f, 160, "ui_tap_01", "ui_tap_02", "ui_tap_03");
             Add(SoundCue.Confirm, .36f, .12f, 150, "ui_confirm");
@@ -99,8 +127,7 @@ namespace PushStars.Core
             Add(SoundCue.CaseUpgradeComplete, .5f, .45f, 64, "case_upgrade_finish");
             Add(SoundCue.Purchase, .45f, .3f, 80, "shop_purchase");
             Add(SoundCue.Victory, .55f, .5f, 64, "victory");
-            Add(SoundCue.AuraStamp, .7f, .5f, 64, "aura_stamp");
-            Add(SoundCue.AuraSkull, .65f, .5f, 64, "aura_skull");
+            Add(SoundCue.AuraStamp, .7f, .5f, 64, "aura_stamp");            Add(SoundCue.AuraSkull, .65f, .5f, 64, "aura_skull");
             Add(SoundCue.AuraWhoosh, .75f, .5f, 80, "aura_whoosh");
             Add(SoundCue.UiTransition, .5f, .3f, 90, "ui_transition");
             Add(SoundCue.RewardBurst, .45f, .3f, 120, "reward_burst");
@@ -167,7 +194,13 @@ namespace PushStars.Core
             // Duck quickly for a big moment, swell back slowly afterwards.
             float rate = volume < _music.volume ? 1.2f : .35f;
             // Clamp the step: a scene load's long frame must not jump the music in one go.
-            _music.volume = Mathf.MoveTowards(_music.volume, volume, Mathf.Min(Time.unscaledDeltaTime, .05f) * rate);
+            float step = Mathf.Min(Time.unscaledDeltaTime, .05f);
+            _music.volume = Mathf.MoveTowards(_music.volume, volume, step * rate);
+            if (_musicOut.isPlaying)
+            {
+                _musicOut.volume = Mathf.MoveTowards(_musicOut.volume, 0f, step * CrossfadeOutRate);
+                if (_musicOut.volume <= 0f) StopMusic(_musicOut);
+            }
         }
 
         private void ApplySettings()
@@ -179,11 +212,12 @@ namespace PushStars.Core
             {
                 _music.volume = 0f;
                 _music.UnPause();
-                if (!_music.isPlaying && _music.clip != null) _music.Play();
+                if (!_music.isPlaying && _music.clip != null) PlayMusic();
             }
             else
             {
                 _music.Pause();
+                StopMusic(_musicOut);
                 if (!SoundEnabled || _background)
                     foreach (var source in _effects) source.Stop();
             }
@@ -195,21 +229,76 @@ namespace PushStars.Core
         private void RefreshScene(Scene scene)
         {
             _workoutPaused = false;
-            _sceneMusicVolume = SceneMusicVolume(scene.name);
+            RefreshMusic();
             RefreshListener();
         }
 
-        /// <summary>The music bed never restarts between screens; it only breathes. It all but
-        /// drops out under the Aura stamp (silence before the hit), sits back for case openings,
-        /// and swells back in on the home screen.</summary>
+        /// <summary>Picks the theme and level for the current screen. A new theme crossfades in over
+        /// the old one; the same theme just keeps playing.</summary>
+        private void RefreshMusic()
+        {
+            string scene = SceneManager.GetActiveScene().name;
+            _sceneMusicVolume = _musicOverride != null ? _musicOverrideVolume : SceneMusicVolume(scene);
+            var clip = Theme(_musicOverride ?? SceneTheme(scene));
+            if (clip == null || clip == _music.clip) return;
+            // Going straight back to the theme still fading out picks it up where it is.
+            bool resume = _musicOut.isPlaying && _musicOut.clip == clip;
+            if (!resume) StopMusic(_musicOut);
+            (_music, _musicOut) = (_musicOut, _music);
+            if (!_wasEnabled) StopMusic(_musicOut);
+            if (resume) return;
+            _music.clip = clip;
+            _music.volume = 0f;
+            _musicStartAt = clip == _mainTheme ? _mainThemeResume : 0f;
+            if (_wasEnabled) PlayMusic();
+        }
+
+        private void PlayMusic()
+        {
+            _music.Play();
+            // Seek after Play: a streamed clip ignores a position set while it is stopped.
+            if (_musicStartAt > 0f && _musicStartAt < _music.clip.length) _music.time = _musicStartAt;
+            _musicStartAt = 0f;
+        }
+
+        private void StopMusic(AudioSource source)
+        {
+            // The home bed carries on from where it was; the other themes start over each time.
+            if (source.clip != null && source.clip == _mainTheme && (source.isPlaying || source.time > 0f))
+                _mainThemeResume = source.time;
+            source.Stop();
+            source.volume = 0f;
+        }
+
+        private AudioClip Theme(string name)
+        {
+            if (_themes.TryGetValue(name, out var clip)) return clip;
+            clip = Resources.Load<AudioClip>(ResourceFolder + name);
+            if (clip == null) Debug.LogWarning("[GameAudio] Missing music: " + name);
+            _themes[name] = clip;
+            return clip;
+        }
+
+        /// <summary>First launch belongs to the welcome theme from the loading screen on; everything
+        /// after the assessment shares the home bed.</summary>
+        private static string SceneTheme(string scene)
+        {
+            if (scene == FightConfig.OnboardingSceneName) return OnboardingMusicName;
+            if (scene == FightConfig.BootSceneName && !OnboardingState.IntroSeen) return OnboardingMusicName;
+            return MusicName;
+        }
+
+        /// <summary>The home bed only breathes between screens. It all but drops out under the Aura
+        /// stamp (silence before the hit), sits back for case openings, and swells back in on the
+        /// home screen.</summary>
         private static float SceneMusicVolume(string scene)
         {
             switch (scene)
             {
                 case "AuraReward": return .03f;
                 case "CaseAward": case "CaseOpening": case "CaseReward": return .13f;
-                case "Training": return .15f;
-                default: return scene == FightConfig.FightSceneName ? .15f : .2f;
+                case FightConfig.TrainingSceneName: return WorkoutMusicVolume;
+                default: return scene == FightConfig.FightSceneName ? WorkoutMusicVolume : .2f;
             }
         }
 

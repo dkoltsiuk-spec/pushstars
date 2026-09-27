@@ -9,6 +9,7 @@ namespace PushStars.Core
     {
         public string Id, Mode, OpponentName;
         public int Reps, OpponentReps, TrophyDelta, DurationSec;
+        public int StreakDays, StreakBonusTrophies;
         public long Xp, UtcTicks;
         public bool Won, Draw, IsRecord;
     }
@@ -18,6 +19,8 @@ namespace PushStars.Core
     {
         public int Version = 1;
         public int Trophies, BestReps, TotalReps, Wins, Losses, WinStreak;
+        public int DailyStreak;
+        public long LastActiveDayTicks;
         public long Xp;
         public bool Seeded;
         public List<LocalWorkout> Workouts = new List<LocalWorkout>();
@@ -32,6 +35,7 @@ namespace PushStars.Core
         public LocalProgress Snapshot => new LocalProgress {
             Trophies = _state.Trophies, BestReps = _state.BestReps, TotalReps = _state.TotalReps,
             Wins = _state.Wins, Losses = _state.Losses, WinStreak = _state.WinStreak,
+            DailyStreak = _state.DailyStreak, LastActiveDayTicks = _state.LastActiveDayTicks,
             Xp = _state.Xp, Seeded = _state.Seeded
         };
 
@@ -42,6 +46,29 @@ namespace PushStars.Core
                 throw new InvalidOperationException("Unsupported local workout save. The original save has been preserved.");
             _state = string.IsNullOrEmpty(json) ? Clone(legacy ?? new LocalProgress()) : JsonUtility.FromJson<LocalProgress>(json);
             Validate(_state);
+            // Recover active days from older saves without retroactively awarding trophies.
+            if (_state.LastActiveDayTicks == 0)
+            {
+                var history = new List<LocalWorkout>(_state.Workouts);
+                history.Sort((a, b) => a.UtcTicks.CompareTo(b.UtcTicks));
+                foreach (var workout in history) UpdateDailyStreak(_state, workout);
+            }
+        }
+
+        public LocalWorkout FindWorkout(string id)
+        {
+            var workout = _state.Workouts.Find(w => w.Id == id);
+            return workout == null ? null : JsonUtility.FromJson<LocalWorkout>(JsonUtility.ToJson(workout));
+        }
+
+        private static void UpdateDailyStreak(LocalProgress state, LocalWorkout workout)
+        {
+            if (workout.Reps <= 0) return;
+            long day = new DateTime(workout.UtcTicks, DateTimeKind.Utc).Date.Ticks;
+            if (day <= state.LastActiveDayTicks) return;
+            state.DailyStreak = day - state.LastActiveDayTicks == TimeSpan.TicksPerDay
+                ? checked(state.DailyStreak + 1) : 1;
+            state.LastActiveDayTicks = day;
         }
 
         public List<MatchRecord> History
@@ -70,6 +97,9 @@ namespace PushStars.Core
 
             var next = Clone(_state);
             var record = JsonUtility.FromJson<LocalWorkout>(JsonUtility.ToJson(workout));
+            UpdateDailyStreak(next, record);
+            record.StreakDays = next.DailyStreak;
+            record.StreakBonusTrophies = 0;
             record.IsRecord = record.Reps > next.BestReps;
             next.BestReps = Math.Max(next.BestReps, record.Reps);
             checked { next.TotalReps += record.Reps; next.Xp += record.Xp; }
@@ -89,6 +119,11 @@ namespace PushStars.Core
                 int delta = record.Mode == "boss" ? 0
                     : record.Won ? (ghost ? EconomyConfig.TrophyGhostWin : EconomyConfig.TrophyWin)
                     : -(ghost ? EconomyConfig.TrophyGhostLoss : EconomyConfig.TrophyLoss);
+                if (record.Mode != "boss" && record.Won && record.Reps > 0)
+                {
+                    record.StreakBonusTrophies = checked(Math.Max(0, record.StreakDays - 1) * EconomyConfig.StreakTrophyBonusPerDay);
+                    delta = checked(delta + record.StreakBonusTrophies);
+                }
                 next.Trophies = Math.Max(0, checked(next.Trophies + delta));
             }
             record.TrophyDelta = next.Trophies - before;
@@ -114,7 +149,8 @@ namespace PushStars.Core
         private static void Validate(LocalProgress state)
         {
             if (state == null || state.Version != 1 || state.Workouts == null || state.Xp < 0 ||
-                state.Trophies < 0 || state.BestReps < 0 || state.TotalReps < 0 || state.Wins < 0 || state.Losses < 0 || state.WinStreak < 0)
+                state.Trophies < 0 || state.BestReps < 0 || state.TotalReps < 0 || state.Wins < 0 || state.Losses < 0 || state.WinStreak < 0 ||
+                state.DailyStreak < 0 || state.LastActiveDayTicks < 0 || state.LastActiveDayTicks > DateTime.MaxValue.Ticks)
                 throw new InvalidOperationException("Invalid local workout save. The original save has been preserved.");
             var ids = new HashSet<string>();
             foreach (var w in state.Workouts)

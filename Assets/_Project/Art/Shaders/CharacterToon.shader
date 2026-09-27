@@ -39,6 +39,12 @@ Shader "Push Stars/Character Toon"
         _ShadeStrength  ("Shade strength", Range(0, 1))    = 0.85
         _LightInfluence ("Scene light influence", Range(0, 1)) = 0.35
 
+        [Header(Surface)]
+        [Space(4)]
+        _Smoothness       ("Highlight sharpness", Range(0, 1)) = 0.3
+        _SpecularStrength ("Highlight strength", Range(0, 1))  = 0.12
+        _Metallic         ("Metallic tint", Range(0, 1))        = 0
+
         [Header(Rim)]
         [Space(4)]
         _RimColor    ("Rim colour", Color)          = (1, 1, 1, 1)
@@ -96,6 +102,9 @@ Shader "Push Stars/Character Toon"
             half      _ShadeSoftness;
             half      _ShadeStrength;
             half      _LightInfluence;
+            half      _Smoothness;
+            half      _SpecularStrength;
+            half      _Metallic;
             half      _RimPower;
             half      _RimStrength;
             float4    _RimLightDirection;
@@ -148,6 +157,16 @@ Shader "Push Stars/Character Toon"
                 col *= lerp(half3(1, 1, 1), _LightColor0.rgb, _LightInfluence);
 
                 float3 viewDir = normalize(_WorldSpaceCameraPos - i.worldPos);
+                // A restrained light highlight keeps the painted albedo and shade band intact.
+                // Metal borrows the albedo hue for its stronger, tighter reflection.
+                float3 halfDir = normalize(l + viewDir);
+                half specular = pow(saturate(dot(n, halfDir)), lerp(12.0h, 96.0h, _Smoothness))
+                              * saturate(dot(n, l));
+                half3 specularColor = lerp(half3(1, 1, 1),
+                                           lerp(albedo.rgb, half3(1, 1, 1), 0.25h),
+                                           _Metallic);
+                col += specularColor * specular * _SpecularStrength;
+
                 float3 rawRimDir = _RimLightDirection.xyz;
                 float3 rimDir = dot(rawRimDir, rawRimDir) > 1e-6
                     ? normalize(rawRimDir)

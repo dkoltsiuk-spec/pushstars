@@ -96,8 +96,10 @@ namespace PushStars.Fight
         {
             Result = result ?? throw new ArgumentNullException(nameof(result));
             SetSummary(summary, awardedCaseId, returnScene);
-            Navigate(result.Mode == FightMode.LevelTest && result.MyReps > 0
-                ? FightScreen.RewardSummary : FightScreen.Results);
+            // One screen after a fight (outcome, score, rewards), like Brawl Stars. The old
+            // Results card only remains for a level test that counted nothing: it offers a retry.
+            Navigate(result.Mode == FightMode.LevelTest && result.MyReps <= 0
+                ? FightScreen.Results : FightScreen.RewardSummary);
         }
 
         public static void ShowSummary(FightRewardFlow.Summary summary, string returnScene = "Main")
@@ -162,7 +164,8 @@ namespace PushStars.Fight
         {
             IsPreview = true;
             Result = new FightResultData { Mode = FightMode.LevelTest, MyReps = 8, MyForm = 92, Xp = 80, PlayerName = "BEASTCORE_DEV" };
-            RewardSummary = new FightRewardFlow.Summary { PlayerName = Result.PlayerName, TotalReps = 8, Technique = .92f, EnergyXp = 80, Aura = CaseRewards.AssessmentAura, HasCase = true };
+            RewardSummary = new FightRewardFlow.Summary { PlayerName = Result.PlayerName, TotalReps = 8, Technique = .92f, EnergyXp = 80, Aura = CaseRewards.AssessmentAura, HasCase = true,
+                AuraMoments = new[] { "WELCOME AURA +" + CaseRewards.AssessmentAura } };
             PreviewAssessment = true; PreviewGems = 100; PreviewRarity = CaseRarity.Common;
             CaseId = AwardedCaseId = null;
         }
@@ -229,10 +232,16 @@ namespace PushStars.Fight
             FitnessTier = FitnessTest.TierFor(21)
         };
 
+        /// <summary>Editor sample of a won duel's Aura: the lines add up to the stamp.</summary>
+        public const long SampleAura = 4250;
+        public static readonly string[] SampleAuraMoments =
+            { "VICTORY +1000", "COMEBACK +1000", "PERFECT FORM +500", "CLAP PUSH-UPS x3 +750", "LEVEL 4 +1000" };
+
         private static FightRewardFlow.Summary DemoSummary() => new FightRewardFlow.Summary
         {
             PlayerName = "BEASTCORE_DEV", TotalReps = 57, Technique = .92f,
-            Trophies = 21, EnergyXp = 570, Aura = 32, HasCase = true
+            StreakDays = 2, StreakBonusTrophies = 1,
+            Trophies = 21, EnergyXp = 570, Aura = SampleAura, HasCase = true, NewRecord = true, AuraMoments = SampleAuraMoments
         };
     }
 }

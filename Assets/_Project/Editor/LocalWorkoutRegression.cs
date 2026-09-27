@@ -69,6 +69,7 @@ namespace PushStars.Editor
                 "Loss below zero trophies was mishandled.");
             Require(Leagues.ForTrophies(399).Id == "bronze" && Leagues.ForTrophies(400).Id == "silver" &&
                 Leagues.Progress(1200) == 1, "League thresholds differ from actual trophies.");
+            ValidateDailyStreak();
             Directory.CreateDirectory("Logs");
             File.WriteAllText("Logs/local-user-data-regression.txt", "PASS: new user, assessment, replay, retest, training sets, ghost, draw, loss, restart, detached history, legacy migration, write failure, unsupported save, trophy floor, league thresholds.\n");
             Debug.Log("[LocalWorkoutRegression] PASS");
@@ -78,6 +79,57 @@ namespace PushStars.Editor
             Id = id, Mode = mode, Reps = reps, Xp = xp, UtcTicks = new DateTime(2026, 9, 24, 12, 0, 0, DateTimeKind.Utc).Ticks,
             DurationSec = 60
         };
+
+        private static void ValidateDailyStreak()
+        {
+            string saved = null;
+            int writes = 0;
+            Action<string> persist = json => { saved = json; writes++; };
+            var ledger = new LocalWorkoutLedger(null, persist);
+            LocalWorkout Day(string id, int day, string mode = "ghost", bool won = true, bool draw = false)
+            {
+                var workout = Workout(id, mode, 12, 120);
+                workout.UtcTicks += day * TimeSpan.TicksPerDay;
+                workout.Won = won; workout.Draw = draw;
+                return workout;
+            }
+            Require(ledger.Record(Day("day1", 0)) == EconomyConfig.TrophyGhostWin, "First day granted a streak bonus.");
+            Require(ledger.Record(Day("day2", 1)) == EconomyConfig.TrophyGhostWin + 1, "Second day missing +1 trophy.");
+            Require(ledger.FindWorkout("day2").StreakBonusTrophies == 1 && ledger.Snapshot.DailyStreak == 2,
+                "Streak receipt does not match awarded trophies.");
+            ledger = new LocalWorkoutLedger(saved, persist);
+            int before = ledger.Snapshot.Trophies, savedWrites = writes;
+            Require(ledger.Record(Day("day2", 1)) == EconomyConfig.TrophyGhostWin + 1 &&
+                ledger.Snapshot.Trophies == before && writes == savedWrites, "Replaying a receipt paid the streak twice.");
+            ledger.Record(Day("same-day", 1));
+            Require(ledger.Snapshot.DailyStreak == 2, "Multiple fights advanced the day streak.");
+            Require(ledger.Record(Day("day3", 2, "pvp")) == EconomyConfig.TrophyWin + 2, "Third day missing +2 trophies.");
+            Require(ledger.Record(Day("boss", 2, "boss")) == 0 && ledger.FindWorkout("boss").StreakBonusTrophies == 0,
+                "Boss granted trophy bonus.");
+            Require(ledger.Record(Day("draw", 2, "ghost", false, true)) == 0, "Draw granted trophy bonus.");
+            Require(ledger.Record(Day("loss", 2, "ghost", false)) == -EconomyConfig.TrophyGhostLoss &&
+                ledger.FindWorkout("loss").StreakBonusTrophies == 0 && ledger.Snapshot.DailyStreak == 3,
+                "Loss paid a bonus or reset the active-day streak.");
+            Require(ledger.Record(Day("gap", 4)) == EconomyConfig.TrophyGhostWin && ledger.Snapshot.DailyStreak == 1,
+                "Missed day did not reset the streak.");
+            Require(ledger.Record(Day("training", 5, "training", false)) == 0 && ledger.Snapshot.DailyStreak == 2,
+                "Training should extend active days without awarding trophies.");
+            var empty = Day("empty", 6, "training", false); empty.Reps = 0;
+            ledger.Record(empty);
+            Require(ledger.Snapshot.DailyStreak == 2, "Empty workout extended the streak.");
+            var old = new LocalProgress { Workouts = new System.Collections.Generic.List<LocalWorkout> {
+                Day("old2", 1), Day("old1", 0) } };
+            var migrated = new LocalWorkoutLedger(JsonUtility.ToJson(old), _ => { });
+            Require(migrated.Snapshot.DailyStreak == 2 && migrated.Snapshot.Trophies == 0 &&
+                migrated.Record(Day("after-migration", 2)) == EconomyConfig.TrophyGhostWin + 2,
+                "Old workout history did not restore daily streak safely.");
+            var failure = new LocalWorkoutLedger(saved, _ => throw new IOException("Disk full"));
+            before = failure.Snapshot.DailyStreak;
+            try { failure.Record(Day("failed-day", 6)); throw new Exception("Write failure swallowed."); }
+            catch (IOException) { }
+            Require(failure.Snapshot.DailyStreak == before, "Failed save committed daily streak.");
+            Debug.Log("[LocalWorkoutRegression] Daily streak: PASS");
+        }
         private static void Require(bool value, string message) { if (!value) throw new Exception(message); }
     }
 }

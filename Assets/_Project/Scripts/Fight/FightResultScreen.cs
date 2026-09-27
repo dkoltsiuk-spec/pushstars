@@ -232,6 +232,7 @@ namespace PushStars.Fight
         private void CropPortrait(RawImage target, RawImage source, FightAvatar stage)
         {
             if (target == null) return;
+            AvatarWideImage.Configure(target, stage != null ? stage.StageCamera : null);
             if (_sceneAuthored && (!Application.isPlaying || source == null || source.texture == null))
             {
                 target.texture = _standingPortrait;
@@ -256,7 +257,7 @@ namespace PushStars.Fight
             _portraitFrames.Remove(target);
             target.uvRect = source.uvRect;
             if (stage == null || !stage.TryGetBodyViewport(out var body)) return;
-            float textureAspect = (float)source.texture.width / source.texture.height;
+            float textureAspect = AvatarWideCamera.TextureAspect(stage.StageCamera, source.texture);
             float boxAspect = target.rectTransform.rect.width / Mathf.Max(1f, target.rectTransform.rect.height);
             float height = Mathf.Min(1f, body.height / 0.94f);
             float width = Mathf.Min(1f, height * boxAspect / textureAspect);

@@ -16,9 +16,17 @@ namespace PushStars.Fight
             public int TotalReps;
             public float Technique;
             public int Trophies;
+            /// <summary>Daily-streak bonus already included in Trophies, shown separately.</summary>
+            public int StreakBonusTrophies;
+            public int StreakDays;
             public long EnergyXp;
+            /// <summary>Aura the fight actually changed (negative for a loss); 0 skips the Aura screen.</summary>
             public long Aura;
+            /// <summary>Captioned lines for the Aura screen ("VICTORY +1000", "ROBOT UNLOCKED!").</summary>
+            public string[] AuraMoments;
             public bool HasCase;
+            /// <summary>This set beat the player's best; the summary stamps NEW RECORD.</summary>
+            public bool NewRecord;
             public RawImage AvatarSource;
         }
 
