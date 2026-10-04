@@ -67,15 +67,15 @@ namespace PushStars.Fight
             _safe.anchorMax = new Vector2(safe.xMax / Screen.width, safe.yMax / Screen.height);
             _content.localScale = Vector3.one * Mathf.Min(1, _safe.rect.width / 390, _safe.rect.height / 710);
             bool main = SceneManager.GetActiveScene().name == FightConfig.MainSceneName;
-            _entry.SetActive(main && (Debug.isDebugBuild || _allowed));
+            _entry.SetActive(main && LabAccess.Visible(_allowed));
             if (!main) { _panel.SetActive(false); return; }
             if (_uid != LeagueClient.Uid)
             {
                 _uid = LeagueClient.Uid; _allowed = false; _accessChecked = false;
-                if (!Debug.isDebugBuild) _panel.SetActive(false);
+                if (!LabAccess.Visible(false)) _panel.SetActive(false);
             }
             if (!_accessChecked && Time.unscaledTime >= _nextCheck && !string.IsNullOrEmpty(_uid)) CheckAccess();
-            if (BotRecorderFlow.ShowOnMain && (Debug.isDebugBuild || _allowed))
+            if (BotRecorderFlow.ShowOnMain && LabAccess.Visible(_allowed))
             {
                 BotRecorderFlow.ShowOnMain = false; Open();
                 if (BotRecorderFlow.PendingUpload != null) Upload();

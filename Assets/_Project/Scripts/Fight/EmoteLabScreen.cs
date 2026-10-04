@@ -16,8 +16,9 @@ namespace PushStars.Fight
     /// <summary>
     /// Emote Lab: records the owner performing a gesture in front of the phone and parks the take in
     /// the cloud for the desktop mocap pipeline (Tools/EmoteMocap), which turns it into an emote
-    /// clip. Development builds only; like <see cref="BotLabScreen"/> the UI is built at runtime, so
-    /// no scene carries it.
+    /// clip. Like <see cref="BotLabScreen"/> the UI is built at runtime, so no scene carries it, and
+    /// who sees the entry is decided by <see cref="LabAccess"/> — a release build encodes frames
+    /// several times faster than a Development one, so that is the better build to record in.
     ///
     /// <para>The phone stands on a tripod and the owner steps back, so everything is readable and
     /// audible from three metres: a long countdown in huge digits with a beep per second, a red
@@ -45,6 +46,9 @@ namespace PushStars.Fight
         private Button _record, _retry;
         private int _name, _length, _delay;
         private bool _front = true, _busy, _recording;
+        private bool _allowed, _accessChecked;
+        private float _nextCheck;
+        private string _uid;
 
         private WebCamTexture _camera;
         private Coroutine _cameraStart;
@@ -58,7 +62,7 @@ namespace PushStars.Fight
         [RuntimeInitializeOnLoadMethod(RuntimeInitializeLoadType.AfterSceneLoad)]
         private static void Install()
         {
-            if (_instance != null || !Debug.isDebugBuild) return;
+            if (_instance != null) return;
             var root = new GameObject("EmoteLab");
             DontDestroyOnLoad(root);
             _instance = root.AddComponent<EmoteLabScreen>();
@@ -120,12 +124,26 @@ namespace PushStars.Fight
             _safe.anchorMax = new Vector2(safe.xMax / Screen.width, safe.yMax / Screen.height);
             _content.localScale = Vector3.one * Mathf.Min(1, _safe.rect.width / 390, _safe.rect.height / 770);
             bool main = SceneManager.GetActiveScene().name == FightConfig.MainSceneName;
-            _entry.SetActive(main && !_panel.activeSelf);
+            if (_uid != LeagueClient.Uid) { _uid = LeagueClient.Uid; _allowed = false; _accessChecked = false; }
+            if (!Debug.isDebugBuild && !_accessChecked && Time.unscaledTime >= _nextCheck && !string.IsNullOrEmpty(_uid)) CheckAccess();
+            _entry.SetActive(main && !_panel.activeSelf && LabAccess.Visible(_allowed));
             if (!main && _panel.activeSelf && !_busy) Close();
             if (!_panel.activeSelf) return;
             LayoutPreview();
             if (_recording) CaptureFrame();
             DrainEncoded();
+        }
+
+        private async void CheckAccess()
+        {
+            _accessChecked = true;
+            string requestedUid = _uid;
+            try
+            {
+                var access = await BotRecordingClient.GetAccess();
+                if (requestedUid == LeagueClient.Uid) _allowed = access.enabled;
+            }
+            catch (Exception) { _nextCheck = Time.unscaledTime + 30; _accessChecked = false; }
         }
 
         // ── Panel ──────────────────────────────────────────────────────────────────────
