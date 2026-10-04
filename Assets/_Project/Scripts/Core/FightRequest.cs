@@ -25,13 +25,19 @@ namespace PushStars.Core
     public static class FightRequest
     {
         public static bool HasRequest { get; private set; }
+        public static bool IsBotRecording { get; private set; }
+        public static BotRecording TestBot { get; private set; }
+        public static bool IsBotTest => IsBotRecording || TestBot != null;
         // Snapshot the chosen boss: winning advances the ladder before the result scene opens.
         public static string BossId { get; private set; }
 
         [UnityEngine.RuntimeInitializeOnLoadMethod(UnityEngine.RuntimeInitializeLoadType.SubsystemRegistration)]
         public static void Clear()
         {
+            ArenaMatch.Clear();
             HasRequest = false;
+            IsBotRecording = false;
+            TestBot = null;
             BossId = null;
             Mode = FightMode.Ghost;
             ReturnScene = FightConfig.MainSceneName;
@@ -55,8 +61,26 @@ namespace PushStars.Core
         public static void Boss(string returnScene = FightConfig.MainSceneName)
             => Set(FightMode.Boss, returnScene);
 
+        public static void RecordBot()
+        {
+            Set(FightMode.Ghost, FightConfig.MainSceneName);
+            IsBotRecording = true;
+        }
+
+        public static void ReplayBot(BotRecording bot)
+        {
+            if (bot == null || !bot.IsValid) throw new System.ArgumentException("Invalid test bot.");
+            Set(FightMode.Ghost, FightConfig.MainSceneName);
+            TestBot = bot;
+            ArenaMatch.BeginLocal(ArenaProfile.SelectedId, bot.fight.arenaId);
+        }
+
         private static void Set(FightMode mode, string returnScene)
         {
+            IsBotRecording = false;
+            TestBot = null;
+            ArenaMatch.Clear();
+            if (mode == FightMode.Ghost) ArenaMatch.BeginLocal(ArenaProfile.SelectedId, GhostStore.Load()?.arenaId);
             HasRequest = true;
             Mode = mode;
             BossId = mode == FightMode.Boss ? BossCatalog.Current.Id : null;

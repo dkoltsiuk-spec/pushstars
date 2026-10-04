@@ -17,6 +17,7 @@ namespace PushStars.Fight
         public float MyForm, OppForm, MyRepsPerMinute, OppSecondsPerRep;
         public long Xp;
         public string OpponentName, PlayerName;
+        public string LeagueStatus;
         public FitnessTier FitnessTier;
         public int TrainingSets;
     }

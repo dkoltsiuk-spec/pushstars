@@ -9,10 +9,10 @@ const db = admin.firestore();
 // is the only writer of users/{uid} on create (rules deny client create).
 exports.onUserCreated = functions.auth.user().onCreate(async (user) => {
   const ref = db.doc(`users/${user.uid}`);
-  const snap = await ref.get();
-  if (snap.exists) return null;
-
-  await ref.set(defaultProfile(user.displayName));
+  await db.runTransaction(async tx => {
+    const snap = await tx.get(ref);
+    if (!snap.exists) tx.create(ref, defaultProfile(user.displayName));
+  });
   functions.logger.info(`Seeded profile for ${user.uid}`);
   return null;
 });

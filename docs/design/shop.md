@@ -3,6 +3,16 @@
 The upper-right `ShopTile` opens the authored Shop overlay in `Main.unity`.
 `Tools > Push Stars > UI > Install Shop` installs it once into a saved Main scene.
 
+The shop notice uses the trophy's red tab and gold `i` geometry. It appears only for
+unseen goods, changed prices/offers, or newly owned heroes/emotes. First-time shop
+contents count as unseen. Opening the shop acknowledges the current notices; goods
+acquired while browsing are acknowledged on exit. Seen notices persist locally in
+`shop.seen_notices.v1`, so restarting or returning home does not restore the badge.
+Balance changes, retired offers and emotes without a playable clip do not notify.
+`ShopNoticeValidation.Run()` checks notice persistence with an in-memory save;
+`CheckInteractions()` checks the actual entry and badge in Play Mode without
+changing player notice saves or the wallet.
+
 - One special offer: Sonic, $5.99. The shared AvatarCatalog marks Sonic as Dollars;
   the collection, premium filter, home roster and fight selection respect ownership.
   Madam Engry and Fighter remain included.

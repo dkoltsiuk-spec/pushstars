@@ -50,7 +50,7 @@ namespace PushStars.Fight
         {
             _aura = System.Math.Max(0, summary.Aura);
             _auraLoss = System.Math.Max(0, -summary.Aura);
-            _trophies = System.Math.Max(0, summary.Trophies);
+            _trophies = summary.RankedTrophies ? 0 : System.Math.Max(0, summary.Trophies);
             _xp = System.Math.Max(0, summary.EnergyXp);
         }
 

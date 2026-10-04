@@ -549,9 +549,6 @@ namespace PushStars.Editor
             // One friend-duel entry point on the left of the character.
             MakePlusSlot(panel, new Vector2(-118, 110));
 
-            // ── М / Ж — swaps the body on the stage ────────────────────────────────────
-            BuildGenderSwitch(panel, new Vector2(132, -72));
-
             // ── Top bar (edge-anchored so it can never overflow the screen) + side tiles ─
             BuildTopBar(panel);
             BuildSideTiles(panel);
@@ -637,7 +634,7 @@ namespace PushStars.Editor
                 irt.sizeDelta        = new Vector2(38f, 38f);
                 irt.anchoredPosition = new Vector2(0f, 6f);
             }
-            AddInfoBadge(shop, new Vector2(-2f, -2f));
+            ShopScreen.EnsureEntryBadge(shop.GetComponent<Button>());
 
             // Spare slot — empty in the mock-up, so it is drawn but left unwired.
             var slot = MakeImage(panel, "SpareSlot", new Color32(38, 40, 58, 255), ProcSprite("pill_16"));
@@ -647,25 +644,6 @@ namespace PushStars.Editor
             Anchor(srt, new Vector2(1f, 1f), new Vector2(1f, 1f), new Vector2(1f, 1f));
             srt.anchoredPosition = new Vector2(-18f, -139f);
             srt.sizeDelta        = new Vector2(72f, 38f);
-        }
-
-        // Small red "i" disc, as it sits on the trophy pill and the shop tile in the mock-up.
-        // Anchored to the parent's top-right corner and pivoted at its own centre, so it
-        // overhangs that corner instead of tucking inside it.
-        static void AddInfoBadge(RectTransform parent, Vector2 anchoredPos)
-        {
-            var circle = _theme.CircleShape != null ? _theme.CircleShape : ProcSprite("circle_128");
-            var badge  = MakeImage(parent, "InfoBadge", _theme.DangerRed, circle);
-            badge.preserveAspect = true;
-            badge.raycastTarget  = false;
-            var rt = badge.rectTransform;
-            Anchor(rt, new Vector2(1f, 1f), new Vector2(1f, 1f), new Vector2(0.5f, 0.5f));
-            rt.anchoredPosition = anchoredPos;
-            rt.sizeDelta        = new Vector2(16f, 16f);
-
-            var glyph = MakeTMP(rt, "Glyph", _theme.TextPrimary, "i", 11, FontStyles.Bold);
-            glyph.raycastTarget = false;
-            Stretch(glyph.rectTransform, 0, 0, 0, 0);
         }
 
         // Transient hint banner above the plates. Toast.Show(...) fades it in/out.
@@ -1308,9 +1286,9 @@ namespace PushStars.Editor
             Stretch(bg.rectTransform, 0, 0, 0, 0);
             bg.raycastTarget = true;
 
-            var boltBg = _theme.IconLightningBG != null ? _theme.IconLightningBG : ProcSprite("icon_lightning_BG");
+            var boltBg = Resources.Load<Sprite>("SearchDarkLightning") ?? _theme.IconLightningBG ?? ProcSprite("icon_lightning_BG");
             if (boltBg != null)
-                BuildLightningPattern(overlay, boltBg);
+                LightningField.Build(overlay, boltBg);
 
             var safe = MakeRect(overlay, "SafeArea");
             Stretch(safe, 0, 0, 0, 0);
@@ -2029,39 +2007,6 @@ namespace PushStars.Editor
                 var lbl = MakeTMP(go.transform, "Plus", _theme.TextSecondary, "+", 24, FontStyles.Bold);
                 Stretch(lbl.rectTransform, 0, 0, 0, 0);
             }
-        }
-
-        /// <summary>Round М/Ж button that flips the body on the stage. It sits in the free corner
-        /// of the wardrobe-slot grid, on the character's own panel, because that is what it
-        /// changes: an appearance control with its result visible right behind it — not a setting
-        /// buried two screens away. The label is authored as "М" and re-read from the saved choice
-        /// by <see cref="CharacterRoster"/> on Play.</summary>
-        static void BuildGenderSwitch(RectTransform panel, Vector2 anchoredPos)
-        {
-            var go = new GameObject("GenderSwitch", typeof(RectTransform), typeof(CanvasRenderer), typeof(Image));
-            go.transform.SetParent(panel, false);
-            var rt = (RectTransform)go.transform;
-            Anchor(rt, new Vector2(0.5f, 0.5f), new Vector2(0.5f, 0.5f), new Vector2(0.5f, 0.5f));
-            rt.anchoredPosition = anchoredPos;
-            rt.sizeDelta        = new Vector2(40, 40);
-
-            var img = go.GetComponent<Image>();
-            img.sprite = _theme.CircleShape != null ? _theme.CircleShape : ProcSprite("circle_128");
-            img.color  = _theme.NavBg;
-
-            var btn = go.AddComponent<Button>();
-            btn.targetGraphic = img;
-
-            var lbl = MakeTMP(rt, "Label", _theme.TextPrimary, "M", 16, FontStyles.Bold);
-            lbl.alignment     = TextAlignmentOptions.Center;
-            lbl.raycastTarget = false;
-            Stretch(lbl.rectTransform, 0, 0, 0, 0);
-
-            if (_roster == null) return;
-            var so = new SerializedObject(_roster);
-            so.FindProperty("_switchButton").objectReferenceValue = btn;
-            so.FindProperty("_switchLabel").objectReferenceValue  = lbl;
-            so.ApplyModifiedPropertiesWithoutUndo();
         }
 
         /// <summary>The drifting-bolt background lattice. The build lives in

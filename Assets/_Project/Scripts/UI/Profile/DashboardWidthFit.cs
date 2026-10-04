@@ -8,7 +8,8 @@ namespace PushStars.UI
     {
         public RectTransform Art;
         public float DesignHeight = 690;
-        private void LateUpdate()
+        private void LateUpdate() => Fit();
+        public void Fit()
         {
             if (Art == null) return;
             var rect = (RectTransform)transform;

@@ -1,3 +1,4 @@
+using PushStars.UI;
 using UnityEngine;
 using UnityEngine.UI;
 
@@ -6,6 +7,7 @@ namespace PushStars.Fight
     public sealed partial class FightHud
     {
         private RawImage _soloPortrait;
+        private CharacterStage _soloPortraitStage;
         private AspectRatioFitter _soloPortraitAspect;
         private bool _originalAspectEnabled, _capturedAspect, _soloPaused;
         private AspectRatioFitter.AspectMode _originalAspectMode;
@@ -34,10 +36,14 @@ namespace PushStars.Fight
             rect.localRotation = target.localRotation;
             _soloPortrait.gameObject.SetActive(false);
             _soloPortrait = portrait;
+            _soloPortraitStage = portrait.GetComponent<AvatarContactShadow>()?.Stage;
             _soloPortraitAspect = portrait.GetComponent<AspectRatioFitter>();
             if (_soloPortraitAspect == null) _soloPortraitAspect = portrait.gameObject.AddComponent<AspectRatioFitter>();
             _soloPortraitAspect.aspectMode = AspectRatioFitter.AspectMode.HeightControlsWidth;
-            _soloPortraitAspect.aspectRatio = (float)portrait.texture.width / portrait.texture.height;
+            _soloPortraitAspect.aspectRatio = AvatarWideCamera.TextureAspect(_soloPortraitStage?.StageCamera, portrait.texture);
+            // ConfigureSolo runs before the selection portrait is moved into the fight HUD.
+            // Give its stage the solo camera shot now that it is the displayed player image.
+            ApplyPushupShots();
         }
 
         private void ConfigureSoloPresentation()
@@ -100,7 +106,7 @@ namespace PushStars.Fight
         {
             if (!_solo) return;
             if (_soloPortrait != null && _soloPortraitAspect != null && _soloPortrait.texture != null)
-                _soloPortraitAspect.aspectRatio = (float)_soloPortrait.texture.width / _soloPortrait.texture.height;
+                _soloPortraitAspect.aspectRatio = AvatarWideCamera.TextureAspect(_soloPortraitStage?.StageCamera, _soloPortrait.texture);
             if (_depthMarker == null || _soloPaused || _session == null) return;
             var tracker = _session.Tracker;
             bool valid = _session.isActiveAndEnabled && tracker.SignalValid;

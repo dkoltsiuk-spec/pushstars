@@ -6,7 +6,7 @@ namespace PushStars.Core
     /// <see cref="ISettingsStore"/> backed by Unity <see cref="PlayerPrefs"/>. Every setter writes
     /// through immediately (and calls <see cref="PlayerPrefs.Save"/>) so toggles persist even if the
     /// app is killed before a graceful quit. Defaults: sound/vibration/notifications on, language
-    /// is English, the supported interface language.
+    /// defaults to English. The selected interface language persists between sessions.
     /// </summary>
     public sealed class PlayerPrefsSettingsStore : ISettingsStore
     {
@@ -17,6 +17,7 @@ namespace PushStars.Core
 
         public const string LangRu = "ru";
         public const string LangEn = "en";
+        public const string LangPtBr = "pt-BR";
 
         public bool SoundEnabled
         {
@@ -38,11 +39,13 @@ namespace PushStars.Core
 
         public string Language
         {
-            get => LangEn;
+            get => Localization.NormalizeLanguage(PlayerPrefs.GetString(KeyLanguage, LangEn));
             set
             {
-                PlayerPrefs.SetString(KeyLanguage, LangEn);
+                string language = Localization.NormalizeLanguage(value);
+                PlayerPrefs.SetString(KeyLanguage, language);
                 PlayerPrefs.Save();
+                Localization.NotifyLanguageChanged();
             }
         }
 

@@ -1,4 +1,6 @@
 using PushStars.Core;
+using TMPro;
+using System.Globalization;
 using UnityEngine;
 using UnityEngine.UI;
 
@@ -9,7 +11,7 @@ namespace PushStars.Fight
     [DisallowMultipleComponent]
     public sealed class MatchFoundImpact : MonoBehaviour
     {
-        private const float LeadIn = 0.08f;
+        private const float LeadIn = 1.05f;
         private const float DropTime = 0.30f;
         private const float SettleTime = 0.32f;
         private const float CrackTime = 0.12f;
@@ -29,6 +31,64 @@ namespace PushStars.Fight
         private bool _originalEnabled;
         private int _medalSiblingIndex;
 
+        private sealed class StatReveal
+        {
+            public TextMeshProUGUI Label;
+            public string Text, Suffix;
+            public Color Color;
+            public Vector3 Scale;
+            public int Value;
+            public bool Numeric;
+            public float Delay;
+            public float Progress = -1f;
+            public int LastNumber = int.MinValue;
+        }
+        private StatReveal[] _stats;
+
+        private void CaptureStatistics()
+        {
+            var names = new[] { "OpponentTrophies", "OpponentBest", "OpponentWinRate", "PlayerTrophies", "PlayerBest", "PlayerWinRate" };
+            var labels = GetComponentsInChildren<TextMeshProUGUI>(true);
+            var stats = new System.Collections.Generic.List<StatReveal>();
+            for (int i = 0; i < names.Length; i++)
+            {
+                var label = System.Array.Find(labels, t => t.name == names[i]);
+                if (label == null) continue;
+                var text = label.text;
+                bool percent = text.EndsWith("%", System.StringComparison.Ordinal);
+                bool numeric = int.TryParse(percent ? text.Substring(0, text.Length-1) : text, NumberStyles.Integer, CultureInfo.InvariantCulture, out int value);
+                stats.Add(new StatReveal { Label=label, Text=text, Suffix=percent?"%":"", Numeric=numeric, Value=value,
+                    Color=label.color, Scale=label.rectTransform.localScale, Delay=.12f+(i%3)*.14f+(i/3)*.12f });
+            }
+            _stats=stats.ToArray();
+        }
+        private void RevealStatistics(float elapsed)
+        {
+            if (_stats == null) return;
+            foreach (var stat in _stats)
+            {
+                if (stat.Label == null) continue;
+                float t = Mathf.Clamp01((elapsed-stat.Delay)/.42f);
+                // Settled counters do not need another text or layout update during the VS fall.
+                if (Mathf.Approximately(t, stat.Progress)) continue;
+                stat.Progress = t;
+                float eased = 1f-Mathf.Pow(1f-t,3);
+                if (t >= 1 || !stat.Numeric) stat.Label.text = stat.Text;
+                else
+                {
+                    int number = Mathf.RoundToInt(stat.Value * eased);
+                    if (number != stat.LastNumber)
+                    {
+                        stat.LastNumber = number;
+                        stat.Label.text = number.ToString(CultureInfo.InvariantCulture) + stat.Suffix;
+                    }
+                }
+                var color = stat.Color; color.a *= Mathf.Clamp01(t*3); stat.Label.color=color;
+                float pop = 1f + .12f*Mathf.Sin(t*Mathf.PI)*(1f-t);
+                stat.Label.rectTransform.localScale=stat.Scale*(Mathf.Lerp(.85f,1f,eased)*pop);
+            }
+        }
+
         public void Play()
         {
             Cancel();
@@ -43,6 +103,7 @@ namespace PushStars.Fight
             _elapsed = 0f;
             _impacted = false;
             _playing = true;
+            CaptureStatistics();
             ApplyFrame(0f);
         }
 
@@ -107,6 +168,7 @@ namespace PushStars.Fight
 
         private void ApplyFrame(float elapsed)
         {
+            RevealStatistics(elapsed);
             float unit = Mathf.Min(_medal.rect.width, _medal.rect.height);
             _crown.rectTransform.sizeDelta = new Vector2(unit * 1.45f, unit * 1.61f);
             _crackSize = new Vector2(unit * 2.5f, unit * 2.5f * _crack.sprite.rect.height / _crack.sprite.rect.width);
@@ -147,6 +209,10 @@ namespace PushStars.Fight
 
         public void Cancel()
         {
+            if (_stats != null)
+                foreach (var stat in _stats)
+                    if (stat.Label != null) { stat.Label.text=stat.Text; stat.Label.color=stat.Color; stat.Label.rectTransform.localScale=stat.Scale; }
+            _stats=null;
             if (_playing && _screen != null) _screen.localPosition = _screenPosition;
             _playing = false;
             if (_crown != null) _crown.gameObject.SetActive(false);

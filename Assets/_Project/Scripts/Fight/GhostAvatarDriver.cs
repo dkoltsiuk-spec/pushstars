@@ -49,6 +49,7 @@ namespace PushStars.Fight
             ReleaseCorrection();
             _animator = animator;
             _poseCorrection = PushupPoseCorrection.Bind(animator);
+            GhostPosePlayback.Attach(animator, _ghost);
             _started = false;
             RehashStates();
         }
@@ -89,6 +90,13 @@ namespace PushStars.Fight
         {
             if (_ghost == null || _animator == null || !_animator.isActiveAndEnabled) return;
             if (_poseCorrection == null) _poseCorrection = PushupPoseCorrection.Bind(_animator);
+
+            if (_ghost.HasPose)
+            {
+                _poseCorrection?.SetDepth(0, false, 0);
+                _poseCorrection?.SetFlight(0, 0);
+                return;
+            }
 
             bool working = _ghost.IsWorking;
             if (!_started || working != _working)

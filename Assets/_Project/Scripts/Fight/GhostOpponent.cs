@@ -12,18 +12,24 @@ namespace PushStars.Fight
     /// <para>This is the seam phase 12.5 widens: swap the record for one downloaded from another
     /// player's pool and the fight screen doesn't change a line.</para>
     ///
-    /// <para><b>It also has to move a body.</b> The record holds rep timestamps and nothing else, so
-    /// <see cref="Depth01"/> reconstructs the movement between them: one full top→bottom→top arc per
-    /// interval. That is exactly as much as the record knows — the pace is faithful, the micro-timing
-    /// inside a rep is not, and it cannot be, because it was never recorded. When phase 12 adds the
-    /// skeleton stream this property reads from it instead and nothing above changes.</para>
+    /// <para>New records replay final Humanoid poses through GhostPosePlayback. Depth01 is only
+    /// a compatibility approximation for old timestamp-only recordings. Those files cannot
+    /// recover the original descent/ascent or resting posture.</para>
     /// </summary>
     public sealed class GhostOpponent : MonoBehaviour, IOpponentFeed
     {
         private GhostRecord _record;
         private int _nextRepIndex;
+        private string _displayName;
+        public GhostMotionClip Motion { get; private set; }
+        public float Elapsed { get; private set; }
+        public byte MotionPhase { get; private set; } = GhostMotionClip.Setup;
+        public bool PlaybackActive { get; private set; } = true;
+        public bool HasPose => PlaybackActive && Motion != null && Motion.HasPhase(MotionPhase);
+        public void SetSetupClock(float elapsed) { MotionPhase = GhostMotionClip.Setup; Elapsed = elapsed; }
+        public void StopPlayback() { PlaybackActive = false; IsWorking = false; }
 
-        public string DisplayName => FightConfig.GhostOpponentName;
+        public string DisplayName => _displayName ?? FightConfig.GhostOpponentName;
         public int Reps { get; private set; }
 
         /// <summary>Reps in the recording — the target to beat, known before the duel starts.</summary>
@@ -48,15 +54,22 @@ namespace PushStars.Fight
 
         /// <summary>Hands the feed its recording. Returns false when there is nothing to replay, so
         /// the caller can fall back instead of shipping a silent opponent that never scores.</summary>
-        public bool Configure(GhostRecord record)
+        public bool Configure(GhostRecord record, string displayName = null, bool allowEmpty = false)
         {
-            _record = record != null && record.IsValid ? record : null;
+            _displayName = displayName;
+            _record = record != null && (record.IsValid || (allowEmpty && record.reps == 0 && record.repTimes != null && record.repTimes.Length == 0)) ? record : null;
+            Motion = null;
+            if (_record != null)
+                try { Motion = GhostMotionClip.Decode(_record.motionBase64); }
+                catch (Exception e) { Debug.LogWarning("[Ghost] Animation could not be loaded: " + e.Message); }
+            PlaybackActive = true;
             return _record != null;
         }
 
         public void Begin()
         {
             Reps = 0;
+            Elapsed = 0; MotionPhase = GhostMotionClip.Live; PlaybackActive = true;
             _nextRepIndex = 0;
             Depth01 = 0f;
             IsWorking = false;
@@ -65,6 +78,7 @@ namespace PushStars.Fight
         public void Tick(float elapsedSec)
         {
             if (_record == null) return;
+            Elapsed = Mathf.Max(0, elapsedSec); MotionPhase = GhostMotionClip.Live;
 
             var times = _record.repTimes;
             while (_nextRepIndex < times.Length && times[_nextRepIndex] <= elapsedSec)
@@ -91,8 +105,11 @@ namespace PushStars.Fight
                 return;
             }
 
-            float from = _nextRepIndex > 0 ? times[_nextRepIndex - 1] : 0f;
+            // Legacy saves have no poses. Keep their score timing but don't stretch a rep
+            // over a long rest. New saves replay the actual Humanoid poses.
+            float from = Mathf.Max(_nextRepIndex > 0 ? times[_nextRepIndex - 1] : 0f, times[_nextRepIndex] - 1.5f);
             float to = times[_nextRepIndex];
+            if (elapsedSec < from) { Depth01 = 0; IsWorking = true; return; }
             float span = to - from;
             if (span <= 0.01f) { Depth01 = 0f; IsWorking = true; return; }
 

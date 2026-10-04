@@ -7,6 +7,11 @@ namespace PushStars.CV
     /// A rig-proportioned push-up pose table. The depth drivers retain their timing, while
     /// this pass supplies a straight plank and fixed, symmetric hand/foot contacts.
     /// Runs after Animator evaluation and before the live mirror's handoff blend (100).
+    ///
+    /// <para><b>Clap push-up.</b> A second parameter, the flight phase, lifts the same pose off
+    /// the floor: the body pivots up over the planted toes, the hands leave the ground, meet
+    /// palm to palm under the chest and come back down to where they were planted. How far
+    /// they close is a third parameter, so a lift without a clap keeps them apart.</para>
     /// </summary>
     [DefaultExecutionOrder(50)]
     public sealed class PushupPoseCorrection : MonoBehaviour
@@ -31,22 +36,38 @@ namespace PushStars.CV
         private Vector3[] _referencePositions, _shownPositions;
         private Quaternion[] _referenceRotations, _shownRotations;
         private Chain[] _arms, _legs;
-        private Quaternion[] _handRotations, _footRotations;
+        private Quaternion[] _handRotations, _clapHandRotations, _footRotations;
+        private Vector3[] _handBackLocal;
         private Transform[][] _fingers;
         private Vector3 _referenceHips, _plankHipsOffset;
         private Quaternion _hipsRotation, _headReferenceRotation;
         private float _shoulderHeight, _shoulderForward, _shoulderHalfWidth, _footHalfWidth;
         private float _armLength, _ankleHeight, _wristHeight, _ankleZ, _wristZ, _topHeight;
-        /// <summary>How far each hand is planted outside its shoulder, in arm lengths. The design
-        /// mockups draw a wide push-up — hands well outside the shoulders, arms angled out, the
-        /// body low and broad; at the old .12 the straight arms stood the figure ~1.5x taller
-        /// than the mockups for the same hand span.</summary>
-        private static float _handsOut = .34f;
+        // Keep palms just outside the shoulders, with room for the forearms beside the torso.
+        // Both values are relative to arm length so the pose fits either character rig.
+        private const float HandsOut = .16f;
+        private const float BottomArmHeight = .38f;
+        // Clap push-up flight, all relative to arm length. The shoulders rise this far above the
+        // plank top at the apex; the palms meet this far under and ahead of the shoulder line.
+        private const float FlightLift = .30f;
+        private const float ClapBelowShoulders = .52f;
+        private const float ClapAhead = .10f;
+        private const float ClapWristHalfGap = .04f;
+        // Share of the flight spent bringing the hands in (and, mirrored, taking them back out).
+        // What is left in the middle is the palms held together: the frames that read as a clap.
+        private const float ClapTravel = .36f;
+        // The head swings on a longer radius from the toes than the shoulders, and tips up to
+        // keep its gaze: it climbs about this much for each unit the shoulders are lifted.
+        private const float HeadRisePerLift = 1.3f;
+        private float _flightHeadroom = float.PositiveInfinity;
         private bool _ready, _active, _hasShown;
-        private float _depth, _fadeRemaining, _fadeDuration;
+        private float _depth, _flight, _clap = 1f, _fadeRemaining, _fadeDuration;
 
         /// <summary>True while a depth driver owns the authored push-up pose.</summary>
         public bool IsActive => _active;
+
+        /// <summary>True while the authored pose has its hands off the floor (clap flight).</summary>
+        public bool IsAirborne => _active && _flight > 0f;
 
         public static PushupPoseCorrection Bind(Animator animator)
         {
@@ -127,17 +148,23 @@ namespace PushStars.CV
                     + Vector3.Distance(Position(_legs[1].End), Position(Bone(HumanBodyBones.RightToes)))) * .5f;
                 _ankleHeight = footLength * .85f + _wristHeight * .3f;
                 _ankleZ = -legReach * .85f;
-                // A straight arm reaching out to the wide hand placement: its vertical reach.
-                _topHeight = _wristHeight + _armLength * Mathf.Sqrt(Mathf.Max(.25f, .9935f * .9935f - _handsOut * _handsOut));
+                // Vertical reach of an extended arm at the planted hand spacing.
+                _topHeight = _wristHeight + _armLength * Mathf.Sqrt(Mathf.Max(.25f, .9935f * .9935f - HandsOut * HandsOut));
                 float angle = PlankAngle(_topHeight);
                 _wristZ = _ankleZ + Mathf.Cos(angle) * _shoulderHeight
                     + Mathf.Sin(angle) * _shoulderForward + _armLength * .06f;
 
+                _clapHandRotations = new Quaternion[2];
                 _handRotations = new[]
                 {
-                    HandRotation(HumanBodyBones.LeftHand, HumanBodyBones.LeftMiddleProximal, HumanBodyBones.LeftIndexProximal, HumanBodyBones.LeftLittleProximal, -1f),
-                    HandRotation(HumanBodyBones.RightHand, HumanBodyBones.RightMiddleProximal, HumanBodyBones.RightIndexProximal, HumanBodyBones.RightLittleProximal, 1f)
+                    HandRotation(HumanBodyBones.LeftHand, HumanBodyBones.LeftMiddleProximal, HumanBodyBones.LeftIndexProximal, HumanBodyBones.LeftLittleProximal, -1f, out _clapHandRotations[0]),
+                    HandRotation(HumanBodyBones.RightHand, HumanBodyBones.RightMiddleProximal, HumanBodyBones.RightIndexProximal, HumanBodyBones.RightLittleProximal, 1f, out _clapHandRotations[1])
                 };
+                // The planted rotation lays the back of the hand along +Y. Keeping that axis in
+                // the hand's own space lets the fingers be flattened against the palm wherever
+                // the hand is turned, not only against the floor.
+                _handBackLocal = new[] { Quaternion.Inverse(_handRotations[0]) * Vector3.up,
+                    Quaternion.Inverse(_handRotations[1]) * Vector3.up };
                 _footRotations = new[] { FootRotation(_legs[0].End, Bone(HumanBodyBones.LeftToes)),
                     FootRotation(_legs[1].End, Bone(HumanBodyBones.RightToes)) };
                 _fingers = new Transform[10][];
@@ -163,15 +190,31 @@ namespace PushStars.CV
             }
             if (active) _fadeRemaining = 0f;
             else if (fadeSeconds <= 0f) _fadeRemaining = 0f;
+            if (!active) _flight = 0f;
             _active = active;
         }
+
+        /// <summary>Phase of a clap push-up's flight: 0 = hands planted, 0.5 = the apex, 1 =
+        /// planted again. The driver owns the clock. <paramref name="clap"/> is how far the hands
+        /// close at the apex: 1 = palms together, 0 = lifted but still planted-width apart.</summary>
+        public void SetFlight(float phase, float clap = 1f)
+        {
+            _flight = PoseRetargetMath.Finite(phase) ? Mathf.Clamp01(phase) : 0f;
+            _clap = PoseRetargetMath.Finite(clap) ? Mathf.Clamp01(clap) : 1f;
+        }
+
+        /// <summary>Room above the plank's highest point in whatever shot is showing this body,
+        /// in the root's own units. The flight rises no further than fits: each screen crops the
+        /// push-up differently, and a jump that leaves the frame reads as a cut-off head.</summary>
+        public void SetFlightHeadroom(float headroom)
+            => _flightHeadroom = PoseRetargetMath.Finite(headroom) ? Mathf.Max(0f, headroom) : float.PositiveInfinity;
 
         private void LateUpdate()
         {
             if (!_ready || !_animator.isActiveAndEnabled) return;
             if (_active)
             {
-                Apply(_depth);
+                Apply(_depth, _flight, _clap);
                 Capture(_shownPositions, _shownRotations);
                 _hasShown = true;
             }
@@ -188,12 +231,22 @@ namespace PushStars.CV
         }
 
         /// <summary>Deterministic evaluation, also used by the editor visual regression.</summary>
-        public void Apply(float depth)
+        public void Apply(float depth) => Apply(depth, 0f);
+
+        /// <summary>The pose at a rep depth and a clap-flight phase (see <see cref="SetFlight"/>).</summary>
+        public void Apply(float depth, float flight, float clap = 1f)
         {
             if (!_ready || !PoseRetargetMath.Finite(depth)) return;
             depth = Mathf.Clamp01(depth);
+            flight = PoseRetargetMath.Finite(flight) ? Mathf.Clamp01(flight) : 0f;
+            clap = PoseRetargetMath.Finite(clap) ? Mathf.Clamp01(clap) : 1f;
+            // A thrown body: up and down on one arc. The hands travel in, hold, travel out.
+            float air = Mathf.Sin(flight * Mathf.PI);
+            float together = Mathf.SmoothStep(0f, 1f, flight / ClapTravel)
+                * Mathf.SmoothStep(0f, 1f, (1f - flight) / ClapTravel);
             Restore(_referencePositions, _referenceRotations);
-            float height = Mathf.Lerp(_topHeight, _wristHeight + _armLength * .56f, depth);
+            float height = Mathf.Lerp(_topHeight, _wristHeight + _armLength * BottomArmHeight, depth)
+                + Mathf.Min(_armLength * FlightLift, _flightHeadroom / HeadRisePerLift) * air;
             float angle = PlankAngle(height);
             Quaternion plank = Quaternion.Euler(90f - angle * Mathf.Rad2Deg, 0f, 0f);
             Vector3 ankleCentre = new Vector3(0f, _ankleHeight, _ankleZ);
@@ -210,6 +263,8 @@ namespace PushStars.CV
                 _head.rotation = _root.rotation * Quaternion.Euler(_gazeDownAngle, 0f, 0f) * _headReferenceRotation;
             }
 
+            // The clap happens under the chest, wherever the flight has carried it.
+            Vector3 chest = (Position(_arms[0].Upper) + Position(_arms[1].Upper)) * .5f;
             for (int i = 0; i < 2; i++)
             {
                 float side = i == 0 ? -1f : 1f;
@@ -217,22 +272,40 @@ namespace PushStars.CV
                 Solve(_legs[i], foot, Vector3.down);
                 _legs[i].End.rotation = _root.rotation * _footRotations[i];
 
-                var wrist = new Vector3(side * (_shoulderHalfWidth + _armLength * _handsOut), _wristHeight, _wristZ);
+                var wrist = new Vector3(side * (_shoulderHalfWidth + _armLength * HandsOut), _wristHeight, _wristZ);
                 // Elbows fold back and modestly out; the two sides use mirrored bend planes.
-                Solve(_arms[i], wrist, new Vector3(side * .55f, 0f, -1f));
-                _arms[i].End.rotation = _root.rotation * _handRotations[i];
+                var bend = new Vector3(side * .55f, 0f, -1f);
+                if (together > 0f)
+                {
+                    var lifted = new Vector3(Mathf.Lerp(wrist.x, side * _armLength * ClapWristHalfGap, clap),
+                        chest.y - _armLength * ClapBelowShoulders, chest.z + _armLength * ClapAhead);
+                    wrist = Vector3.Lerp(wrist, lifted, together);
+                    // Hands meeting on the centre line: the elbows swing out to the sides.
+                    bend = Vector3.Lerp(bend, new Vector3(side, -.15f, -.35f), together);
+                }
+                // Past the arm's reach (the body leaves first) the solver stops short of the
+                // target, which is exactly a straight arm lifting its hand off the floor.
+                Solve(_arms[i], wrist, bend);
+                _arms[i].End.rotation = _root.rotation
+                    * Quaternion.Slerp(_handRotations[i], _clapHandRotations[i], together * clap);
             }
-            // Flatten phalanges onto the support plane without changing finger spread or
-            // bone lengths. Humanoid stretch limits differ between the two imported rigs.
-            foreach (var finger in _fingers)
+            // Flatten phalanges onto the palm's plane (the support plane while planted) without
+            // changing finger spread or bone lengths. Humanoid stretch limits differ between
+            // the two imported rigs.
+            for (int f = 0; f < _fingers.Length; f++)
+            {
+                var finger = _fingers[f];
+                int hand = f / 5;
+                Vector3 back = _arms[hand].End.rotation * _handBackLocal[hand];
                 for (int joint = 0; joint < 2; joint++)
                 {
                     if (finger[joint] == null || finger[joint + 1] == null) continue;
                     Vector3 direction = finger[joint + 1].position - finger[joint].position;
-                    Vector3 flat = Vector3.ProjectOnPlane(direction, _root.up);
+                    Vector3 flat = Vector3.ProjectOnPlane(direction, back);
                     if (flat.sqrMagnitude > .00000001f)
                         finger[joint].rotation = Quaternion.FromToRotation(direction, flat) * finger[joint].rotation;
                 }
+            }
         }
 
         private Chain MakeChain(HumanBodyBones upper, HumanBodyBones lower, HumanBodyBones end)
@@ -270,15 +343,19 @@ namespace PushStars.CV
         private static Quaternion Align(Vector3 from, Vector3 fromNormal, Vector3 to, Vector3 toNormal)
             => Quaternion.LookRotation(to, toNormal) * Quaternion.Inverse(Quaternion.LookRotation(from, fromNormal));
 
+        /// <summary>The planted hand (palm down, fingers ahead) and, in <paramref name="clap"/>,
+        /// the same hand turned palm-inward for the clap: fingers ahead, back of the hand out.</summary>
         private Quaternion HandRotation(HumanBodyBones handId, HumanBodyBones middleId,
-            HumanBodyBones indexId, HumanBodyBones littleId, float side)
+            HumanBodyBones indexId, HumanBodyBones littleId, float side, out Quaternion clap)
         {
             var hand = Bone(handId); var middle = Bone(middleId);
             var index = Bone(indexId); var little = Bone(littleId);
-            if (middle == null || index == null || little == null) return Quaternion.Euler(90f, 0f, 0f) * Rotation(hand);
+            if (middle == null || index == null || little == null)
+                return clap = Quaternion.Euler(90f, 0f, 0f) * Rotation(hand);
             Vector3 forward = (Position(middle) - Position(hand)).normalized;
             Vector3 normal = Vector3.Cross(forward, Position(index) - Position(little)).normalized * -side;
             Vector3 fingers = new Vector3(side * .10f, 0f, 1f).normalized;
+            clap = Align(forward, normal, new Vector3(0f, .2f, 1f).normalized, Vector3.right * side) * Rotation(hand);
             return Align(forward, normal, fingers, Vector3.up) * Rotation(hand);
         }
 

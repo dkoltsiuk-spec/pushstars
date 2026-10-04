@@ -10,7 +10,10 @@ namespace PushStars.UI
     {
         public TextMeshProUGUI NameLabel, NameShadow;
         public RawImage Avatar;
+        public Image ShowcasePortrait;
+        public Sprite[] ShowcaseSprites;
         public Button EditName, EditAvatar;
+        public bool FollowNameEnd;
         public RectTransform ModalParent;
         public Texture2D[] AvatarTextures;
         public Rect[] AvatarCrops;
@@ -24,6 +27,8 @@ namespace PushStars.UI
         private bool _editingAvatar;
         private int _draftAvatar;
         private string _scope;
+        private string _positionedName;
+        private Vector2 _positionedNameSize;
 
         private static string Scope
         {
@@ -54,7 +59,20 @@ namespace PushStars.UI
         {
             if (_scope != Scope) RefreshAvatar();
             if (NameShadow != null && NameShadow.text != NameLabel.text) NameShadow.text = NameLabel.text;
+            if (FollowNameEnd && (_positionedName != NameLabel.text || _positionedNameSize != NameLabel.rectTransform.rect.size || NameLabel.havePropertiesChanged))
+                RefreshNameEditPosition();
             if (_modal != null && _modal.activeSelf && Input.GetKeyDown(KeyCode.Escape)) Cancel();
+        }
+
+        public void RefreshNameEditPosition()
+        {
+            if (!FollowNameEnd || NameLabel == null || EditName == null) return;
+            NameLabel.ForceMeshUpdate();
+            var bounds = NameLabel.textBounds;
+            // The 24px gear sits within a 44px touch target, beside the visible glyphs.
+            EditName.transform.position = NameLabel.rectTransform.TransformPoint(new Vector3(bounds.max.x - 7f, bounds.max.y + 21f, 0));
+            _positionedName = NameLabel.text;
+            _positionedNameSize = NameLabel.rectTransform.rect.size;
         }
 
         private void RefreshAvatar()
@@ -63,6 +81,8 @@ namespace PushStars.UI
             int index = Mathf.Clamp(PlayerPrefs.GetInt(_scope + "avatar", PlayerPrefs.GetInt("profile.identity.local.avatar", 0)), 0, AvatarTextures.Length - 1);
             Avatar.texture = AvatarTextures[index];
             Avatar.uvRect = AvatarCrops[index];
+            if (ShowcasePortrait != null && ShowcaseSprites != null && index < ShowcaseSprites.Length)
+                ShowcasePortrait.sprite = ShowcaseSprites[index];
         }
 
         public void OpenName() => Open(false);

@@ -62,6 +62,18 @@ namespace PushStars.Editor
                 RawImage opponentSource;
                 if (preparation)
                 {
+                    foreach (var stage in stages)
+                    {
+                        var stageSettings = new SerializedObject(stage.StageCamera.GetComponentInParent<CharacterStage>());
+                        stageSettings.FindProperty("_renderScale").floatValue = .75f;
+                        stageSettings.ApplyModifiedPropertiesWithoutUndo();
+                    }
+                    foreach (var avatar in InScene<FightAvatar>(copied))
+                    {
+                        var avatarSettings = new SerializedObject(avatar);
+                        avatarSettings.FindProperty("_preparePushupFraming").boolValue = false;
+                        avatarSettings.ApplyModifiedPropertiesWithoutUndo();
+                    }
                     var theme = Resources.Load<PushStarsTheme>("PushStarsTheme");
                     panel.Show(new DuelReadyPanel.Side("BEASTCORE_DEV", 120, 32, 52),
                         new DuelReadyPanel.Side("OSKAT009", 98, 32, 52),
@@ -73,7 +85,7 @@ namespace PushStars.Editor
                     var presenter = canvas.gameObject.AddComponent<PreparationScreen>();
                     var serialized = new SerializedObject(presenter);
                     Set(serialized, "_panel", panel);
-                    Set(serialized, "_homeButton", AddHomeButton(presentation));
+                    // Preparation has one action: READY.
                     serialized.ApplyModifiedPropertiesWithoutUndo();
                 }
                 else

@@ -7,8 +7,15 @@ namespace PushStars.Fight
     [RequireComponent(typeof(CanvasRenderer))]
     public sealed class ReadyScreenGraphic : MaskableGraphic
     {
+        [SerializeField] private Texture2D _backgroundOverride;
         private Texture2D _background;
-        public override Texture mainTexture => _background != null
+
+        public void SetBackground(Texture2D texture)
+        {
+            _backgroundOverride = texture;
+            SetMaterialDirty();
+        }
+        public override Texture mainTexture => _backgroundOverride != null ? _backgroundOverride : _background != null
             ? _background : (_background = Resources.Load<Texture2D>("Rewards/DuelBackground"));
 
         protected override void OnPopulateMesh(VertexHelper vh)

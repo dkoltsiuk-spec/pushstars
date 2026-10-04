@@ -51,6 +51,10 @@ namespace PushStars.CV
         /// <summary>Current wrist rise in planted shoulder widths (HUD/debug); NaN when unknown.</summary>
         public float RiseSw { get; private set; } = float.NaN;
         public bool HasBaseline => _baselineFrames >= CVConstants.ClapBaselineMinFrames;
+        /// <summary>Closest the hands have come in the flight under way, as a fraction of the
+        /// planted wrists-apart distance (what <see cref="ClapFlight.MinGapOfPlanted"/> will
+        /// report on landing). Meaningful only while <see cref="InFlight"/>.</summary>
+        public float FlightMinGapOfPlanted => _minGap;
 
         /// <summary>Raised when a flight lands (clap or not) and passed the flight gates.</summary>
         public event Action<ClapFlight> OnFlightLanded;

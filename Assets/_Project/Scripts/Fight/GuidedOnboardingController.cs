@@ -34,6 +34,7 @@ namespace PushStars.Fight
         [SerializeField] private Image _coach;
         [SerializeField] private Sprite[] _coachPoses;
         [SerializeField] private CanvasGroup _bubble;
+        [SerializeField] private Sprite _placementBubbleSprite;
         [SerializeField] private TextMeshProUGUI _speech;
         [SerializeField] private Button _action;
         [SerializeField] private TextMeshProUGUI _actionLabel;
@@ -56,6 +57,7 @@ namespace PushStars.Fight
         private CharacterStage SelectedStage => _stages[_selectedIndex];
         private int _selectedIndex;
         private Vector2 _coachHome, _bubbleHome;
+        private Sprite _defaultBubbleSprite;
         private Transform _portraitParent;
         private Vector2 _portraitAnchor, _portraitPosition, _portraitSize, _portraitPivot;
         private bool _permissionPending, _denied, _openingSettings, _leaving;
@@ -69,11 +71,13 @@ namespace PushStars.Fight
         {
             _coachHome = _coach.rectTransform.anchoredPosition;
             _bubbleHome = ((RectTransform)_bubble.transform).anchoredPosition;
+            _defaultBubbleSprite = _bubble.GetComponent<Image>().sprite;
             _warmup = _workout.GetComponentInChildren<IPoseSourceWarmup>(true);
             _workout.SetActive(false);
             _unusedPlayerStage.SetActive(false);
             SetGroup(_wash, 0); SetGroup(_coachGroup, 0); SetGroup(_bubble, 0);
             SetGroup(_assessmentBackground, 0); SetGroup(_assessmentHud, 0);
+            _stepLabel.gameObject.SetActive(false);
         }
 
         private void Start()
@@ -196,6 +200,8 @@ namespace PushStars.Fight
             _greetingDismissed = false;
             _dismissSurface.gameObject.SetActive(step == Step.Character);
             _placement.SetActive(step == Step.Placement);
+            _bubble.GetComponent<Image>().sprite = step == Step.Placement && _placementBubbleSprite != null
+                ? _placementBubbleSprite : _defaultBubbleSprite;
             _back.gameObject.SetActive(step != Step.Character);
             _skip.gameObject.SetActive(step == Step.Camera || step == Step.Placement);
             _next.gameObject.SetActive(step == Step.Character);
@@ -211,14 +217,14 @@ namespace PushStars.Fight
             _actionLabel.text = step == Step.Assessment ? "LET'S GO" : step == Step.Camera
                 ? (_denied ? "OPEN SETTINGS" : "ALLOW CAMERA") : "I'M READY";
             var bubbleRect = (RectTransform)_bubble.transform;
-            bubbleRect.sizeDelta = step == Step.Placement ? new Vector2(352, 315) : new Vector2(200, 158);
-            _bubbleHome = step == Step.Placement ? new Vector2(0, 155) : new Vector2(82, 122);
+            bubbleRect.sizeDelta = step == Step.Placement ? new Vector2(352, 355) : new Vector2(200, 158);
+            _bubbleHome = step == Step.Placement ? new Vector2(0, 183) : new Vector2(82, 122);
             _speech.rectTransform.anchorMin = _speech.rectTransform.anchorMax = new Vector2(.5f, 1f);
             _speech.rectTransform.pivot = new Vector2(.5f, 1f);
-            _speech.rectTransform.anchoredPosition = new Vector2(0, -17);
+            _speech.rectTransform.anchoredPosition = new Vector2(0, step == Step.Character ? -21 : -9);
             _speech.rectTransform.sizeDelta = step == Step.Placement ? new Vector2(320, 30) : new Vector2(176, 78);
             _speech.maxVisibleCharacters = 0;
-            ((RectTransform)_action.transform).anchoredPosition = step == Step.Placement ? new Vector2(40, 63) : new Vector2(0, 43);
+            ((RectTransform)_action.transform).anchoredPosition = step == Step.Placement ? new Vector2(0, 49) : new Vector2(0, 43);
             float washStart = _wash.alpha;
             yield return Animate(.22f, t => SetGroup(_wash, Mathf.Lerp(washStart, 1, t)));
             yield return Animate(.42f, t =>
@@ -249,6 +255,7 @@ namespace PushStars.Fight
             if (_dismiss != null) { StopCoroutine(_dismiss); _dismiss = null; }
             float bubbleStart = _bubble.alpha;
             yield return Animate(.16f, t => SetGroup(_bubble, bubbleStart * (1 - t)));
+            _placement.SetActive(false);
             float coachStart = _coachGroup.alpha, washStart = _wash.alpha;
             yield return Animate(.28f, t =>
             {
@@ -436,7 +443,9 @@ namespace PushStars.Fight
                 destination.GetWorldCorners(corners);
                 Vector2 endCenter = parent.InverseTransformPoint((corners[0] + corners[2]) * .5f);
                 float height = Vector3.Distance(corners[0], corners[1]) / parent.lossyScale.y;
-                float aspect = (float)SelectedPortrait.texture.width / SelectedPortrait.texture.height;
+                // The stage renders into a texture with three times the visible width for
+                // horizontal overscan. Keep the portrait at its authored 1:2 display aspect.
+                float aspect = SelectedStage.RenderAspect;
                 rect.anchoredPosition = Vector2.Lerp(startCenter, endCenter, t);
                 rect.sizeDelta = Vector2.Lerp(startSize, new Vector2(height * aspect, height), t);
                 progress(t);

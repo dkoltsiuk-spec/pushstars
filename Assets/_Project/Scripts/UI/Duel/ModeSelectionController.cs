@@ -51,6 +51,8 @@ namespace PushStars.UI
         private float _shown;
         private Vector2 _lastSize;
         private Image[] _selectionOutlines;
+        private Image[] _selectionWaves;
+        private const int SelectionWaveCount = 2;
         private int _highlightedMode = -1;
         private float _selectionPulseStarted;
         private bool _friendDuelActive, _started;
@@ -83,6 +85,9 @@ namespace PushStars.UI
         {
             CacheHomeLayout();
             _started = true;
+            ArenaProfile.Changed += ApplySelection;
+            var arenaHome = gameObject.GetComponent<ArenaHomeController>() ?? gameObject.AddComponent<ArenaHomeController>();
+            arenaHome.Configure(_openButton.transform.parent.parent, _overlay.transform.parent, _homeLabel.font);
             _openButton.onClick.AddListener(Show);
             _backdropButton.onClick.AddListener(Back);
             _closeButton.onClick.AddListener(Hide);
@@ -208,6 +213,11 @@ namespace PushStars.UI
             _homeIcon.rectTransform.localScale = training ? Vector3.one : _homeIconScale;
             _homeIcon.rectTransform.sizeDelta = training ? new Vector2(54, 54) : _homeIconSize;
             _homeIcon.rectTransform.anchoredPosition = training ? new Vector2(3, -19) : _homeIconPosition;
+            if (mode == GameMode.Boss)
+            {
+                _homeIcon.rectTransform.localScale = _homeIconScale * 0.88f;
+                _homeIcon.rectTransform.anchoredPosition = _homeIconPosition + new Vector2(4, 0);
+            }
             _settingsIcon.rectTransform.localScale = training ? Vector3.one : _settingsIconScale;
             _settingsIcon.rectTransform.sizeDelta = training ? new Vector2(46, 50) : _settingsIconSize;
             _settingsIcon.rectTransform.anchoredPosition = training ? new Vector2(3, -17) : _settingsIconPosition;
@@ -218,8 +228,8 @@ namespace PushStars.UI
         private void ApplyHomeBackground(bool training)
         {
             if (_homeBackground == null || _trainingBackground == null || _defaultHomeBackground == null) return;
-            _homeBackground.sprite = training ? _trainingBackground : _defaultHomeBackground;
-            _homeBackground.color = training ? Color.white : _defaultHomeBackgroundColor;
+            _homeBackground.sprite = training ? _trainingBackground : (ArenaCatalog.Get(ArenaProfile.SelectedId)?.Home ?? _defaultHomeBackground);
+            _homeBackground.color = training || ArenaProfile.SelectedId != ArenaCatalog.DefaultId ? Color.white : _defaultHomeBackgroundColor;
         }
 
         private void RefreshSelectionOutline()
@@ -233,6 +243,7 @@ namespace PushStars.UI
                     return;
                 }
                 _selectionOutlines = new Image[_cards.Length];
+                _selectionWaves = new Image[_cards.Length * SelectionWaveCount];
                 for (int i = 0; i < _cards.Length; i++)
                 {
                     var source = _cards[i].GetComponent<Image>();
@@ -246,7 +257,8 @@ namespace PushStars.UI
                     rect.offsetMin = rect.offsetMax = Vector2.zero;
                     outline.sprite = source.sprite;
                     outline.raycastTarget = false;
-                    outline.type = Image.Type.Simple;
+                    outline.type = source.type;
+                    outline.pixelsPerUnitMultiplier = source.pixelsPerUnitMultiplier;
                     outline.material = new Material(shader) { name = "SelectedModeOutline" };
                     var uv = UnityEngine.Sprites.DataUtility.GetOuterUV(source.sprite);
                     var size = source.rectTransform.rect.size;
@@ -256,13 +268,36 @@ namespace PushStars.UI
                         4f * (uv.w - uv.y) / Mathf.Max(1f, size.y), 0f, 0f));
                     outline.enabled = false;
                     _selectionOutlines[i] = outline;
+                    for (int wave = 0; wave < SelectionWaveCount; wave++)
+                    {
+                        var ripple = new GameObject("SelectedModeWave" + wave, typeof(RectTransform),
+                            typeof(CanvasRenderer), typeof(Image)).GetComponent<Image>();
+                        var rippleRect = ripple.rectTransform;
+                        rippleRect.SetParent(source.transform, false);
+                        rippleRect.SetAsFirstSibling(); // Keep waves behind the steady outline and lettering.
+                        rippleRect.anchorMin = Vector2.zero;
+                        rippleRect.anchorMax = Vector2.one;
+                        rippleRect.offsetMin = rippleRect.offsetMax = Vector2.zero;
+                        ripple.sprite = source.sprite;
+                        ripple.type = source.type;
+                        ripple.pixelsPerUnitMultiplier = source.pixelsPerUnitMultiplier;
+                        ripple.raycastTarget = false;
+                        ripple.material = new Material(shader) { name = "SelectedModeWave" };
+                        ripple.material.SetVector("_OuterUV", uv);
+                        ripple.enabled = false;
+                        _selectionWaves[i * SelectionWaveCount + wave] = ripple;
+                    }
                 }
             }
 
             _highlightedMode = (int)SelectedGameMode.Current;
             _selectionPulseStarted = Time.unscaledTime;
             for (int i = 0; i < _selectionOutlines.Length; i++)
+            {
                 _selectionOutlines[i].enabled = i == _highlightedMode;
+                for (int wave = 0; wave < SelectionWaveCount; wave++)
+                    _selectionWaves[i * SelectionWaveCount + wave].enabled = i == _highlightedMode;
+            }
             PulseSelection();
         }
 
@@ -276,6 +311,31 @@ namespace PushStars.UI
                 (Time.unscaledTime - _selectionPulseStarted) * (Mathf.PI * 2f / 1.6f));
             _selectionOutlines[_highlightedMode].color = Color.Lerp(
                 new Color(1f, .82f, 0f, .9f), new Color(1f, 1f, .42f, 1f), pulse);
+            UpdateSelectionWaves(Time.unscaledTime - _selectionPulseStarted);
+        }
+
+        private void UpdateSelectionWaves(float elapsed)
+        {
+            // Two thin silhouettes travel only ten design units beyond the selected card.
+            // Start each wave at the border, fade it in briefly and dissolve as it expands.
+            for (int wave = 0; wave < SelectionWaveCount; wave++)
+            {
+                var ripple = _selectionWaves[_highlightedMode * SelectionWaveCount + wave];
+                float age = elapsed - wave * .75f;
+                float progress = age < 0f ? 0f : Mathf.Repeat(age, 1.5f) / 1.5f;
+                float expansion = Mathf.Lerp(1f, 10f, progress);
+                var rect = ripple.rectTransform;
+                rect.offsetMin = -Vector2.one * expansion;
+                rect.offsetMax = Vector2.one * expansion;
+                float alpha = age < 0f ? 0f : .48f * Mathf.Clamp01(progress / .12f)
+                    * Mathf.Pow(1f - progress, 1.5f);
+                ripple.color = new Color(1f, .94f, .08f, alpha);
+                var uv = UnityEngine.Sprites.DataUtility.GetOuterUV(ripple.sprite);
+                var size = rect.rect.size;
+                ripple.material.SetVector("_OutlineUV", new Vector4(
+                    1.5f * (uv.z - uv.x) / Mathf.Max(1f, size.x),
+                    1.5f * (uv.w - uv.y) / Mathf.Max(1f, size.y), 0f, 0f));
+            }
         }
 
         private void CacheHomeLayout()
@@ -404,12 +464,20 @@ namespace PushStars.UI
 
         private void OnDestroy()
         {
+            ArenaProfile.Changed -= ApplySelection;
             if (_selectionOutlines != null)
                 foreach (var outline in _selectionOutlines)
                     if (outline != null)
                     {
                         if (Application.isPlaying) Destroy(outline.material);
                         else DestroyImmediate(outline.material);
+                    }
+            if (_selectionWaves != null)
+                foreach (var wave in _selectionWaves)
+                    if (wave != null)
+                    {
+                        if (Application.isPlaying) Destroy(wave.material);
+                        else DestroyImmediate(wave.material);
                     }
             if (_presence != null) _presence.Changed -= RefreshOnline;
             if (_openButton != null) _openButton.onClick.RemoveListener(Show);

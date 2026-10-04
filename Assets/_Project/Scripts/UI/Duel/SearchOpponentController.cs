@@ -91,6 +91,7 @@ namespace PushStars.UI
             }
             _open = true;
 
+            SearchScreenAppearance.Ensure(_overlay);
             _overlay.SetActive(true);
             _ring?.SetVisible(true);
 

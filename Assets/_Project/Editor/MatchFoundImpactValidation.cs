@@ -3,6 +3,8 @@ using System.IO;
 using System.Linq;
 using System.Reflection;
 using PushStars.Fight;
+using PushStars.Core;
+using TMPro;
 using UnityEditor;
 using UnityEditor.SceneManagement;
 using UnityEngine;
@@ -14,7 +16,9 @@ namespace PushStars.Editor
     public static class MatchFoundImpactValidation
     {
         [MenuItem("Tools/Push Stars/Validate Match Found Impact")]
-        public static void Run()
+        public static void Run() => RunInternal(false);
+        public static void ExportPreview() => RunInternal(true);
+        private static void RunInternal(bool export)
         {
             var scene = EditorSceneManager.OpenPreviewScene("Assets/_Project/Scenes/FightPreparation.unity");
             RenderTexture texture = null;
@@ -42,6 +46,13 @@ namespace PushStars.Editor
                 canvas.worldCamera = camera;
                 panel.Show(new DuelReadyPanel.Side("BEASTCORE_DEV", 120, 32, 52),
                     new DuelReadyPanel.Side("OSKAT009", 98, 32, 52), null, null, false);
+                var backdrop = panel.Root.GetComponentInChildren<PreparationArenaBackdrop>(true);
+                Require(backdrop != null, "Per-player arena background missing");
+                backdrop.SetMaps("jungle", "lava-forge");
+                Require(!backdrop.GetComponent<ReadyScreenGraphic>().enabled, "Legacy background still enabled");
+                Require(backdrop.transform.Cast<Transform>().Where(t=>t.name!="PlayerArena" && t.name!="OpponentArena" && t.name!="TeamDivider").All(t=>!t.gameObject.activeSelf), "Flying background decoration remains enabled");
+                Require(backdrop.transform.Find("PlayerArena").GetComponent<RawImage>().texture == ArenaCatalog.Get("jungle").Home.texture
+                    && backdrop.transform.Find("OpponentArena").GetComponent<RawImage>().texture == ArenaCatalog.Get("lava-forge").Home.texture, "Players do not have their own maps");
                 Canvas.ForceUpdateCanvases();
                 var effect = panel.Root.AddComponent<MatchFoundImpact>();
                 // Show attaches this field only in Play Mode; bind it for the isolated preview.
@@ -52,19 +63,35 @@ namespace PushStars.Editor
                 var crown = effect.GetComponentsInChildren<Image>(true).Single(i => i.name == "FallingVsCrown");
                 var crack = effect.GetComponentsInChildren<Image>(true).Single(i => i.name == "ImpactCrack");
                 var sample = typeof(MatchFoundImpact).GetMethod("ApplyFrame", BindingFlags.NonPublic | BindingFlags.Instance);
-                foreach (var frame in new[] { ("falling", 0.30f), ("impact", 0.42f), ("settled", 0.72f) })
+                var numbers=effect.GetComponentsInChildren<TextMeshProUGUI>(true).Where(t=>new[]{"OpponentTrophies","OpponentBest","OpponentWinRate","PlayerTrophies","PlayerBest","PlayerWinRate"}.Contains(t.name)).ToArray();
+                Require(numbers.Length==6 && numbers.All(t=>t.color.a==0), "Stats must start hidden");
+                foreach (var frame in new[] { ("numbers", .38f), ("before-vs", .98f), ("falling", 1.24f), ("impact", 1.39f), ("settled", 1.70f) })
                 {
                     sample.Invoke(effect, new object[] { frame.Item2 });
                     Capture(camera, texture, frame.Item1);
+                    if (frame.Item1 == "numbers")
+                        Require(crown.color.a==0 && numbers.Any(t=>t.color.a>0), "Numbers must precede VS");
+                    if (frame.Item1 == "before-vs")
+                        Require(crown.color.a==0 && numbers.Single(t=>t.name=="PlayerTrophies").text=="120" && numbers.All(t=>t.color.a==1), "Stats must complete before VS");
                     if (frame.Item1 == "falling")
                         Require(crown.rectTransform.anchoredPosition.y > 100 && crack.color.a == 0, "Crack visible before impact");
                     if (frame.Item1 == "settled")
                         Require(crown.rectTransform.anchoredPosition == Vector2.zero && crown.rectTransform.localScale == Vector3.one && crack.color.a == 1, "Entrance did not settle");
                 }
+                if (export)
+                {
+                    Directory.CreateDirectory("output/match-found/frames");
+                    for(int i=0;i<60;i++)
+                    {
+                        sample.Invoke(effect,new object[]{i/24f});
+                        Capture(camera,texture,"frames/frame-"+i.ToString("D3"));
+                    }
+                }
                 // Interrupt mid-shake, then replay: no stranded screen offset or duplicate art.
-                sample.Invoke(effect, new object[] { 0.42f });
+                sample.Invoke(effect, new object[] { 1.39f });
                 panel.Hide();
                 Require(effect.transform.localPosition == origin, "Closing left screen displaced");
+                Require(numbers.All(t=>t.color.a==1) && numbers.Single(t=>t.name=="PlayerTrophies").text=="120", "Cancel did not restore stats");
                 panel.Root.SetActive(true);
                 effect.Play();
                 Require(effect.GetComponentsInChildren<Image>(true).Count(i => i.name == "FallingVsCrown") == 1, "Replay duplicated artwork");
@@ -72,7 +99,7 @@ namespace PushStars.Editor
                 typeof(DuelReadyPanel).GetMethod("OnDisable", BindingFlags.NonPublic | BindingFlags.Instance)
                     .Invoke(panel, null);
                 Require(effect.transform.localPosition == origin && !crown.gameObject.activeSelf, "Disable did not reset entrance");
-                File.WriteAllText("output/match-found/validation.txt", "PASS: authored preparation assets, falling/impact/settled frames, interruption reset, replay without duplicate art, disable cleanup. Device haptics require iOS/Android verification.\n");
+                File.WriteAllText("output/match-found/validation.txt", "PASS: individual arena backgrounds, no flying lightning, numbers before delayed VS, exact final statistics, falling/impact/settled frames, interruption reset, replay without duplicate art, disable cleanup. Device haptics require iOS/Android verification.\n");
                 Debug.Log("[MatchFoundImpact] Validation PASS");
             }
             finally

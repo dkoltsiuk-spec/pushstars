@@ -1,6 +1,20 @@
 {
   "indexes": [
     {
+      "collectionGroup": "players", "queryScope": "COLLECTION",
+      "fields": [
+        { "fieldPath": "league", "order": "ASCENDING" },
+        { "fieldPath": "standing", "order": "ASCENDING" }
+      ]
+    },
+    {
+      "collectionGroup": "rankedSessions", "queryScope": "COLLECTION",
+      "fields": [
+        { "fieldPath": "state", "order": "ASCENDING" },
+        { "fieldPath": "expiresAtMs", "order": "ASCENDING" }
+      ]
+    },
+    {
       "collectionGroup": "matches",
       "queryScope": "COLLECTION",
       "fields": [

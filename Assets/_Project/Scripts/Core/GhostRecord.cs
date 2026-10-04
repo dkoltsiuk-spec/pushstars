@@ -5,16 +5,9 @@ using UnityEngine;
 namespace PushStars.Core
 {
     /// <summary>
-    /// A recorded 60-second set, replayed as an opponent. The whole recording is the list of
-    /// timestamps at which a rep was credited — that is all a duel needs to reproduce the pace of
-    /// the session exactly, and it is two orders of magnitude smaller than the skeleton stream the
-    /// full ghost spec stores (see <c>docs/architecture/ghost-mode-spec.md</c>).
-    ///
-    /// <para><b>Why rep times, not a skeleton, for now.</b> The skeleton recording exists to render
-    /// the opponent's body. Until an opponent avatar is on screen there is nothing to render it
-    /// with, and the scoreboard only ever asks "how many reps had they done by second N?" — the
-    /// timestamps answer that on their own. The field stays forward-compatible: when phase 12 adds
-    /// the skeleton file, it becomes another field beside these, not a replacement for them.</para>
+    /// A recorded set of up to 60 seconds. Rep timestamps own the score; the optional compressed
+    /// Humanoid stream owns the visible motion. Both use original elapsed seconds, never a
+    /// count-derived uniform interval. Old timestamp-only recordings remain readable.
     ///
     /// <see cref="UnityEngine.JsonUtility"/> serializes this, so the fields are public and plain.
     /// </summary>
@@ -23,11 +16,14 @@ namespace PushStars.Core
     {
         /// <summary>MVP has one exercise; the field exists so a second one doesn't need a migration.</summary>
         public string exercise = "pushups";
+        public string arenaId = ArenaCatalog.DefaultId;
         /// <summary>Reps credited in the recorded session. Equals <c>repTimes.Length</c>.</summary>
         public int reps;
         public float durationSec = FightConfig.DuelDurationSec;
         /// <summary>Seconds from the start of the live phase, ascending, all &lt; durationSec.</summary>
         public float[] repTimes = Array.Empty<float>();
+        /// <summary>Optional PSR1 Humanoid animation. Older timestamp-only saves still load.</summary>
+        public string motionBase64 = "";
         /// <summary>Mean FORM (0..100) across the recorded reps — shown on the result screen.</summary>
         public float avgForm;
         /// <summary>ISO-8601 UTC. String rather than a tick count so the file is readable by eye.</summary>
@@ -54,6 +50,7 @@ namespace PushStars.Core
                 avgForm       = avgForm,
                 recordedAtUtc = DateTime.UtcNow.ToString("o"),
                 source        = source,
+                arenaId       = ArenaProfile.SelectedId,
             };
         }
     }

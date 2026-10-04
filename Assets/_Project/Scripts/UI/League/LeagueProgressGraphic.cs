@@ -8,8 +8,16 @@ namespace PushStars.UI
         [Range(0, 1)] public float Fill = .77f;
         public Image Track;
         public Image FillImage;
+        public LeagueSurface StyledRail;
+        public RectTransform ScoreMarker;
         public void Refresh()
         {
+            if (ScoreMarker != null) ScoreMarker.anchoredPosition = new Vector2(Mathf.Lerp(0, 290, Mathf.Clamp01(Fill)), 0);
+            if (StyledRail != null && !Mathf.Approximately(StyledRail.Amount, Mathf.Clamp01(Fill)))
+            {
+                StyledRail.Amount = Mathf.Clamp01(Fill);
+                StyledRail.SetVerticesDirty();
+            }
             if (Track == null || FillImage == null) return;
             float amount = Mathf.Clamp01(Fill);
             FillImage.enabled = amount > 0;

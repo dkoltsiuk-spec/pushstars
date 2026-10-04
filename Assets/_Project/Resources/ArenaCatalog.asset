@@ -1,0 +1,76 @@
+%YAML 1.1
+%TAG !u! tag:unity3d.com,2011:
+--- !u!114 &11400000
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 0}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 8c359d0c3ba9cf84fb738c7fbf319ad9, type: 3}
+  m_Name: ArenaCatalog
+  m_EditorClassIdentifier: PushStars.Core::PushStars.Core.ArenaCatalog
+  Arenas:
+  - Id: crystal
+    Title: Crystal Gym
+    Home: {fileID: 21300000, guid: e3aa73e7915263c47903c7f671cdebd7, type: 3}
+    Battle: {fileID: 21300000, guid: c1d2f3a4b5c647e88990abcdeffedcba, type: 3}
+    Access: 0
+    Price: 0
+  - Id: sunset-yard
+    Title: Sunset Yard
+    Home: {fileID: 21300000, guid: 2f937234f21dec244a0b2bb6b1dcd608, type: 3}
+    Battle: {fileID: 0}
+    Access: 0
+    Price: 0
+  - Id: city-rooftop
+    Title: City Rooftop
+    Home: {fileID: 21300000, guid: 713bc197d86fbfc43bd32766fc5aa555, type: 3}
+    Battle: {fileID: 0}
+    Access: 0
+    Price: 0
+  - Id: school-gym
+    Title: School Gym
+    Home: {fileID: 21300000, guid: 3fa0ac321ccfc984da5022716f4b6069, type: 3}
+    Battle: {fileID: 0}
+    Access: 0
+    Price: 0
+  - Id: lava-forge
+    Title: Lava Forge
+    Home: {fileID: 21300000, guid: a32861695021de84dbb6c941425dbf2c, type: 3}
+    Battle: {fileID: 0}
+    Access: 0
+    Price: 0
+  - Id: jungle
+    Title: Jungle Ruins
+    Home: {fileID: 21300000, guid: af2494c54d94f2848a8271143c6611d9, type: 3}
+    Battle: {fileID: 0}
+    Access: 0
+    Price: 0
+  - Id: dragon-dojo
+    Title: Dragon Dojo
+    Home: {fileID: 21300000, guid: 3b6afbdd66660b84b985dcac4108b0c7, type: 3}
+    Battle: {fileID: 0}
+    Access: 0
+    Price: 0
+  - Id: ice-temple
+    Title: Ice Temple
+    Home: {fileID: 21300000, guid: eb119d60f2b2cce449da27214fc02e8a, type: 3}
+    Battle: {fileID: 0}
+    Access: 0
+    Price: 0
+  - Id: colosseum
+    Title: Colosseum
+    Home: {fileID: 21300000, guid: 3166b312600c82f48bd567f911a40a21, type: 3}
+    Battle: {fileID: 0}
+    Access: 0
+    Price: 0
+  - Id: underwater
+    Title: Underwater Dome
+    Home: {fileID: 21300000, guid: 1d8282dcc5ccd0f41a7da5d80a97dc77, type: 3}
+    Battle: {fileID: 0}
+    Access: 0
+    Price: 0
+  SelectionPanel: {fileID: 21300000, guid: f62f70302e9c750458940bb7218a535a, type: 3}

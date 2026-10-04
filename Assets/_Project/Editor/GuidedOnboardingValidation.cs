@@ -128,7 +128,14 @@ namespace PushStars.Editor
                         Require(Mathf.Abs(((RectTransform)Get<Button>(_guide, "_next").transform).anchoredPosition.x) < .01f, "NEXT is centered");
                         Require(Get<CanvasGroup>(_guide, "_assessmentHud").transform.Find("FinishPreview") == null, "FINISH is absent from the guide");
                         RememberHero(); _guide.Advance(); break;
-                    case 6: SameHero(); Capture("04-male-assessment"); _guide.Advance(); break;
+                    case 6:
+                        SameHero();
+                        var assessmentPortrait = _guide.SelectedPortrait.rectTransform;
+                        var assessmentStage = _guide.SelectedPortrait.GetComponent<AvatarContactShadow>().Stage;
+                        Require(Mathf.Abs(assessmentPortrait.rect.width / assessmentPortrait.rect.height
+                            - assessmentStage.RenderAspect) < .01f,
+                            "Assessment portrait keeps the stage display aspect after the transition");
+                        Capture("04-male-assessment"); _guide.Advance(); break;
                     case 7:
                         NoCamera(); Capture("05-camera");
                         Set(_guide, "_denied", true);
@@ -165,6 +172,11 @@ namespace PushStars.Editor
                         Require(ellipseRect.rect.width < _guide.SelectedPortrait.rectTransform.rect.width && ellipseRect.rect.height < 100,
                             "Live shadow remains a foot-sized ellipse after HUD adoption");
                         var livePlayer = Get<FightAvatar>(_guide, "_player");
+                        Require(Mathf.Abs(_guide.SelectedPortrait.rectTransform.rect.width /
+                            _guide.SelectedPortrait.rectTransform.rect.height - liveShadow.Stage.RenderAspect) < .01f,
+                            "Live assessment portrait keeps the stage display aspect");
+                        Require(Mathf.Abs(livePlayer.PushupHandSpan - 314f) < .01f,
+                            "Live assessment uses the solo push-up framing after portrait handoff");
                         var feet = Get<Transform[]>(livePlayer, "_guidedFeet");
                         var rotations = Get<Quaternion[]>(livePlayer, "_guidedFootRotations");
                         for (int i = 0; i < feet.Length; i++)
@@ -177,7 +189,7 @@ namespace PushStars.Editor
             catch (Exception error) { Finish(error.ToString()); }
         }
 
-        static void Prepare(Vector2Int size)
+        internal static void Prepare(Vector2Int size)
         {
             _size = size;
             if (_camera == null)
@@ -214,7 +226,7 @@ namespace PushStars.Editor
             foreach (var label in Object.FindObjectsByType<TMP_Text>(FindObjectsSortMode.None)) label.ForceMeshUpdate(false, true);
         }
 
-        static void Capture(string name)
+        internal static void Capture(string name)
         {
             foreach (var cam in Object.FindObjectsByType<Camera>(FindObjectsSortMode.None))
                 if (cam != _camera && cam.targetTexture != null && cam.enabled) cam.Render();

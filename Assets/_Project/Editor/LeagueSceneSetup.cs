@@ -129,7 +129,12 @@ namespace PushStars.Editor
             layout.Art = art; layout.Background = backdrop.rectTransform;
             var view = panel.GetComponent<LeagueView>() ?? Undo.AddComponent<LeagueView>(panel);
             LeagueTrophyField.Build(backdrop.rectTransform, AssetDatabase.LoadAssetAtPath<Sprite>(ArtPath + "cup-pattern.png"));
-            Pic(art, "LeagueHero", "hero", 0, -8, 390, 360).preserveAspect = true;
+            view.Hero = Pic(art, "LeagueHero", "hero", 0, -8, 390, 360);
+            view.Hero.preserveAspect = true;
+            view.BronzeHero = S("hero");
+            view.SilverHero = S("hero-silver");
+            view.GoldHero = S("hero-gold");
+            view.DiamondHero = S("hero-diamond");
             Pic(art, "ProgressPlaque", "progress-plaque", 41, 276, 340, 119);
             view.ProgressBar = Rect(art, "TrophyProgress", 72, 318, 276, 50).gameObject.AddComponent<LeagueProgressGraphic>();
             view.ProgressBar.Track = Pic(view.ProgressBar.transform, "Track", "progress-track", 0, 0, 276, 50);

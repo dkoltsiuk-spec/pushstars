@@ -40,13 +40,17 @@ namespace PushStars.Fight
             public readonly int Trophies;
             public readonly int BestReps;
             public readonly int WinRatePercent;
+            public readonly string CountryCode;
+            public readonly string[] AchievementIds;
 
-            public Side(string name, int trophies, int bestReps, int winRatePercent)
+            public Side(string name, int trophies, int bestReps, int winRatePercent, string countryCode=null, string[] achievementIds=null)
             {
                 Name = name;
                 Trophies = trophies;
                 BestReps = bestReps;
                 WinRatePercent = winRatePercent;
+                CountryCode = countryCode;
+                AchievementIds = achievementIds;
             }
         }
 
@@ -106,6 +110,7 @@ namespace PushStars.Fight
 
         private void OnDestroy()
         {
+            if (_playerTrophies != null) _playerTrophies.OnPreRenderText -= PlacePlayerTrophyIcon;
             if (!Application.isPlaying) return;
             RestoreAvatarPresentation();
             if (_readyButton != null) _readyButton.onClick.RemoveListener(Ready);
@@ -114,22 +119,33 @@ namespace PushStars.Fight
         public void Show(in Side player, in Side opponent, Sprite playerFlag, Sprite opponentFlag, bool loadProfile = true)
         {
             if (_root == null) return;
+            if (_matchFoundImpact != null) _matchFoundImpact.Cancel();
             _playerFlagSprite = playerFlag;
             _opponentFlagSprite = opponentFlag;
+            ResolveIdentity(player,opponent,loadProfile);
             _root.SetActive(true);
+            if (_readyButton != null) _readyButton.interactable = true;
             _portraitFrames.Clear();
             BuildReferenceLayout();
+            PreparationArenaBackdrop.Apply(_root);
             _preparationAvatars = FindObjectsByType<FightAvatar>(FindObjectsSortMode.None)
                 .Where(avatar => avatar.gameObject.scene == gameObject.scene).ToArray();
-            foreach (var avatar in _preparationAvatars) avatar.SetPreparationPresentation(true);
+            foreach (var avatar in _preparationAvatars)
+            {
+                bool opponentPortrait = avatar.StageCamera != null && _opponentAvatarSource != null
+                    && avatar.StageCamera.targetTexture == _opponentAvatarSource.texture;
+                avatar.SetPreparationPresentation(true, opponentPortrait ? 15f : -15f);
+                if (avatar.StageCamera != null) avatar.StageCamera.enabled = true;
+            }
 
             Fill(opponent, _opponentName, _opponentTrophies, _opponentBest, _opponentWinRate);
             Fill(player, _playerName, _playerTrophies, _playerBest, _playerWinRate);
 
             RefreshPortraits();
-            RefreshFlags();
             if (!_sceneAuthored) ConfigureEditableLayout();
             if (loadProfile) LoadPlayerName();
+            RefreshFlags();
+            RefreshReadableStatistics();
             if (Application.isPlaying)
             {
                 if (_matchFoundImpact == null)
@@ -206,8 +222,9 @@ namespace PushStars.Fight
 
         private void Ready()
         {
-            Hide();
-            OnReady?.Invoke();
+            if (OnReady == null) { Hide(); return; }
+            _readyButton.interactable = false;
+            OnReady.Invoke();
         }
     }
 }

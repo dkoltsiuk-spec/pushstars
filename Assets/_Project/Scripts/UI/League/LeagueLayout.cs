@@ -10,6 +10,7 @@ namespace PushStars.UI
         public RectTransform Background;
         public ScrollRect PageScroll;
         public RectTransform Rows;
+        [System.NonSerialized] public float StickyFooterHeight;
         private readonly Vector3[] _corners = new Vector3[4];
         public void Fit()
         {
@@ -20,7 +21,7 @@ namespace PushStars.UI
             if (PageScroll != null && PageScroll.viewport != null)
             {
                 var viewport = PageScroll.viewport;
-                viewport.offsetMin = new Vector2(0, 86f);
+                viewport.offsetMin = new Vector2(0, 86f + StickyFooterHeight);
                 viewport.offsetMax = Vector2.zero;
                 float bottom = 0;
                 if (Rows != null)

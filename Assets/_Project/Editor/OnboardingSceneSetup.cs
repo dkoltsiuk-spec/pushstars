@@ -63,7 +63,7 @@ namespace PushStars.Editor
         private const int StageRtHeight = 1080;
         private const float CardWidth = 170f;
         private const float CardHeight = 340f;
-        private const float CardTop = 55f;
+        private const float CardTop = 95f;
 
         // The bottom glow, as left in the Scene view. Width carries a 1.53 scale that was set on
         // the RectTransform — baked in, because a scaled rect measures one thing and draws another.

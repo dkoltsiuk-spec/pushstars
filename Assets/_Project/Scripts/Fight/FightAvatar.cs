@@ -135,6 +135,8 @@ namespace PushStars.Fight
         private bool _wasMirroring;
         private float _settleUntil;
         private bool _preparation;
+        private GhostPosePlayback _recordedPose;
+        private float _preparationYaw;
         private bool _resultLost;
         private bool _resultWon;
         private float _resultReturnAt;
@@ -204,12 +206,15 @@ namespace PushStars.Fight
         /// from its own Start, this component builds at execution order 300), so it stays a no-op
         /// on the parts that need the instantiated body and <see cref="Build"/> re-applies it.</para>
         /// </summary>
-        public void SetPreparationPresentation(bool preparation)
+        public void SetPreparationPresentation(bool preparation, float yaw = 0f)
         {
+            if (!preparation && _preparation && _bodyRestCaptured && _animator != null)
+                _animator.transform.localRotation = _bodyRestRot;
             _resultLost = false;
             _resultWon = false;
             _resultReturnAt = 0f;
             _preparation = preparation;
+            _preparationYaw = preparation ? yaw : 0f;
             AvatarWideCamera.Configure(_stageCamera, preparation);
             if (_stageCamera != null)
                 AvatarWideImage.Configure(_stageCamera.GetComponentInParent<CharacterStage>()?.TargetImage, _stageCamera);
@@ -242,7 +247,7 @@ namespace PushStars.Fight
                 {
                     var body = _animator.transform;
                     body.localPosition = _bodyRestPos;
-                    body.localRotation = _bodyRestRot;
+                    body.localRotation = Quaternion.Euler(0f, _preparationYaw, 0f) * _bodyRestRot;
                     body.localScale = _bodyRestScale;
                 }
                 _animator.enabled = true;
@@ -399,6 +404,8 @@ namespace PushStars.Fight
             return true;
         }
 
+        [SerializeField] private bool _preparePushupFraming = true;
+
         private void Start() => Build();
 
         private void LateUpdate()
@@ -468,9 +475,10 @@ namespace PushStars.Fight
         private void Build()
         {
             var gender = CharacterRoster.SavedGender;
+            if (_opponentStage && FightRequest.TestBot != null) gender = (CharacterGender)FightRequest.TestBot.gender;
             var prefab = gender == CharacterGender.Female ? _femalePrefab : _malePrefab;
             if (prefab == null) prefab = gender == CharacterGender.Female ? _malePrefab : _femalePrefab;
-            switch (CharacterRoster.SavedHomeAvatar)
+            switch (_opponentStage && FightRequest.TestBot != null ? FightRequest.TestBot.avatar : CharacterRoster.SavedHomeAvatar)
             {
                 case 1: if (_sonicPrefab != null) prefab = _sonicPrefab; break;
                 case 2: if (_gladiatorPrefab != null) prefab = _gladiatorPrefab; break;
@@ -534,7 +542,7 @@ namespace PushStars.Fight
             _animator.applyRootMotion = false;
             _animator.cullingMode = AnimatorCullingMode.AlwaysAnimate;
 
-            if (_shadow && !bossBody) ApplyShadowTint();
+            if (_shadow && !bossBody && FightRequest.TestBot == null) ApplyShadowTint();
 
             _renderers = Character.GetComponentsInChildren<Renderer>(true);
             CacheBones();
@@ -551,6 +559,16 @@ namespace PushStars.Fight
             else if (_driverBehaviour is IAvatarAnimator driver) driver.BindAnimator(_animator);
             else if (_driverBehaviour != null)
                 Debug.LogError($"[FightAvatar] {_driverBehaviour.GetType().Name} does not implement IAvatarAnimator.");
+            if (!_opponentStage)
+            {
+                var recorder = gameObject.AddComponent<FightPoseRecorder>();
+                recorder.Bind(_animator, FindObjectsByType<FightController>(FindObjectsSortMode.None)
+                    .FirstOrDefault(f => f.gameObject.scene == gameObject.scene));
+            }
+            else if (FightRequest.TestBot != null)
+                GhostPosePlayback.Attach(_animator, FindObjectsByType<GhostOpponent>(FindObjectsSortMode.None)
+                    .FirstOrDefault(g => g.gameObject.scene == gameObject.scene));
+            _recordedPose = _animator.GetComponent<GhostPosePlayback>();
 
             if (_alsoBound != null)
                 foreach (var extra in _alsoBound)
@@ -560,11 +578,12 @@ namespace PushStars.Fight
                         Debug.LogError($"[FightAvatar] {extra.GetType().Name} does not implement IAvatarAnimator.");
                 }
 
-            CachePushupSilhouette();
+            // Standing-only scenes do not need the nine skinned-mesh pose samples.
+            if (_preparePushupFraming) CachePushupSilhouette();
 
             // The card may have asked for the standing-idle presentation before this body existed.
             if (_resultLost || _resultWon) SetResultPresentation(_resultLost, _resultWon);
-            else if (_preparation) SetPreparationPresentation(true);
+            else if (_preparation) SetPreparationPresentation(true, _preparationYaw);
         }
 
         /// <summary>Darkens this body's materials on the instance only. <c>renderer.materials</c>

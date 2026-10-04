@@ -43,6 +43,9 @@ namespace PushStars.UI
         [Tooltip("Portrait render target. Match the on-screen character area aspect (~9:16).")]
         [SerializeField] private int _width  = 720;
         [SerializeField] private int _height = 1280;
+        [Tooltip("Resolution scale only; camera aspect and framing stay unchanged.")]
+        [Range(0.25f, 1f)]
+        [SerializeField] private float _renderScale = 1f;
         [Range(0, 8)]
         [SerializeField] private int _antiAliasing = 2;
 
@@ -219,7 +222,9 @@ namespace PushStars.UI
         private void CreateRenderTexture()
         {
             // Overscan adds pixels, not stretch: retain the original texel density across the body.
-            _rt = new RenderTexture(_width * (int)AvatarWideCamera.WidthMultiplier, _height, 24, RenderTextureFormat.ARGB32)
+            float scale = Mathf.Clamp(_renderScale, .25f, 1f);
+            _rt = new RenderTexture(Mathf.Max(1, Mathf.RoundToInt(_width * AvatarWideCamera.WidthMultiplier * scale)),
+                Mathf.Max(1, Mathf.RoundToInt(_height * scale)), 24, RenderTextureFormat.ARGB32)
             {
                 name         = "CharacterStageRT",
                 antiAliasing = Mathf.Max(1, _antiAliasing),

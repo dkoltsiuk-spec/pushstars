@@ -13,11 +13,11 @@ exports.ensureProfile = functions.https.onCall(async (data, context) => {
   }
 
   const ref = db.doc(`users/${context.auth.uid}`);
-  const snap = await ref.get();
-  if (snap.exists) return { status: 'exists' };
-
-  const name = context.auth.token && context.auth.token.name;
-  await ref.set(defaultProfile(name));
-  functions.logger.info(`Backfilled profile for ${context.auth.uid}`);
-  return { status: 'created' };
+  return db.runTransaction(async tx => {
+    const snap = await tx.get(ref);
+    if (snap.exists) return { status: 'exists' };
+    const name = context.auth.token && context.auth.token.name;
+    tx.create(ref, defaultProfile(name));
+    return { status: 'created' };
+  });
 });

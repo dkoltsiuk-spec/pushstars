@@ -25,6 +25,16 @@ exports.onUserDeleted = functions.auth.user().onDelete(async (user) => {
   ghostSnap.forEach((doc) => batch.delete(doc.ref));
 
   await batch.commit();
+  // The monthly archive and ranked session receipts also belong to this account.
+  const seasons = await db.collection('seasons').listDocuments();
+  const sessions = await db.collection('rankedSessions').where('uid', '==', uid).get();
+  const writer = db.bulkWriter();
+  for (const season of seasons) writer.delete(season.collection('players').doc(uid));
+  for (const session of sessions.docs) {
+    writer.delete(session.ref);
+    writer.delete(db.doc(`matches/${session.id}`));
+  }
+  await writer.close();
   functions.logger.info(`Deleted data for ${uid}`);
   return null;
 });

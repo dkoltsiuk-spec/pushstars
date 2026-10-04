@@ -39,9 +39,8 @@ namespace PushStars.Fight
         // Both names lean the same way — a small dynamic tilt, matching the mockup. Small on
         // purpose: the typeface is already a true italic, and the two slants compound.
         private const float NameTiltDegrees = 4f;
-        // One line and no more: tall enough for a name at the top of the auto-size range, too
-        // short for two at the bottom of it. See NameStyle for why that is the fit-to-width lever.
-        private const float NameBand = 46f;
+        // Both names keep the same type size, with room for two lines.
+        private const float NameBand = 100f;
 
         // The contact shadow's ellipse, as a share of the figure's height. A touch tighter than
         // the menu stage's 168 × 40 under a figure of about 395: that one is a soft blur, and the
@@ -58,6 +57,7 @@ namespace PushStars.Fight
         [SerializeField, HideInInspector] private Image _playerFlag;
         [SerializeField, HideInInspector] private Image _opponentShadow;
         [SerializeField, HideInInspector] private Image _playerShadow;
+        private RectTransform _playerTrophyIcon;
 
         // Reference art's content, excluding the phone bezel and operating-system chrome.
         // A uniform scale keeps portraits, typography and the square VS medal undistorted.
@@ -77,6 +77,7 @@ namespace PushStars.Fight
             bgRect.anchorMax = Vector2.one;
             bgRect.offsetMin = bgRect.offsetMax = Vector2.zero;
             backdrop.GetComponent<ReadyScreenGraphic>().raycastTarget = true;
+            backdrop.GetComponent<ReadyScreenGraphic>().SetBackground(Resources.Load<Texture2D>("MatchFound/Background"));
 
             // The drifting lightning from the Main screen, layered over the gradient. Same builder,
             // so it is the exact field the home screen uses. Parented to the backdrop so it renders
@@ -105,10 +106,10 @@ namespace PushStars.Fight
             // box rather than cropping a fixed window out of the stage render. Equal heights, so
             // the two fighters read at one scale. At this size the growth goes downward — heads
             // were already near the top edge — which lands the soles just short of the two things
-            // below them, the VS medal at 365 and the READY button at 738. Each is pushed a little
-            // further out to its own side, away from the other's column of numbers.
-            _opponentAvatarImage = Portrait(_opponentAvatarImage, "OpponentPortrait", 212f, 8f, 158f, 368f);
-            _playerAvatarImage = Portrait(_playerAvatarImage, "PlayerPortrait", -4f, 364f, 182f, 368f);
+            // below them, the VS medal at 365 and the READY button at 738. Both sit a little
+            // inward from the sides, facing the other fighter across the centre.
+            _opponentAvatarImage = Portrait(_opponentAvatarImage, "OpponentPortrait", 192f, 8f, 158f, 368f);
+            _playerAvatarImage = Portrait(_playerAvatarImage, "PlayerPortrait", 16f, 364f, 182f, 368f);
 
             // Flag chip beside the name: flag-then-name for the opponent (top-left), name-then-flag
             // for the player (bottom-right). Where the two actually sit is settled by RefreshFlags,
@@ -154,10 +155,10 @@ namespace PushStars.Fight
         /// <summary>The drawn button plate from the design system (<c>btn_start.png</c>) rather
         /// than the skewed quads this used to assemble in <see cref="ReadyScreenGraphic"/> — those
         /// were an approximation of this exact asset, down to the darker lip along the bottom.
-        /// Sized at the sprite's own 333:172 so the parallelogram's slant renders as drawn.</summary>
+        /// A compact height keeps the action clear of the player's feet.</summary>
         private void StyleReadyButton()
         {
-            const float width = 124f, height = width * 172f / 333f;
+            const float width = 124f, height = 54f;
             // Centred, with its foot where the old plate's was.
             Place((RectTransform)_readyButton.transform, (390f - width) * 0.5f, 802f - height, width, height);
 
@@ -177,6 +178,9 @@ namespace PushStars.Fight
             label.fontSize = 20f;
             label.enableAutoSizing = false;
             FightTypography.Apply(label, FightTypography.Role.Button);
+            var readyMaterial = Resources.Load<Material>("MatchFound/ReadyLabel");
+            if (readyMaterial != null) label.fontSharedMaterial = readyMaterial;
+            label.UpdateMeshPadding();
             label.alignment = TextAlignmentOptions.Center;
             label.color = Color.white;
             label.raycastTarget = false;
@@ -344,16 +348,14 @@ namespace PushStars.Fight
         {
             Apply(_opponentFlag, _opponentFlagSprite);
             Apply(_playerFlag, _playerFlagSprite);
-
-            // Each name shares its column's edge with the block underneath it — trophies, MAX
-            // PUSHUP, WIN RATE — and gives that edge up only to make room for a flag chip in front
-            // of it. A boss carries no flag, and an indent held open for a chip that never arrives
-            // is what knocked the opponent's name out of the column and pushed it over his body.
-            if (!_sceneAuthored)
-            {
-                NamePlace(_opponentName, _opponentFlagSprite != null ? 52f : 18f, 214f, 88f);
-                NamePlace(_playerName, 138f, _playerFlagSprite != null ? 343f : 375f, 445f);
-            }
+            NameStyle(_opponentName, false);
+            NameStyle(_playerName, true);
+            NamePlace(_opponentName, 18f, 248f, 88f);
+            NamePlace(_playerName, 132f, 384f, 445f);
+            WrapName(_opponentName);
+            WrapName(_playerName);
+            PlaceIdentityStrip(_opponentName,_opponentFlag,_opponentAchievementIds,ref _opponentMedals);
+            PlaceIdentityStrip(_playerName,_playerFlag,_playerAchievementIds,ref _playerMedals);
 
             static void Apply(Image image, Sprite sprite)
             {
@@ -361,6 +363,94 @@ namespace PushStars.Fight
                 image.sprite = sprite;
                 image.enabled = sprite != null;
             }
+        }
+
+        private static void WrapName(TextMeshProUGUI label)
+        {
+            if (label == null) return;
+            string name = label.text.Replace("\n", "");
+            float width = label.rectTransform.rect.width;
+            if (label.GetPreferredValues(name, Mathf.Infinity, Mathf.Infinity).x <= width)
+            { label.text = name; return; }
+            // TMP ellipsizes unbroken usernames before wrapping. Insert a display-only
+            // line break, preferring a separator and preserving complete Unicode characters.
+            var boundaries = System.Globalization.StringInfo.ParseCombiningCharacters(name);
+            int split = 0;
+            foreach (int boundary in boundaries)
+            {
+                if (boundary == 0) continue;
+                if (label.GetPreferredValues(name.Substring(0, boundary), Mathf.Infinity, Mathf.Infinity).x > width) break;
+                split = boundary;
+            }
+            if (split == 0) return;
+            int separator = name.LastIndexOfAny(new[] { '_', '-', ' ' }, split - 1, split);
+            if (separator >= 0) split = separator + 1;
+            label.text = name.Substring(0, split) + "\n" + name.Substring(split).TrimStart();
+        }
+
+        private static void PlaceNameFlag(TextMeshProUGUI name, Image flag)
+        {
+            if (name == null || flag == null || !flag.enabled) return;
+            name.ForceMeshUpdate();
+            if (name.textInfo.lineCount == 0) return;
+            var line = name.textInfo.lineInfo[name.textInfo.lineCount - 1];
+            var bounds = name.rectTransform.rect;
+            float x = line.lineExtents.max.x + 8f;
+            float y = line.baseline + name.fontSize * .3f;
+            if (x + 24f > bounds.xMax)
+            {
+                x = name.alignment == TextAlignmentOptions.TopRight ? bounds.xMax - 24f : bounds.xMin;
+                y = line.descender - 12f;
+            }
+            var rect = flag.rectTransform;
+            rect.SetParent(name.rectTransform, false);
+            rect.anchorMin = rect.anchorMax = new Vector2(.5f, .5f);
+            rect.pivot = new Vector2(0f, .5f);
+            rect.sizeDelta = new Vector2(24f, 16f);
+            rect.anchoredPosition = new Vector2(x, y);
+        }
+
+        private void RefreshReadableStatistics()
+        {
+            float opponentY = StatisticsTop(_opponentName, _opponentFlag, 198f);
+            float playerY = StatisticsTop(_playerName, _playerFlag, 550f);
+            TrophyStyle(_opponentTrophies, 18f, opponentY, false);
+            TrophyStyle(_playerTrophies, 212f, playerY, true);
+            StatStyle(_opponentBest, "OpponentBestCaption", "MAX PUSHUP", 20f, opponentY + 67f, false);
+            StatStyle(_opponentWinRate, "OpponentWinRateCaption", "WIN RATE", 20f, opponentY + 120f, false);
+            StatStyle(_playerBest, "PlayerBestCaption", "MAX PUSHUP", 284f, playerY + 65f, true);
+            StatStyle(_playerWinRate, "PlayerWinRateCaption", "WIN RATE", 284f, playerY + 119f, true);
+        }
+
+        private float StatisticsTop(TextMeshProUGUI name, Image flag, float fallback)
+        {
+            if (name == null || _composition == null) return fallback;
+            // Measure the visible content after wrapping, not the two-line name box.
+            // This runs when the card is filled, never during the count-up animation.
+            name.ForceMeshUpdate();
+            if (name.textInfo.characterCount == 0) return fallback;
+            var bounds = name.textBounds;
+            float bottom = BottomInComposition(name.rectTransform, bounds.min.x, bounds.max.x, bounds.min.y);
+            if (flag != null && flag.isActiveAndEnabled)
+            {
+                var rect = flag.rectTransform.rect;
+                bottom = Mathf.Min(bottom, BottomInComposition(flag.rectTransform, rect.xMin, rect.xMax, rect.yMin));
+            }
+            var medals=name==_playerName?_playerMedals:_opponentMedals;
+            if(medals!=null)foreach(var medal in medals)
+            {
+                if(medal==null || !medal.isActiveAndEnabled)continue;
+                var rect=medal.rectTransform.rect;
+                bottom=Mathf.Min(bottom,BottomInComposition(medal.rectTransform,rect.xMin,rect.xMax,rect.yMin));
+            }
+            return _composition.rect.yMax - bottom + 6f;
+        }
+
+        private float BottomInComposition(RectTransform rect, float left, float right, float bottom)
+        {
+            float a = _composition.InverseTransformPoint(rect.TransformPoint(new Vector3(left, bottom, 0f))).y;
+            float b = _composition.InverseTransformPoint(rect.TransformPoint(new Vector3(right, bottom, 0f))).y;
+            return Mathf.Min(a, b);
         }
 
         private void Place(RectTransform rect, float x, float y, float width, float height)
@@ -386,16 +476,12 @@ namespace PushStars.Fight
             text.fontStyle = drawnItalic ? FontStyles.Normal : FontStyles.Bold | FontStyles.Italic;
 
             text.color = new Color32(255, 211, 0, 255);
-            text.enableAutoSizing = true;
-            text.fontSizeMin = 22f; text.fontSizeMax = 38f;
-            // Wrapping stays ON, and NameBand is what turns that into a fit-to-width. TMP's
-            // auto-size only shrinks for text it cannot lay out; with wrapping off a long name is
-            // laid out fine — as one line running clear off the side of its box, which is exactly
-            // what it did. With wrapping on and a band too short to hold a second line, the only
-            // way left to fit is narrower letters.
-            text.enableWordWrapping = true;
+            text.enableAutoSizing = false;
+            text.fontSize = 38f;
+            text.fontSizeMin = text.fontSizeMax = 38f;
+            text.textWrappingMode = TextWrappingModes.Normal;
             text.overflowMode = TextOverflowModes.Ellipsis;
-            text.alignment = right ? TextAlignmentOptions.MidlineRight : TextAlignmentOptions.MidlineLeft;
+            text.alignment = right ? TextAlignmentOptions.TopRight : TextAlignmentOptions.TopLeft;
             text.outlineColor = Color.black; text.outlineWidth = 0.25f;
             text.raycastTarget = false;
         }
@@ -416,28 +502,48 @@ namespace PushStars.Fight
         {
             if (text == null) return;
             var row = text.transform.parent as RectTransform;
-            Place(row, x, y, 136f, 47f);
-            var icon = row.Find("Icon") as RectTransform;
+            Place(row, x, y, 172f, 56f);
+            var icon = (row.Find("Icon") ?? text.transform.Find("Icon")) as RectTransform;
             if (icon != null)
             {
                 icon.anchorMin = icon.anchorMax = new Vector2(0f, 0.5f);
                 icon.pivot = new Vector2(0f, 0.5f);
-                icon.anchoredPosition = Vector2.zero; icon.sizeDelta = new Vector2(43f, 39f);
+                icon.anchoredPosition = Vector2.zero; icon.sizeDelta = new Vector2(52f, 47f);
             }
             text.rectTransform.anchorMin = text.rectTransform.anchorMax = new Vector2(0f, 0.5f);
             text.rectTransform.pivot = new Vector2(0f, 0.5f);
-            text.rectTransform.anchoredPosition = new Vector2(48f, 0f);
-            text.rectTransform.sizeDelta = new Vector2(88f, 47f);
-            text.fontSizeMin = 26f; text.fontSizeMax = 44f; text.enableAutoSizing = true;
+            text.rectTransform.anchoredPosition = new Vector2(58f, 0f);
+            text.rectTransform.sizeDelta = new Vector2(114f, 56f);
+            text.fontSize = 50f;
+            text.fontSizeMin = 30f; text.fontSizeMax = 50f; text.enableAutoSizing = true;
+            text.textWrappingMode = TextWrappingModes.NoWrap;
             text.color = new Color32(255, 215, 0, 255);
             text.alignment = right ? TextAlignmentOptions.Right : TextAlignmentOptions.Left;
             text.outlineColor = Color.black; text.outlineWidth = 0.23f;
+            if (right && icon != null)
+            {
+                // Share the number's scale animation and follow its actual glyph edge,
+                // including when the count-up changes between one and several digits.
+                _playerTrophyIcon = icon;
+                icon.SetParent(text.rectTransform, false);
+                icon.anchorMin = icon.anchorMax = new Vector2(0f, .5f);
+                icon.pivot = new Vector2(1f, .5f);
+                text.OnPreRenderText -= PlacePlayerTrophyIcon;
+                text.OnPreRenderText += PlacePlayerTrophyIcon;
+                text.ForceMeshUpdate();
+            }
+        }
+
+        private void PlacePlayerTrophyIcon(TMP_TextInfo info)
+        {
+            if (_playerTrophyIcon == null || info.lineCount == 0) return;
+            _playerTrophyIcon.anchoredPosition = new Vector2(info.lineInfo[0].lineExtents.min.x - 6f, 0f);
         }
 
         private void StatStyle(TextMeshProUGUI text, string captionName, string caption, float x, float y, bool right)
         {
             if (text == null) return;
-            var title = _safeBounds.Find(captionName)?.GetComponent<TextMeshProUGUI>();
+            var title = (_composition.Find(captionName) ?? _safeBounds.Find(captionName))?.GetComponent<TextMeshProUGUI>();
             if (title != null)
             {
                 Place(title.rectTransform, x, y, 90f, 13f);
@@ -446,8 +552,8 @@ namespace PushStars.Fight
                 title.outlineWidth = 0f;
                 title.alignment = right ? TextAlignmentOptions.Right : TextAlignmentOptions.Left;
             }
-            Place(text.rectTransform, x, y + 13f, 90f, 31f);
-            text.fontSize = 26f; text.enableAutoSizing = false;
+            Place(text.rectTransform, x, y + 13f, 90f, 38f);
+            text.fontSize = 30f; text.enableAutoSizing = false;
             text.color = Color.white; text.outlineColor = Color.black; text.outlineWidth = 0.2f;
             text.alignment = right ? TextAlignmentOptions.Right : TextAlignmentOptions.Left;
         }

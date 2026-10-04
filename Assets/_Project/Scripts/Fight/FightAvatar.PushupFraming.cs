@@ -27,6 +27,11 @@ namespace PushStars.Fight
         private Matrix4x4 _pushupRootMatrix;
         // Fallback shot (no mockup size given): the whole motion fits with these margins.
         private const float ShotMargin = .08f;
+        // How far past the room it has a clap push-up's flight may still carry the crown, as a
+        // share of the visible height. The boss screen's plank already reaches the top edge, and
+        // a flight with no rise at all reads as hands waving under a hovering body; this much
+        // costs only the top of the hair for a tenth of a second and keeps the face in.
+        private const float FlightCeilingOvershoot = .06f;
         private float _shotHandSpan, _shotFloor;
         private Vector2 _pushupImageUnits;
 
@@ -130,7 +135,7 @@ namespace PushStars.Fight
 
         private bool FrameAuthoredPushup()
         {
-            bool active = _pushupCorrection != null && _pushupCorrection.IsActive
+            bool active = _pushupCorrection != null && (_pushupCorrection.IsActive || (_recordedPose != null && _recordedPose.UsesPushupFraming))
                 && !IsMirroring && _pushupSilhouette != null && _pushupSilhouette.Length > 0;
             UpdatePushupGroundShadow(active);
             if (!active)
@@ -150,6 +155,10 @@ namespace PushStars.Fight
             }
             if (_stageFieldOfView < 0f) _stageFieldOfView = _stageCamera.fieldOfView;
             _stageCamera.fieldOfView = _pushupFieldOfView;
+
+            // The shot is measured off the planted hands. Mid-clap they are in the air, so a
+            // re-fit waits for the landing.
+            if (_pushupFramed && _pushupCorrection.IsAirborne) return true;
 
             var stage = _stageCamera.GetComponentInParent<CharacterStage>();
             Rect uv = stage != null ? stage.DisplayUv : new Rect(0f, 0f, 1f, 1f);
@@ -229,6 +238,17 @@ namespace PushStars.Fight
                 }
                 Fit(far, out centre);
             }
+            // What is left above the motion, for the clap push-up's flight to rise into.
+            float ceiling = (uv.yMax - .5f) * 2f * tanY;
+            float headroom = float.PositiveInfinity, crownDepth = far;
+            foreach (var p in points)
+            {
+                float room = ceiling * (p.z + far) - (p.y - centre.y);
+                if (room < headroom) { headroom = room; crownDepth = p.z + far; }
+            }
+            headroom = Mathf.Max(0f, headroom) + FlightCeilingOvershoot * uv.height * 2f * tanY * crownDepth;
+            _pushupCorrection.SetFlightHeadroom(headroom / Mathf.Max(1e-4f, Mathf.Abs(root.lossyScale.y)));
+
             _stageCamera.transform.SetPositionAndRotation(
                 root.position + rotation * new Vector3(centre.x, centre.y, -far), rotation);
             _focus = root.position + rotation * new Vector3(centre.x, centre.y, 0f);

@@ -5,15 +5,20 @@ using UnityEngine.UI;
 namespace PushStars.Fight
 {
     /// <summary>
-    /// The clap push-up's double claw strike: two crossing swipes of three tapered claw marks,
-    /// white-hot core over a red glow, drawn on in a flick and fading out. Procedural mesh — no
-    /// textures. <see cref="Play"/> takes Content units; the graphic's own rect is ignored.
+    /// The clap push-up's double strike: two crossing slashes, one bold tapered stroke each,
+    /// white-hot core over a red glow, drawn on in a flick and fading out. One stroke per blow
+    /// (a hand, not a paw: three parallel marks read as a beast's claws), two blows for the x2.
+    /// Procedural mesh — no textures. <see cref="Play"/> takes Content units; the graphic's own
+    /// rect is ignored.
     /// </summary>
     [RequireComponent(typeof(CanvasRenderer))]
     public sealed class ClawSlashGraphic : MaskableGraphic
     {
         private const float DrawSec = .09f, SecondSwipeDelay = .12f, HoldSec = .16f, FadeSec = .38f;
         private const int Samples = 14;
+        // Share of the length Play() is given: the one stroke runs a little past the span the
+        // three claw marks used to cover, and is about as wide as two of them were.
+        private const float StrokeLength = 1.18f, StrokeWidth = .075f;
         private static readonly Color Core = new Color(1f, .97f, .95f), Glow = new Color(.96f, .06f, .12f);
 
         private Vector2 _center;
@@ -81,20 +86,14 @@ namespace PushStars.Fight
             float a = angleDeg * Mathf.Deg2Rad;
             var dir = new Vector2(Mathf.Cos(a), Mathf.Sin(a));
             var side = new Vector2(-dir.y, dir.x);
-            float spacing = _length * .14f;
-            for (int m = -1; m <= 1; m++)
-            {
-                float len = _length * (m == 0 ? 1f : .84f);
-                Vector2 mid = _center + side * (m * spacing) + dir * (m * _length * .03f);
-                Vector2 from = mid - dir * (len * .5f), to = mid + dir * (len * .5f);
-                float width = _length * (m == 0 ? .04f : .032f);
-                Stroke(mesh, from, to, side, head, width * 3.6f * bloom, WithAlpha(Glow, .38f * fade));
-                Stroke(mesh, from, to, side, head, width * 1.9f, WithAlpha(Glow, .85f * fade));
-                Stroke(mesh, from, to, side, head, width * flash, WithAlpha(Core, fade));
-            }
+            float len = _length * StrokeLength, width = _length * StrokeWidth;
+            Vector2 from = _center - dir * (len * .5f), to = _center + dir * (len * .5f);
+            Stroke(mesh, from, to, side, head, width * 3.2f * bloom, WithAlpha(Glow, .38f * fade));
+            Stroke(mesh, from, to, side, head, width * 1.8f, WithAlpha(Glow, .85f * fade));
+            Stroke(mesh, from, to, side, head, width * flash, WithAlpha(Core, fade));
         }
 
-        /// <summary>A claw mark from <paramref name="from"/> drawn up to <paramref name="head"/> ∈
+        /// <summary>A slash from <paramref name="from"/> drawn up to <paramref name="head"/> ∈
         /// [0,1] of its length, bowed slightly and tapered to points at both ends.</summary>
         private static void Stroke(VertexHelper mesh, Vector2 from, Vector2 to, Vector2 side,
             float head, float width, Color color)

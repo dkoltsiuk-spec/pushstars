@@ -13,7 +13,15 @@ namespace PushStars.UI
     public sealed class TrophyBadgeGraphic : MaskableGraphic
     {
         [SerializeField, Range(0f, 1f)] private float _progress = 0.79f;
+        [SerializeField] private bool _infoOnly;
         private readonly List<Vector2> _path = new List<Vector2>(160);
+
+        /// <summary>Draw the same red/gold info tab on other home controls.</summary>
+        public bool InfoOnly
+        {
+            get => _infoOnly;
+            set { _infoOnly = value; SetVerticesDirty(); }
+        }
 
         public float Progress
         {
@@ -24,18 +32,21 @@ namespace PushStars.UI
         protected override void OnPopulateMesh(VertexHelper vh)
         {
             vh.Clear();
-            // Flat upper/lower edges and a slanted right shoulder.
-            Begin(254, 137); Line(696, 137);
-            Curve(715, 137, 724, 151, 719, 171);
-            Line(679, 344); Curve(676, 360, 667, 368, 651, 368);
-            Line(242, 368); Curve(220, 368, 204, 351, 204, 330);
-            Line(204, 176); Curve(204, 151, 225, 137, 254, 137);
-            Paint(vh, Color.black);
-
-            Bar(1f); Paint(vh, new Color32(31, 36, 43, 255));
-            if (_progress > 0f)
+            if (!_infoOnly)
             {
-                Bar(_progress); Paint(vh, new Color32(239, 139, 0, 255));
+                // Flat upper/lower edges and a slanted right shoulder.
+                Begin(254, 137); Line(696, 137);
+                Curve(715, 137, 724, 151, 719, 171);
+                Line(679, 344); Curve(676, 360, 667, 368, 651, 368);
+                Line(242, 368); Curve(220, 368, 204, 351, 204, 330);
+                Line(204, 176); Curve(204, 151, 225, 137, 254, 137);
+                Paint(vh, Color.black);
+
+                Bar(1f); Paint(vh, new Color32(31, 36, 43, 255));
+                if (_progress > 0f)
+                {
+                    Bar(_progress); Paint(vh, new Color32(239, 139, 0, 255));
+                }
             }
 
             // Asymmetric red info tab, including the outlined, leaning gold glyph.
@@ -99,13 +110,17 @@ namespace PushStars.UI
             foreach (Vector2 p in _path)
             { center += p; minX = Mathf.Min(minX, p.x); maxX = Mathf.Max(maxX, p.x); }
             center /= _path.Count;
+            float sourceWidth = _infoOnly ? 165f : 756f;
+            float sourceHeight = _infoOnly ? 139f : 278f;
+            float sourceX = _infoOnly ? 619f : 27f;
+            float sourceY = _infoOnly ? 87f : 90f;
             int start = vh.currentVertCount;
             Add(center, 1f);
             foreach (Vector2 p in _path) Add(p, 1f);
             // A one-screen-pixel transparent fringe smooths the contour at phone resolution.
             float screenScale = canvas != null ? canvas.scaleFactor *
                 Mathf.Abs(rectTransform.lossyScale.x / canvas.transform.lossyScale.x) : 1f;
-            float feather = 756f / Mathf.Max(1f, rect.width * screenScale);
+            float feather = sourceWidth / Mathf.Max(1f, rect.width * screenScale);
             for (int i = 0; i < _path.Count; i++)
             {
                 Vector2 prev = _path[(i + _path.Count - 1) % _path.Count];
@@ -125,8 +140,8 @@ namespace PushStars.UI
             {
                 Color tint = Color.Lerp(left, right ?? left, Mathf.InverseLerp(minX, maxX, p.x)) * color;
                 tint.a *= alpha;
-                vh.AddVert(new Vector3(rect.xMin + (p.x - 27f) / 756f * rect.width,
-                    rect.yMax - (p.y - 90f) / 278f * rect.height, 0f), tint, Vector2.zero);
+                vh.AddVert(new Vector3(rect.xMin + (p.x - sourceX) / sourceWidth * rect.width,
+                    rect.yMax - (p.y - sourceY) / sourceHeight * rect.height, 0f), tint, Vector2.zero);
             }
         }
     }

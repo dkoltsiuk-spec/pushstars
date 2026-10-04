@@ -11,7 +11,7 @@ using UnityEngine.UI;
 
 namespace PushStars.Editor
 {
-    public static class BossCombatSceneSetup
+    public static partial class BossCombatSceneSetup
     {
         private const string Sprites = "Assets/_Project/UI/Sprites/";
         [MenuItem("Tools/Push Stars/Boss/Install Health Screens")]
@@ -129,6 +129,7 @@ namespace PushStars.Editor
                 c.DamageLabels[i].text="-100";c.DamageLabels[i].rectTransform.localRotation=Quaternion.Euler(0,0,10);
                 c.DamageLabels[i].gameObject.SetActive(false);
             }
+            if (prep) ApplyPreparationPolish(c, (DuelReadyPanel)host);
             if (!prep) ApplyBattlePlayerPolish(c);
             if (!prep && File.Exists(GoblinForestSetup.Folder + "background.png")) GoblinForestSetup.Apply(c);
             root.gameObject.SetActive(false); EditorUtility.SetDirty(c);

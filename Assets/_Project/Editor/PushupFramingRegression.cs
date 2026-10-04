@@ -95,6 +95,8 @@ namespace PushStars.Editor
                         correction.SetDepth(0f, true, 0f);
                         Vector3 cameraPosition = default;
                         Quaternion cameraRotation = default;
+                        Vector2 motionMin = Vector2.one * float.PositiveInfinity;
+                        Vector2 motionMax = Vector2.one * float.NegativeInfinity;
                         for (int sample = 0; sample <= 20; sample++)
                         {
                             correction.Apply(sample / 20f);
@@ -121,10 +123,15 @@ namespace PushStars.Editor
                                 $"Clipped {gender}/{size}/{scale}/depth={sample / 20f}: {min} .. {max}");
                             Require(Mathf.Abs((min.x + max.x) * .5f - .5f) < .025f,
                                 "Avatar is not horizontally centered");
-                            Require(Mathf.Max(max.x - min.x, max.y - min.y) > .60f,
-                                $"Avatar too small: {gender}/{size}/{uv}/{scale}/depth={sample / 20f}: {min} .. {max}; cache={cacheBounds}; camera={camera.transform.position}; bodyScale={animator.transform.lossyScale}");
+                            motionMin = Vector2.Min(motionMin, min);
+                            motionMax = Vector2.Max(motionMax, max);
                             frames++;
                         }
+                        // A deeper rep compresses the silhouette at the bottom. The fixed
+                        // camera must fill the frame with the whole motion, without zooming
+                        // on each depth; clipping and centering are still checked per pose.
+                        Require(Mathf.Max(motionMax.x - motionMin.x, motionMax.y - motionMin.y) > .60f,
+                            $"Avatar motion too small: {gender}/{size}/{uv}/{scale}: {motionMin} .. {motionMax}; cache={cacheBounds}; camera={camera.transform.position}; bodyScale={animator.transform.lossyScale}");
                     }
 
                     // Preparation may move the camera while the pushup driver remains active.

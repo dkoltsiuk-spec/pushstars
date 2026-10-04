@@ -257,6 +257,7 @@ namespace PushStars.Fight
             Set(_summaryUi.StreakDays, data.StreakDays.ToString());
             Set(_summaryUi.StreakBonusTrophies, Signed(data.StreakBonusTrophies));
             FillOutcome(result, data);
+            if (!string.IsNullOrEmpty(result?.LeagueStatus)) Set(_summaryUi.Subtitle, result.LeagueStatus);
             var theme = Resources.Load<PushStarsTheme>("PushStarsTheme");
             Set(_summaryUi.ContinueLabel, assessment ? data.Aura != 0 ? "CONTINUE" : hasAward ? "OPEN CASE" : "HOME" : "HOME");
             if (_summaryUi.ContinueIcon != null)
@@ -338,6 +339,9 @@ namespace PushStars.Fight
             var body = _summaryUi.Avatar.Character;
             var animator = body != null ? body.GetComponentInChildren<Animator>() : null;
             if (animator == null || _celebrateAt <= 0 || animator.IsInTransition(0)) return;
+            // An emote owns the body; celebrate again only after it.
+            var emote = animator.GetComponent<EmotePlayer>();
+            if (emote != null && emote.IsPlaying) { _celebrateAt = Time.unscaledTime + 1.4f; return; }
             var state = animator.GetCurrentAnimatorStateInfo(0);
             int victory = Animator.StringToHash("Victory"), idle = Animator.StringToHash("StandIdle");
             if (state.IsName("Victory"))
@@ -350,6 +354,22 @@ namespace PushStars.Fight
             if (!state.IsName("StandIdle") || Time.unscaledTime < _celebrateAt) return;
             if (animator.HasState(0, victory)) animator.CrossFadeInFixedTime(victory, .2f, 0, 0f);
             _celebrateAt = Time.unscaledTime + 1.4f;
+        }
+
+        /// <summary>The emote button, once the screen has settled. The opponent opens with a taunt
+        /// when it won and a GG when it lost, so the button is discovered in context.</summary>
+        private void AttachEmotes()
+        {
+            var ui = _summaryUi;
+            if (ui.Avatar == null || ui.Continue == null || _outcome == Outcome.Solo) return;
+            Animator Body(FightAvatar a) => a != null && a.isActiveAndEnabled && a.Character != null
+                ? a.Character.GetComponentInChildren<Animator>() : null;
+            bool opponent = ui.Opponent != null && ui.Opponent.gameObject.activeInHierarchy;
+            var bar = EmoteBar.Attach(ui.Continue.parent as RectTransform, () => Body(ui.Avatar),
+                opponent ? () => Body(ui.Opponent) : (Func<Animator>)null, () => ui.Avatar.Character,
+                EmoteLayout.ResultCorner, EmoteLayout.ResultOffset);
+            if (bar != null && opponent && _outcome != Outcome.Draw && UnityEngine.Random.value < .6f)
+                bar.OpponentOpens(UnityEngine.Random.Range(1.2f, 2.5f), _outcome == Outcome.Loss);
         }
 
         private void PresentAvatars()
@@ -417,6 +437,7 @@ namespace PushStars.Fight
             StartCoroutine(Reveal(ui.Continue, .4f, .7f, .2f));
             yield return FillLevel(before, after);
             _summaryEntering = false;
+            AttachEmotes();
         }
 
         /// <summary>Reps count up with ticks; technique follows and earns its stars one by one.</summary>

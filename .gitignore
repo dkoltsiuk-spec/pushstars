@@ -124,3 +124,14 @@ layout_dump.txt
 # CV acceptance recordings: raw videos stay local (faces); the extracted *.pose.csv are fixtures
 /CVRecordings/**/*.[Mm][Oo][Vv]
 /CVRecordings/**/*.[Mm][Pp]4
+
+# Emote Lab takes pulled from the cloud (the owner on camera) and mocap tracks of them
+/tools/EmoteMocap/captures/
+
+# Emote mocap experiments, not used by the game: GVHMR/SMPL-X test captures (non-commercial
+# models — evaluation only, editor preview) and RTMW side-by-side test clips.
+/Assets/_Project/Art/Emotes/Clips/*_GVHMR.anim
+/Assets/_Project/Art/Emotes/Clips/*_GVHMR.anim.meta
+/Assets/_Project/Art/Emotes/Clips/*_Fused.anim
+/Assets/_Project/Art/Emotes/Clips/*_Fused.anim.meta
+/tools/EmoteMocap/tracks/*_gvhmr.json

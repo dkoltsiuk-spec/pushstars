@@ -117,7 +117,9 @@ namespace PushStars.Editor
                 locationPathName = outDir,
                 target           = BuildTarget.iOS,
                 targetGroup      = BuildTargetGroup.iOS,
-                options          = BuildOptions.None,
+                // Explicit opt-in for the private BOT LAB entry on a phone/CI build.
+                options          = System.Array.Exists(System.Environment.GetCommandLineArgs(), arg => arg == "-botRecordingTest")
+                    ? BuildOptions.Development : BuildOptions.None,
             };
 
             var report = BuildPipeline.BuildPlayer(options);

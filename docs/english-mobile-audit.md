@@ -1,5 +1,9 @@
 # English interface and mobile validation
 
+Update (2026-10-02): the interface now supports English, Russian and Brazilian Portuguese.
+See [interface localization](architecture/localization.md) for the catalog and checks.
+The English-only preference behavior below describes the earlier audit.
+
 Date: 2026-09-15. Unity: 6000.3.24f1. Test host: Windows.
 
 Update (2026-09-19): OTA scene loading has been retired for new builds. See

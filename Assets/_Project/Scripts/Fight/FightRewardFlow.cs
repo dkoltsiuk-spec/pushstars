@@ -16,6 +16,7 @@ namespace PushStars.Fight
             public int TotalReps;
             public float Technique;
             public int Trophies;
+            public bool RankedTrophies;
             /// <summary>Daily-streak bonus already included in Trophies, shown separately.</summary>
             public int StreakBonusTrophies;
             public int StreakDays;

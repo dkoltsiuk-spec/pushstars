@@ -72,7 +72,7 @@ namespace PushStars.Editor
             UiBuilder.Stretch(safe);
             safe.gameObject.AddComponent<SafeAreaFitter>();
 
-            var percent = UiBuilder.Text(safe, "Percent", Color.white, "0%", 44f, FontStyles.Bold);
+            var percent = UiBuilder.Text(safe, "Percent", Color.white, "0%", 32f, FontStyles.Bold);
             ConfigurePercent(percent);
             var progress = UiBuilder.Rect(safe, "ProgressTrack").gameObject.AddComponent<LoadingProgressGraphic>();
             ConfigureProgress(progress);
@@ -137,8 +137,9 @@ namespace PushStars.Editor
             progress.color = Color.white;
             progress.raycastTarget = false;
             progress.Progress = 0f;
+            // Match the reference: the bar spans about 68% of the 390-unit canvas width.
             UiBuilder.Place(progress.rectTransform, new Vector2(.5f, 0f),
-                new Vector2(0f, 45f), new Vector2(340f, 46f));
+                new Vector2(0f, 70f), new Vector2(264f, 40f));
             progress.rectTransform.pivot = new Vector2(.5f, .5f);
         }
 
@@ -147,13 +148,13 @@ namespace PushStars.Editor
             var font = AssetDatabase.LoadAssetAtPath<TMP_FontAsset>(FontSetup.BoldAsset);
             if (font != null) { percent.font = font; percent.fontStyle = FontStyles.Normal; }
             percent.color = Color.white;
-            percent.fontSize = 44f;
+            percent.fontSize = 32f;
             percent.enableAutoSizing = false;
             percent.enableWordWrapping = false;
             percent.text = "0%";
             percent.raycastTarget = false;
             UiBuilder.Place(percent.rectTransform, new Vector2(.5f, 0f),
-                new Vector2(0f, 108f), new Vector2(260f, 56f));
+                new Vector2(0f, 116f), new Vector2(200f, 44f));
             percent.rectTransform.pivot = new Vector2(.5f, .5f);
         }
     }

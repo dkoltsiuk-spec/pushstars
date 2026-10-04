@@ -60,8 +60,10 @@ namespace PushStars.Editor
         public static void Install(Scene scene)
         {
             var roots = scene.GetRootGameObjects();
-            if (roots.SelectMany(r => r.GetComponentsInChildren<ModeSelectionController>(true)).Any())
+            var existing = roots.SelectMany(r => r.GetComponentsInChildren<ModeSelectionController>(true)).FirstOrDefault();
+            if (existing != null)
             {
+                ApplyInfoIcons(existing);
                 TrainingHomeActionsSetup.Install(scene);
                 return;
             }
@@ -145,13 +147,6 @@ namespace PushStars.Editor
                 var card = Image(sheet, names[i] + "Card", Sprite(names[i] + "-card"), Color.white);
                 Place(card.rectTransform, 14, tops[i], 362, heights[i]);
                 cards[i] = Button(card);
-                if (i == 2)
-                {
-                    var edge = card.gameObject.AddComponent<Outline>();
-                    edge.effectColor = Color.black; edge.effectDistance = new Vector2(1.5f, -1.5f);
-                    var shadow = card.gameObject.AddComponent<Shadow>();
-                    shadow.effectColor = Color.black; shadow.effectDistance = new Vector2(0, -4);
-                }
                 Label(card.transform, "Name", ModeSelectionController.Title((GameMode)i), i == 0 ? 44 : 30,
                     i == 2 ? Color.white : Gold, 18, 4, i == 2 ? 260 : 210, i == 0 ? 56 : 43);
                 var icon = Image(card.transform, "Icon", icons[i], Color.white);
@@ -159,11 +154,10 @@ namespace PushStars.Editor
                 Place(icon.rectTransform, i == 0 ? 224 : 277, i == 0 ? -7 : -13,
                     i == 0 ? 132 : 84, i == 0 ? 132 : 94);
                 // A separate sibling button ensures info taps cannot select the underlying card.
-                var info = Image(sheet, names[i] + "Info", Sprite("Group 518"), Color.white);
-                Place(info.rectTransform, 348, tops[i] - 12, 28, 26);
+                var info = Image(sheet, names[i] + "Info", Sprite("ModeInfo"), Color.white);
+                info.preserveAspect = true;
+                Place(info.rectTransform, 349, tops[i] - 12, 36, 34);
                 infoButtons[i] = Button(info);
-                var glyph = Image(info.transform, "InfoGlyph", Sprite("Group 518-1"), Color.white);
-                Place(glyph.rectTransform, 9, 3.5f, 10, 19);
                 if (i == 0)
                 {
                     dot = Image(card.transform, "OnlineDot", AssetDatabase.LoadAssetAtPath<Sprite>("Assets/_Project/UI/Sprites/circle_128.png"), Color.green);
@@ -211,6 +205,43 @@ namespace PushStars.Editor
             infoPanel.gameObject.SetActive(false);
             overlay.gameObject.SetActive(false);
             TrainingHomeActionsSetup.Install(scene);
+        }
+
+        /// <summary>Updates the info buttons and authored training artwork without rebuilding the selector.</summary>
+        public static void ApplyInfoIcons(ModeSelectionController controller)
+        {
+            var sprite = Sprite("ModeInfo");
+            var so = new SerializedObject(controller);
+            var buttons = so.FindProperty("_infoButtons");
+            var cards = so.FindProperty("_cards");
+            for (int i = 0; i < buttons.arraySize; i++)
+            {
+                var button = (Button)buttons.GetArrayElementAtIndex(i).objectReferenceValue;
+                var image = button.image;
+                var rect = image.rectTransform;
+                Undo.RecordObjects(new Object[] { image, rect }, "Replace mode info icon");
+                image.sprite = sprite; image.color = Color.white; image.preserveAspect = true;
+                image.type = UnityEngine.UI.Image.Type.Simple;
+                Vector2 size = new Vector2(36, 34);
+                var card = (Button)cards.GetArrayElementAtIndex(i).objectReferenceValue;
+                rect.anchoredPosition = ((RectTransform)card.transform).anchoredPosition + new Vector2(335, 12);
+                rect.sizeDelta = size;
+                var glyph = rect.Find("InfoGlyph");
+                if (glyph != null)
+                {
+                    Undo.RecordObject(glyph.gameObject, "Hide legacy mode info glyph");
+                    glyph.gameObject.SetActive(false);
+                }
+            }
+            var training = (Button)cards.GetArrayElementAtIndex(2).objectReferenceValue;
+            Undo.RecordObject(training.image, "Use authored training card artwork");
+            training.image.type = UnityEngine.UI.Image.Type.Simple;
+            training.image.pixelsPerUnitMultiplier = 1f;
+            foreach (var shadow in training.GetComponents<Shadow>())
+            {
+                Undo.RecordObject(shadow, "Use baked training card outline and shadow");
+                shadow.enabled = false;
+            }
         }
 
         private static void PrepareFonts()

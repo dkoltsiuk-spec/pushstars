@@ -77,6 +77,14 @@ namespace PushStars.Core
             Ensure()?.PlayInternal(cue, pitch);
         }
 
+        /// <summary>A one-off clip that is not a <see cref="SoundCue"/> — an emote's stinger. It
+        /// takes a free voice or evicts a quieter UI tick, and ducks the music briefly.</summary>
+        public static void PlayClip(AudioClip clip, float volume = .6f)
+        {
+            if (clip == null || !Application.isPlaying || !SoundEnabled || _quitting) return;
+            Ensure()?.PlayClipInternal(clip, volume);
+        }
+
         public static void SetWorkoutPaused(bool paused)
         {
             var audio = Ensure();
@@ -183,6 +191,28 @@ namespace PushStars.Core
             group.LastPlayed = now;
             if (cue == SoundCue.CaseReveal || cue == SoundCue.CaseUpgradeComplete || cue == SoundCue.Victory || cue == SoundCue.AuraStamp || cue == SoundCue.AuraSkull)
                 _duckUntil = now + 1.1f;
+        }
+
+        private void PlayClipInternal(AudioClip clip, float volume)
+        {
+            if (_background) return;
+            const int priority = 70;
+            AudioSource source = null;
+            foreach (var candidate in _effects)
+            {
+                if (candidate == null) continue;
+                if (!candidate.isPlaying) { source = candidate; break; }
+                if (candidate.priority >= priority && (source == null || candidate.priority > source.priority))
+                    source = candidate;
+            }
+            if (source == null) return;
+            source.Stop();
+            source.clip = clip;
+            source.volume = Mathf.Clamp01(volume);
+            source.pitch = 1f;
+            source.priority = priority;
+            source.Play();
+            _duckUntil = Mathf.Max(_duckUntil, Time.unscaledTime + Mathf.Min(clip.length, 2.5f));
         }
 
         private void Update()

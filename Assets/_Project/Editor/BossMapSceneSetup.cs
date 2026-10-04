@@ -75,7 +75,7 @@ namespace PushStars.Editor
             c.FriendDuel = roots.SelectMany(r => r.GetComponentsInChildren<FriendDuelController>(true)).FirstOrDefault();
             c.Hint = panel.GetComponentInChildren<Toast>(true);
             c.BottomNav = mirror.GetComponentsInChildren<Transform>(true).Single(t => t.name == "BottomNav").gameObject;
-            c.CharacterDecor = new[] { "CharacterArea", "GlowHalo", "GlowCore", "GroundShadow", "GenderSwitch", "FriendSlot", "PlusSlot" }
+            c.CharacterDecor = new[] { "CharacterArea", "GlowHalo", "GlowCore", "GroundShadow", "FriendSlot", "PlusSlot" }
                 .SelectMany(name => panel.Cast<Transform>().Where(t => t.name == name)).Select(t => t.gameObject).ToArray();
             c.HomeOnly = new[] { "ActionRow", "ShopTile", "SpareSlot" }.Select(name => panel.Find(name).gameObject).ToArray();
             var bg = Picture(mirror, "BossBackground", "background", 0, 0, 0, 0);

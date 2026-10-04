@@ -13,7 +13,7 @@ namespace PushStars.Core
         /// <summary>In-app notification flag. The OS permission itself is requested separately.</summary>
         bool NotificationsEnabled { get; set; }
 
-        /// <summary>Supported UI language code. The current interface ships in English ("en").</summary>
+        /// <summary>Supported UI language code: "en", "ru", or Brazilian Portuguese "pt-BR".</summary>
         string Language { get; set; }
     }
 }

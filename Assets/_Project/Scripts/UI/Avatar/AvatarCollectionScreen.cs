@@ -1,4 +1,5 @@
 using TMPro;
+using System.Collections.Generic;
 using UnityEngine;
 using UnityEngine.UI;
 using PushStars.Core;
@@ -22,6 +23,8 @@ namespace PushStars.UI
         public TextMeshProUGUI Balance;
         private int _filter;
         private System.Action _returnToSource;
+        private Material _selectedGlowMaterial;
+        private readonly Dictionary<Image, Material> _originalGlowMaterials = new Dictionary<Image, Material>();
         public bool IsOpen => Overlay != null && Overlay.activeSelf;
 
         private void Awake()
@@ -172,6 +175,21 @@ namespace PushStars.UI
                 bool locked = IsLocked(i);
                 Plates[i].sprite = selected ? Gold : Purple;
                 Footers[i].sprite = selected ? GoldFooter : PurpleFooter;
+                var glow = Cards[i].transform.Find("Glow")?.GetComponent<Image>();
+                if (glow != null)
+                {
+                    if (!_originalGlowMaterials.TryGetValue(glow, out var original))
+                    {
+                        original = glow.material;
+                        _originalGlowMaterials.Add(glow, original);
+                    }
+                    if (selected && _selectedGlowMaterial == null)
+                    {
+                        var shader = Resources.Load<Shader>("AvatarSelectedGlow");
+                        if (shader != null) _selectedGlowMaterial = new Material(shader) { name = "Selected avatar warm glow" };
+                    }
+                    glow.material = selected && _selectedGlowMaterial != null ? _selectedGlowMaterial : original;
+                }
                 foreach (var surface in Cards[i].GetComponentsInChildren<AvatarCardSurface>(true)) { surface.SetSelected(selected); surface.SetLocked(locked); }
                 var lockIcon = Cards[i].transform.Find("LockIcon");
                 if (lockIcon != null) lockIcon.gameObject.SetActive(locked);
@@ -184,6 +202,13 @@ namespace PushStars.UI
 
         public bool IsSelected(int index) => !IsLocked(index) && Roster != null && (Roster.IsRobot ? index == 3 : Roster.IsGladiator ? index == 4 : Roster.IsSonic ? index == 0 :
             index == 1 && Roster.Gender == CharacterGender.Female || index == 2 && Roster.Gender == CharacterGender.Male);
+
+        private void OnDestroy()
+        {
+            if (_selectedGlowMaterial == null) return;
+            if (Application.isPlaying) Destroy(_selectedGlowMaterial);
+            else DestroyImmediate(_selectedGlowMaterial);
+        }
 
         public bool IsLocked(int index) => !CaseRewards.OwnsAvatar(AvatarCatalog.At(index)?.Id);
 

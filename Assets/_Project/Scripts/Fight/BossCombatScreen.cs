@@ -14,6 +14,7 @@ namespace PushStars.Fight
         public bool Preparation;
         public GameObject Root;
         public RectTransform Content;
+        public RectTransform PreparationSafeBounds;
         public GameObject[] Legacy;
         public FightAvatar PlayerStage, BossStage;
         public RawImage PlayerPortrait, BossPortrait, PlayerIcon;
@@ -42,6 +43,8 @@ namespace PushStars.Fight
         private static Rect _headSnapshotUv;
         private float _headCaptureAt;
         private bool _headCaptured;
+        private Image _playerPreparationShadow, _bossPreparationShadow;
+        private string _lastPlayerName;
         public float BossDefeatPresentationSeconds { get; private set; } = .6f;
         [RuntimeInitializeOnLoadMethod(RuntimeInitializeLoadType.SubsystemRegistration)]
         private static void ResetHeadSnapshot()
@@ -87,6 +90,15 @@ namespace PushStars.Fight
             Stars.Filled = Mathf.Clamp(BossCatalog.StageInChapter(profile.Id), 1, 5); Stars.SetVerticesDirty();
             if (Best != null) Best.text = LocalProfile.BestReps.ToString();
             if (Reward != null) Reward.text = "+" + FightConfig.BossWinXpBonus;
+            if (Preparation)
+            {
+                _playerPreparationShadow = Content.Find("PlayerGroundShadow")?.GetComponent<Image>();
+                _bossPreparationShadow = Content.Find("OpponentGroundShadow")?.GetComponent<Image>();
+                var backdrop = Root.GetComponentInChildren<PreparationArenaBackdrop>(true);
+                string chapter = BossCatalog.ChapterOf(id)?.Id;
+                string bossLocation = chapter == "lava" ? "lava-forge" : chapter == "ice" ? "ice-temple" : "jungle";
+                backdrop?.SetMaps(bossLocation, bossLocation);
+            }
             Home.onClick.AddListener(() => FightScreenNavigation.Navigate(FightScreen.Home));
             Action.onClick.AddListener(() =>
             {
@@ -111,6 +123,8 @@ namespace PushStars.Fight
             }
             foreach (var label in DamageLabels) label.gameObject.SetActive(false);
             Refresh(0);
+            if (Preparation && Application.isPlaying)
+                (Root.GetComponent<MatchFoundImpact>() ?? Root.AddComponent<MatchFoundImpact>()).Play();
         }
 
         private void LateUpdate()
@@ -124,7 +138,7 @@ namespace PushStars.Fight
         public void Refresh(float delta)
         {
             if (_health == null) return;
-            var area = ((RectTransform)Root.transform).rect;
+            var area = (Preparation && PreparationSafeBounds != null ? PreparationSafeBounds : (RectTransform)Root.transform).rect;
             Content.localScale = Vector3.one * Mathf.Min(area.width / 390, area.height / 844);
             if (Forest != null && Content.localScale.x > 0) Forest.ApplyLayout(area.size / Content.localScale.x);
             _playerFill = Mathf.MoveTowards(_playerFill, _health.PlayerHp / (float)BossCombatState.PlayerMaxHp, delta * 2.8f);
@@ -134,9 +148,13 @@ namespace PushStars.Fight
             BossHpText.text = _health.BossHp + " / " + _health.BossMaxHp;
             string playerName = SourcePlayerName != null && !string.IsNullOrWhiteSpace(SourcePlayerName.text) ? SourcePlayerName.text : "YOU";
             playerName = PushStars.UI.ProfileIdentityEditor.ResolveName(playerName);
-            int separator = playerName.LastIndexOf('_');
-            PlayerName.text = Preparation && playerName.Length > 12 && separator > 0
-                ? playerName.Insert(separator + 1, "\n") : playerName;
+            if (playerName != _lastPlayerName)
+            {
+                _lastPlayerName = playerName;
+                int separator = playerName.LastIndexOf('_');
+                PlayerName.text = Preparation && PlayerName.GetPreferredValues(playerName).x > PlayerName.rectTransform.rect.width && separator > 0
+                    ? playerName.Insert(separator + 1, "\n") : playerName;
+            }
             if (!Preparation && _fight != null)
             {
                 Reps.text = _fight.PlayerBattleReps.ToString();
@@ -236,7 +254,7 @@ namespace PushStars.Fight
         }
 
         private readonly System.Collections.Generic.Dictionary<RawImage,
-            (FightAvatar avatar, Texture texture, Vector2 size, Rect uv)> _preparationFrames = new();
+            (FightAvatar avatar, Texture texture, Vector2 size, Rect body, Rect uv)> _preparationFrames = new();
 
         private void CopyBody(RawImage target, FightAvatar avatar, bool cropPortrait, bool grounded = false, bool smoothPlayer = false)
         {
@@ -258,25 +276,38 @@ namespace PushStars.Fight
                 && held.avatar == avatar && held.texture == texture && held.size == size)
             {
                 target.uvRect = held.uv;
+                PlacePreparationShadow(target, held.body);
                 return;
             }
             _preparationFrames.Remove(target);
-            bool preparationBoss = cropPortrait && avatar == BossStage;
-            if (!avatar.TryGetBodyViewport(out var body, includePerspectiveExtents: preparationBoss)) return;
+            if (!avatar.TryGetBodyViewport(out var body)) return;
             float aspect = target.rectTransform.rect.width / target.rectTransform.rect.height;
             float textureAspect = PushStars.UI.AvatarWideCamera.TextureAspect(avatar.StageCamera, texture);
-            // The boss needs a full-body shot; the player gets a closer upper-body portrait.
+            // Preparation shares PVP's crown-to-sole framing and planted contact shadows.
             // Fit width as well as height so broad shoulders and ears stay inside the frame.
-            float height = body.height * (preparationBoss ? 1.10f : cropPortrait ? .52f : 1.10f);
+            float height = body.height * (cropPortrait ? 1f / .95f : 1.10f);
             height = Mathf.Max(height, body.width * textureAspect / aspect * 1.08f);
             float width = height * aspect / textureAspect;
-            float centerY = cropPortrait && !preparationBoss
-                ? body.yMax + body.height * .04f - height * .5f
-                : body.center.y;
+            float centerY = cropPortrait ? body.yMin - (height - body.height) * .1f + height * .5f : body.center.y;
             if (grounded) centerY = body.yMin + height * .45f;
             target.uvRect = new Rect(body.center.x - width * .5f, centerY - height * .5f, width, height);
             if (cropPortrait && avatar.IsPreparationFramed)
-                _preparationFrames[target] = (avatar, texture, size, target.uvRect);
+                _preparationFrames[target] = (avatar, texture, size, body, target.uvRect);
+            if (cropPortrait) PlacePreparationShadow(target, body);
+        }
+
+        private void PlacePreparationShadow(RawImage portrait, Rect body)
+        {
+            var shadow = portrait == PlayerPortrait ? _playerPreparationShadow : _bossPreparationShadow;
+            if (shadow == null) return;
+            var box = portrait.rectTransform;
+            var uv = portrait.uvRect;
+            float figure = box.rect.height * body.height / uv.height;
+            float height = figure * .09f;
+            var contact = new Vector2(box.rect.xMin + (body.center.x - uv.xMin) / uv.width * box.rect.width,
+                box.rect.yMin + (body.yMin - uv.yMin) / uv.height * box.rect.height + height * .65f);
+            shadow.rectTransform.position = box.TransformPoint(contact);
+            shadow.rectTransform.sizeDelta = new Vector2(figure * .40f, height);
         }
 
         /// <summary>The player's stage was authored for the duel half, hidden in a boss battle:

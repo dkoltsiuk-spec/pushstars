@@ -65,12 +65,11 @@ namespace PushStars.Editor
                         FightScreenNavigation.Navigate(FightScreen.Preparation);
                         break;
                     case 1:
-                        if (FightScreenNavigation.IsPreview) throw new InvalidOperationException("Must exercise the real, non-preview HOME route.");
+                        if (FightScreenNavigation.IsPreview) throw new InvalidOperationException("Must exercise the real, non-preview home route.");
                         var preparation = UnityEngine.Object.FindFirstObjectByType<PreparationScreen>();
                         if (preparation == null) throw new InvalidOperationException("Preparation did not load.");
-                        var home = (Button)new SerializedObject(preparation).FindProperty("_homeButton").objectReferenceValue;
-                        if (home == null) throw new InvalidOperationException("HOME button is missing.");
-                        home.onClick.Invoke();
+                        // Preparation now exposes READY only; exercise the navigation route directly.
+                        FightScreenNavigation.Navigate(FightScreen.Home);
                         break;
                     case 2:
                         if (SceneManager.GetActiveScene().path != AuthoredScenes.MainPath)
@@ -78,7 +77,7 @@ namespace PushStars.Editor
                         var map = UnityEngine.Object.FindFirstObjectByType<BossMapController>();
                         if (map == null || !map.Home.activeInHierarchy || FightRequest.HasRequest)
                             throw new InvalidOperationException("Current boss home/request reset check failed.");
-                        File.WriteAllText("output/home-navigation/validation.txt", "PASS: Main -> real Boss preparation -> actual HOME button -> authored Main with boss island; fight request cleared; no OTA MainRemote loaded.\n");
+                        File.WriteAllText("output/home-navigation/validation.txt", "PASS: Main -> real Boss preparation -> home navigation -> authored Main with boss island; fight request cleared; no OTA MainRemote loaded.\n");
                         Finish();
                         break;
                 }

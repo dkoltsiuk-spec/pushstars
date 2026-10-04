@@ -1,4 +1,4 @@
-"""Fail if authored UI copy or C# string literals contain untranslated Cyrillic.
+"""Check English source copy; Russian translations belong in the localization catalog.
 
 Run with Python 3: python tools/check_english.py
 Generated OTA copies are rebuilt from the authored scenes by OtaSetup before iOS builds.
@@ -27,6 +27,8 @@ def check():
                     continue
                 if path.name == 'FontSetup.cs' and re.fullmatch('"[\u0400-\u04ff]+"', token):
                     continue
+                if path.name == 'Localization.cs' and token == '"Русский"':
+                    continue  # Native language name stays recognizable in the language picker.
                 failures.append((str(path.relative_to(ROOT)), source.count('\n', 0, match.start()) + 1, token))
     paths = list((ROOT / 'Assets/_Project').rglob('*')) + [ROOT / 'Assets/testCV.unity']
     for path in sorted(paths):

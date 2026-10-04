@@ -11,6 +11,7 @@ namespace PushStars.UI
         [SerializeField] private CharacterStage _stage;
         [SerializeField] private RectTransform _shadow;
         private Transform _left, _right;
+        public CharacterStage Stage => _stage;
         public void Bind(CharacterStage stage, RectTransform shadow)
         { _stage = stage; _shadow = shadow; Sync(); }
         private void OnTransformParentChanged() { Sync(); }

@@ -53,6 +53,24 @@ namespace PushStars.CV
         [SerializeField, Range(0f, 0.3f)] private float _depthSmoothTime = 0.05f;
         [Tooltip("Crossfade into the idle/rest clips (entering the scrub mode snaps by design).")]
         [SerializeField, Range(0f, 1f)] private float _crossFadeSec = 0.25f;
+        [Tooltip("Seconds the character's clap push-up spends in the air, takeoff to landing. A " +
+                 "real flight is 0.25–0.3 s and is only noticed a few frames in, so this runs a " +
+                 "little past the real landing: long enough to read on a small figure, and the " +
+                 "palms meet about when the landing confirms the clap.")]
+        [SerializeField, Range(0.2f, 0.8f)] private float _clapFlightSec = 0.32f;
+
+        /// <summary>A flight is a clap push-up's only when it comes off a push: the top latches
+        /// 0.1–0.2 s before the hands leave the floor. The detector opens a "flight" on any rise
+        /// of the wrists and only throws it out later — getting up after the set is one.</summary>
+        private const float PushToTakeoffSec = 0.6f;
+
+        /// <summary>The character's hands close as far as the player's did: palms together at the
+        /// detector's own touch threshold, still planted-width apart from here up. Measured
+        /// closest approach: claps 0.02–0.07 of the planted spacing, lifts without one 0.21–0.51.</summary>
+        private const float HandsApartGap = 0.6f;
+        /// <summary>Seconds for the hands to follow a change in that reading (it arrives in
+        /// detector-rate steps, and the touch itself a frame or two into the flight).</summary>
+        private const float HandsCloseSec = 0.07f;
 
         /// <summary>Current mode — surfaced on the test-stand status line.</summary>
         public AvatarMode Mode { get; private set; } = AvatarMode.Idle;
@@ -65,6 +83,12 @@ namespace PushStars.CV
         private int _restHash;
         private float _targetDepth;
         private float _depthVel;
+        private float _flightPhase = -1f;                      // < 0 = hands planted
+        private float _flightTakeoff = float.NegativeInfinity; // takeoff already judged
+        private float _flightGap = 1f;                         // closest the player's hands came
+        private float _handsClosed;                            // 0 = apart, 1 = palms together
+        private float _clock;                                  // seconds stepped in the push-up
+        private float _lastTopClock = float.NegativeInfinity;
         private bool _started;
         private bool _restPresentation;
         private PushupPoseCorrection _poseCorrection;
@@ -141,6 +165,13 @@ namespace PushStars.CV
         private void Update()
         {
             if (_session == null || _animator == null || !_animator.isActiveAndEnabled) return;
+            Step(Time.deltaTime);
+        }
+
+        /// <summary>One frame of the driver on an explicit clock, so a recorded session can be
+        /// replayed through it outside play mode.</summary>
+        private void Step(float deltaTime)
+        {
             if (_poseCorrection == null) _poseCorrection = PushupPoseCorrection.Bind(_animator);
 
             AvatarMode target = _restPresentation ? AvatarMode.Rest : ResolveMode();
@@ -150,9 +181,46 @@ namespace PushStars.CV
                 SwitchMode(target);
             }
 
-            if (Mode == AvatarMode.Pushup) ScrubPushup();
+            if (Mode == AvatarMode.Pushup) { AdvanceClapFlight(deltaTime); ScrubPushup(deltaTime); }
+            else _flightPhase = -1f;
             if (_poseCorrection != null)
+            {
                 _poseCorrection.SetDepth(SmoothedDepth, Mode == AvatarMode.Pushup, _crossFadeSec);
+                _poseCorrection.SetFlight(Mathf.Max(0f, _flightPhase), _handsClosed);
+            }
+        }
+
+        /// <summary>The clap push-up. Depth cannot scrub it — the flight is a quarter of a second
+        /// and the elbow signal means nothing with the hands in the air — so the detector's
+        /// takeoff starts a canned flight and the pose table plays it on its own clock. The one
+        /// live input is how close the hands came: an explosive lift without a clap is a flight
+        /// too, and a character clapping for it would promise an x2 that never lands.</summary>
+        private void AdvanceClapFlight(float deltaTime)
+        {
+            var tracker = _session.Tracker;
+            _clock += deltaTime;
+            if (tracker.TopLatchedThisTick) _lastTopClock = _clock;
+
+            var clap = _session.Clap;
+            if (_flightPhase >= 0f)
+            {
+                if (clap.InFlight && clap.TakeoffSec == _flightTakeoff)
+                    _flightGap = Mathf.Min(_flightGap, clap.FlightMinGapOfPlanted);
+                float closed = Mathf.InverseLerp(HandsApartGap, CVConstants.ClapMaxHandGapOfPlanted, _flightGap);
+                _handsClosed = Mathf.MoveTowards(_handsClosed, closed, deltaTime / HandsCloseSec);
+                _flightPhase += deltaTime / _clapFlightSec;
+                if (_flightPhase >= 1f) _flightPhase = -1f;
+                return;
+            }
+            if (!clap.InFlight || clap.TakeoffSec == _flightTakeoff) return;
+            _flightTakeoff = clap.TakeoffSec;
+            // Thrown off the floor before the lockout: the rep is still on its way up.
+            bool pushed = tracker.ArcState == DepthArcState.AwaitTop
+                          || _clock - _lastTopClock <= PushToTakeoffSec;
+            if (!pushed) return;
+            _flightPhase = 0f;
+            _flightGap = clap.FlightMinGapOfPlanted;
+            _handsClosed = 0f;
         }
 
         private AvatarMode ResolveMode()
@@ -188,14 +256,18 @@ namespace PushStars.CV
             }
         }
 
-        private void ScrubPushup()
+        private void ScrubPushup(float deltaTime)
         {
             var tracker = _session.Tracker;
             // Hold the last pose through invalid frames — the tracker freezes its signal too.
             if (tracker.SignalValid) _targetDepth = tracker.CurrentDepth01;
+            // Airborne, the elbow angle is not a depth (it can dip far enough to fake a bottom).
+            // The real depth takes over again on landing, which is the dip that absorbs it.
+            if (_flightPhase >= 0f) _targetDepth = 0f;
 
             SmoothedDepth = _depthSmoothTime > 0f
-                ? Mathf.SmoothDamp(SmoothedDepth, _targetDepth, ref _depthVel, _depthSmoothTime)
+                ? Mathf.SmoothDamp(SmoothedDepth, _targetDepth, ref _depthVel, _depthSmoothTime,
+                    Mathf.Infinity, deltaTime)
                 : _targetDepth;
 
             float t = Mathf.Lerp(_clipTimeAtTop, _clipTimeAtBottom, SmoothedDepth);

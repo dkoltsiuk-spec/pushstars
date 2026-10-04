@@ -77,6 +77,8 @@ namespace PushStars.Core
         public static long AvatarPrice(string id) => Ledger.AvatarPrice(id);
         public static long AvatarUnlockProgress(string id) => Ledger.AvatarUnlockProgress(id);
         public static bool TryBuyAvatar(string id) => Ledger.TryBuyAvatar(id);
+        public static bool OwnsEmote(string id) => Ledger.OwnsEmote(id);
+        public static bool TryBuyEmote(string id, int price) => Ledger.TryBuyEmote(id, price);
         public static bool TryCreditAura(string receipt, int amount) => Ledger.TryCreditAura(receipt, amount);
         /// <summary>Applies several receipted Aura changes (plus or minus) in one save.
         /// See <see cref="CaseRewardLedger.ApplyAura"/>.</summary>
@@ -269,6 +271,8 @@ namespace PushStars.Core
             /// <summary>Added within v5; older saves load it as null and are given an empty list.</summary>
             public List<string> gemReceipts = new List<string>();
             public List<AvatarProgress> avatars = new List<AvatarProgress>();
+            /// <summary>Bought emote ids. Added within v6; older saves load it as null.</summary>
+            public List<string> emotes = new List<string>();
             public List<string> awardedWorkouts = new List<string>();
             public List<Entry> cases = new List<Entry>();
             public List<string> processedWorkoutIds = new List<string>();
@@ -280,7 +284,7 @@ namespace PushStars.Core
                 var copy = new SaveData
                 {
                     version = version, gems = gems, aura = aura, peakAura = peakAura, auraReceipts = new List<string>(auraReceipts),
-                    gemReceipts = new List<string>(gemReceipts), awardedWorkouts = new List<string>(awardedWorkouts),
+                    gemReceipts = new List<string>(gemReceipts), emotes = new List<string>(emotes), awardedWorkouts = new List<string>(awardedWorkouts),
                     processedWorkoutIds = new List<string>(processedWorkoutIds),
                     dailyWorkoutUtcDay = dailyWorkoutUtcDay, dailyWorkoutCount = dailyWorkoutCount
                 };
@@ -322,6 +326,7 @@ namespace PushStars.Core
             }
             if (_state.version < 5) MigrateSealedAura(_state);
             if (_state.gemReceipts == null) _state.gemReceipts = new List<string>();
+            if (_state.emotes == null) _state.emotes = new List<string>();
             if (_state.version < 6) MigrateMemeAura(_state);
             _awardedWorkouts = new HashSet<string>(_state.awardedWorkouts, StringComparer.Ordinal);
             _state.version = 6;
@@ -456,6 +461,20 @@ namespace PushStars.Core
             var next = _state.Copy();
             next.gems -= price;
             Progress(next, id).owned = true;
+            Commit(next);
+            return true;
+        }
+
+        public bool OwnsEmote(string id) => !string.IsNullOrWhiteSpace(id) && _state.emotes.Contains(id);
+
+        /// <summary>Spends <paramref name="price"/> gems on an emote. The price comes from the
+        /// emote catalog, which lives outside the ledger; ownership and the spend share one save.</summary>
+        public bool TryBuyEmote(string id, int price)
+        {
+            if (string.IsNullOrWhiteSpace(id) || OwnsEmote(id) || price < 0 || _state.gems < price) return false;
+            var next = _state.Copy();
+            next.gems -= price;
+            next.emotes.Add(id);
             Commit(next);
             return true;
         }

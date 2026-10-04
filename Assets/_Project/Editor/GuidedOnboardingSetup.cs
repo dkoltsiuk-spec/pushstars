@@ -93,7 +93,7 @@ namespace PushStars.Editor
             for (int i = 0; i < cards.Length; i++) ConfigureCard(cards[i], (RectTransform)selection.transform, i, stages[i]);
             var changeHeroHint = UiBuilder.Text((RectTransform)selection.transform, "ChangeHeroHint",
                 new Color32(190, 204, 234, 255), "You can change your hero at any time.", 13, FontStyles.Normal);
-            UiBuilder.PlaceWide(changeHeroHint.rectTransform, 1, -486, 30, 20);
+            UiBuilder.PlaceWide(changeHeroHint.rectTransform, 1, -512, 30, 20);
             var hero = UiBuilder.Rect(safe, "PersistentHero"); UiBuilder.Stretch(hero);
             var target = UiBuilder.Rect(safe, "AssessmentHeroTarget");
             UiBuilder.Place(target, new Vector2(.5f, .53f), Vector2.zero, new Vector2(235, 470));
@@ -118,7 +118,7 @@ namespace PushStars.Editor
                 "Hey, I'm your coach!\nChoose your hero.\nI'll show you the ropes.", 13, FontStyles.Bold);
             speech.fontSharedMaterial = speech.font.material;
             speech.lineSpacing = 3;
-            UiBuilder.Place(speech.rectTransform, new Vector2(.5f, 1), new Vector2(0, -17), new Vector2(176, 78));
+            UiBuilder.Place(speech.rectTransform, new Vector2(.5f, 1), new Vector2(0, -9), new Vector2(176, 78));
             var action = ActionButton(bubbleImage.rectTransform, "CoachAction", "LET'S GO", out var actionLabel);
             UiBuilder.Place((RectTransform)action.transform, new Vector2(.5f, 0), new Vector2(0, 43), new Vector2(172, 34));
 
@@ -127,7 +127,8 @@ namespace PushStars.Editor
             var next = ActionButton(dialogueSafe, "Next", "NEXT", out _);
             next.GetComponent<Image>().sprite = Sprite("next-button.png");
             next.GetComponent<Image>().type = Image.Type.Simple;
-            UiBuilder.Place((RectTransform)next.transform, new Vector2(.5f, 0), new Vector2(0, 42), new Vector2(136, 44));
+            next.GetComponent<Image>().preserveAspect = true;
+            UiBuilder.Place((RectTransform)next.transform, new Vector2(.5f, 0), new Vector2(0, 42), new Vector2(88, 44));
             var back = UiBuilder.Button(dialogueSafe, "Back", "BACK", new Color(0, 0, 0, 0), Color.white, 12, out _);
             UiBuilder.Place((RectTransform)back.transform, new Vector2(0, 1), new Vector2(12, -8), new Vector2(72, 44));
             var skip = UiBuilder.Button(dialogueSafe, "NotNow", "NOT NOW", new Color(0, 0, 0, 0), new Color32(211, 224, 255, 255), 12, out _);
@@ -152,6 +153,7 @@ namespace PushStars.Editor
             var hintSafe = UiBuilder.Rect(rootRect, "HintSafeArea"); UiBuilder.Stretch(hintSafe);
             hintSafe.gameObject.AddComponent<SafeAreaFitter>();
             stepLabel.transform.SetParent(hintSafe, false);
+            stepLabel.gameObject.SetActive(false);
             var dismissSurface = UiBuilder.Button(rootRect, "DismissCoach", "", Color.clear, Color.clear, 1, out _);
             UiBuilder.Stretch((RectTransform)dismissSurface.transform);
 
@@ -164,6 +166,7 @@ namespace PushStars.Editor
             Set(so, "_dismissSurface", dismissSurface);
             Set(so, "_wash", wash); Set(so, "_coachGroup", coachLayer); Set(so, "_coach", coach);
             Set(so, "_bubble", bubble); Set(so, "_speech", speech); Set(so, "_action", action);
+            Set(so, "_placementBubbleSprite", Sprite("coach-placement-bubble.png"));
             Set(so, "_actionLabel", actionLabel); Set(so, "_placement", placement);
             Set(so, "_placementPhone", placementPhone); Set(so, "_stepLabel", stepLabel);
             Set(so, "_workout", workout); Set(so, "_workoutCanvas", workoutGroup);
@@ -246,6 +249,7 @@ namespace PushStars.Editor
                 "Prop it upright, facing you.\nKeep your whole body in view.", 12);
             UiBuilder.Place(hint.rectTransform, new Vector2(.5f, 1), new Vector2(0, -192), new Vector2(314, 28));
             hint.transform.SetParent(panel, true);
+            PlacementTutorialVideoSetup.Configure(panel);
             return panel.gameObject;
         }
 

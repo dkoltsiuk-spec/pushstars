@@ -82,8 +82,12 @@ namespace PushStars.Editor
                 Canvas.ForceUpdateCanvases();
                 typeof(ModeSelectionController).GetMethod("RefreshSelectionOutline", Private).Invoke(controller, null);
                 var outlines = (Image[])typeof(ModeSelectionController).GetField("_selectionOutlines", Private).GetValue(controller);
+                var waves = (Image[])typeof(ModeSelectionController).GetField("_selectionWaves", Private).GetValue(controller);
                 if (outlines.Count(o => o.enabled) != 1 || outlines.Any(o => o.raycastTarget))
                     throw new Exception("Expected exactly one highlight with raycasts disabled.");
+                if (waves.Count(w => w.enabled) != 2 || waves.Any(w => w.raycastTarget))
+                    throw new Exception("Expected two waves on the selected card with raycasts disabled.");
+                foreach (var wave in waves) wave.enabled = false;
                 foreach (var outline in outlines) outline.enabled = false;
                 var baseline = Capture(camera);
                 var report = "Shader compiled; one selected outline; raycasts disabled.\n";
@@ -101,6 +105,26 @@ namespace PushStars.Editor
                     if (!bright.Where((c, p) => c.g > dim[p].g + 10).Any())
                         throw new Exception("Pulse brightness did not change.");
                     report += names[i] + ": " + yellow + " black border pixels became yellow; pulse visible.\n";
+                    typeof(ModeSelectionController).GetField("_highlightedMode", Private).SetValue(controller, i);
+                    var updateWaves = typeof(ModeSelectionController).GetMethod("UpdateSelectionWaves", Private);
+                    waves[i * 2].enabled = waves[i * 2 + 1].enabled = true;
+                    updateWaves.Invoke(controller, new object[] { .24f });
+                    float earlyExpansion = waves[i * 2].rectTransform.offsetMax.x;
+                    float earlyAlpha = waves[i * 2].color.a;
+                    var early = Capture(camera);
+                    Save(early, names[i] + "-wave-early.png");
+                    updateWaves.Invoke(controller, new object[] { .68f });
+                    var late = Capture(camera);
+                    Save(late, names[i] + "-wave-late.png");
+                    if (waves[i * 2].rectTransform.offsetMax.x <= earlyExpansion || earlyAlpha <= .1f
+                        || waves[i * 2].color.a >= earlyAlpha || !early.Where((c, p) => c.r != late[p].r || c.g != late[p].g).Any())
+                        throw new Exception(names[i] + ": wave did not expand and fade visibly.");
+                    updateWaves.Invoke(controller, new object[] { .99f });
+                    if (waves[i * 2 + 1].color.a <= .1f) throw new Exception("Second wave did not start after its delay.");
+                    updateWaves.Invoke(controller, new object[] { 1.5f });
+                    if (waves[i * 2].color.a != 0f) throw new Exception("Wave loop did not restart transparently.");
+                    report += names[i] + ": two thin outward waves expand, fade, stagger and loop.\n";
+                    waves[i * 2].enabled = waves[i * 2 + 1].enabled = false;
                     outlines[i].enabled = false;
                 }
                 File.WriteAllText(Output + "/validation.txt", "PASS\n" + report);

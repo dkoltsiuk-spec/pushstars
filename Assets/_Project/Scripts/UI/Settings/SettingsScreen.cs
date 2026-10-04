@@ -15,12 +15,12 @@ namespace PushStars.UI
     /// <see cref="SearchOpponentController"/>.
     ///
     /// Surfaces store-required preferences: sound, vibration, in-app notifications, language
-    /// (English), Privacy Policy and Terms links, app version, and account deletion (GDPR). Toggles
+    /// (English, Russian, Brazilian Portuguese), Privacy Policy and Terms links, app version, and account deletion (GDPR). Toggles
     /// persist through <see cref="ISettingsStore"/>; deletion goes through
     /// <see cref="FirebaseAuthService.DeleteAccountAsync"/> after an explicit confirmation, then
     /// restarts the app from the Boot scene (which signs in a fresh anonymous account).
     ///
-    /// The interface currently ships in English.
+    /// Language changes apply immediately and persist between sessions.
     /// </summary>
     public class SettingsScreen : MonoBehaviour
     {
@@ -85,8 +85,24 @@ namespace PushStars.UI
             if (_privacyButton != null) _privacyButton.onClick.AddListener(() => Application.OpenURL(PrivacyUrl));
             if (_termsButton   != null) _termsButton.onClick.AddListener(() => Application.OpenURL(TermsUrl));
 
-            if (_langRuButton != null) _langRuButton.gameObject.SetActive(false);
+            if (_langRuButton != null) { _langRuButton.gameObject.SetActive(true); _langRuButton.onClick.AddListener(() => SetLanguage(PlayerPrefsSettingsStore.LangRu)); }
             if (_langEnButton != null) _langEnButton.onClick.AddListener(() => SetLanguage(PlayerPrefsSettingsStore.LangEn));
+            if (_langRuButton != null && _langEnButton != null)
+            {
+                var brazil = Instantiate(_langEnButton, _langEnButton.transform.parent);
+                brazil.name = "LangPtBr";
+                brazil.onClick.RemoveAllListeners();
+                brazil.onClick.AddListener(() => SetLanguage(PlayerPrefsSettingsStore.LangPtBr));
+                _langPtBrLabel = brazil.GetComponentInChildren<TextMeshProUGUI>();
+                if (_langPtBrLabel != null) _langPtBrLabel.text = "PT-BR";
+                var buttons = new[] { _langRuButton, _langEnButton, brazil };
+                for (int i = 0; i < buttons.Length; i++)
+                {
+                    var rect = (RectTransform)buttons[i].transform;
+                    rect.sizeDelta = new Vector2(62, rect.sizeDelta.y);
+                    rect.anchoredPosition = new Vector2(-128 + i * 66, rect.anchoredPosition.y);
+                }
+            }
 
             if (_deleteButton     != null) _deleteButton.onClick.AddListener(ShowConfirm);
             if (_confirmNoButton  != null) _confirmNoButton.onClick.AddListener(HideConfirm);
@@ -127,10 +143,12 @@ namespace PushStars.UI
             RefreshLanguage();
         }
 
+        private TextMeshProUGUI _langPtBrLabel;
         private void RefreshLanguage()
         {
-            if (_langRuLabel != null) _langRuLabel.color = LangInactive;
-            if (_langEnLabel != null) _langEnLabel.color = LangActive;
+            if (_langRuLabel != null) _langRuLabel.color = _store.Language == PlayerPrefsSettingsStore.LangRu ? LangActive : LangInactive;
+            if (_langEnLabel != null) _langEnLabel.color = _store.Language == PlayerPrefsSettingsStore.LangEn ? LangActive : LangInactive;
+            if (_langPtBrLabel != null) _langPtBrLabel.color = _store.Language == PlayerPrefsSettingsStore.LangPtBr ? LangActive : LangInactive;
         }
 
         // ── Open / close ────────────────────────────────────────────────────────────

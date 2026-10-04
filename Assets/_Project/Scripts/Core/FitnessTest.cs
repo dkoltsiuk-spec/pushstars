@@ -26,8 +26,7 @@ namespace PushStars.Core
         private static readonly int[] Thresholds = { 0, 10, 20, 35, 50 };
 
         /// <summary>Trophies a player starts with, by tier — the ladder position their test earned.
-        /// Bronze spans 0–999 (see <see cref="Leagues"/>), so every tier still starts in Bronze and
-        /// climbs out by playing; the test only decides how far into it they begin.</summary>
+        /// Bronze spans 0–399 (see <see cref="Leagues"/>); Elite starts in Silver at 420.</summary>
         private static readonly int[] StartingTrophies = { 0, 60, 150, 280, 420 };
 
         public static FitnessTier TierFor(int reps)

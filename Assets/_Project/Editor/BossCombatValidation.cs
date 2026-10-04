@@ -110,6 +110,21 @@ namespace PushStars.Editor
                     stage.Render();
                 }
                 c.Configure(true); Canvas.ForceUpdateCanvases(); c.Refresh(1);
+                if (c.Preparation)
+                {
+                    var backdrop = c.Root.GetComponentInChildren<PreparationArenaBackdrop>(true);
+                    Require(backdrop != null && backdrop.transform.Find("OpponentArena").GetComponent<RawImage>().texture
+                        == ArenaCatalog.Get("jungle").Home.texture, "Boss uses PVP arena backdrop");
+                    Require(backdrop.transform.Find("PlayerArena").GetComponent<RawImage>().texture
+                        == backdrop.transform.Find("OpponentArena").GetComponent<RawImage>().texture,
+                        "Both preparation halves use the boss location");
+                    Require(!c.Content.Find("VS").gameObject.activeSelf && !c.Content.Find("VsDivider").gameObject.activeSelf,
+                        "Old preparation medal and divider hidden");
+                    var impact = c.Root.AddComponent<MatchFoundImpact>();
+                    impact.Play();
+                    typeof(MatchFoundImpact).GetMethod("ApplyFrame", Private).Invoke(impact, new object[] { 1.70f });
+                    Require(c.Root.GetComponentsInChildren<Image>().Any(i => i.name == "FallingVsCrown"), "PVP crown entrance available");
+                }
                 Require(c.Legacy.All(x => x == null || !x.activeSelf), "Old HUD hidden");
                 int maxHp = BossCatalog.Bosses[_bossIndex].MaxHp;
                 Require(c.BossHpText.text == maxHp + " / " + maxHp && c.PlayerHpText.text == "1000 / 1000", "Starting HP labels");

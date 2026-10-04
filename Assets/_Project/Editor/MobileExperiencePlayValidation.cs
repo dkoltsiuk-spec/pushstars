@@ -65,6 +65,7 @@ namespace PushStars.Editor
                 backup.items.Add(new Preference { key = key, exists = PlayerPrefs.HasKey(key), isInt = true, number = PlayerPrefs.GetInt(key) });
             backup.items.Add(new Preference { key = "settings.language", exists = PlayerPrefs.HasKey("settings.language"), value = PlayerPrefs.GetString("settings.language") });
             SessionState.SetString(Key + ".prefs", JsonUtility.ToJson(backup));
+            new PlayerPrefsSettingsStore().Language = PlayerPrefsSettingsStore.LangEn;
             SessionState.SetBool(Key, true);
             EditorSceneManager.OpenScene("Assets/_Project/Scenes/Onboarding.unity");
             EditorApplication.isPlaying = true;
@@ -134,7 +135,13 @@ namespace PushStars.Editor
                     case 8:
                         _actions = Object.FindFirstObjectByType<ProfileSettingsActions>();
                         Require(_actions != null && _actions.isActiveAndEnabled, "Settings opens from profile");
-                        Click(_actions.Language); Require(_actions.LanguageLabel.text == "ENGLISH", "Language remains English");
+                        Click(_actions.Language);
+                        foreach (string language in new[] { "ru", "pt-BR", "en" })
+                        {
+                            _actions.SelectLanguage(language);
+                            Require(_actions.LanguageLabel.text == Localization.NativeName(language), "Selected language is displayed");
+                            Require(new PlayerPrefsSettingsStore().Language == language, "Selected language persists");
+                        }
                         var sound = Get<Toggle>(_settings, "_soundToggle");
                         sound.isOn = !sound.isOn;
                         Require(new PlayerPrefsSettingsStore().SoundEnabled == sound.isOn, "Sound toggle persists");

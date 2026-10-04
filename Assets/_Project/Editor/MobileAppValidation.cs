@@ -153,7 +153,7 @@ namespace PushStars.Editor
             }
             Check("Shipping scene routes", BuildScript.ValidateAppScenes);
             Check("Safe areas: compact, notched, island, landscape and transient invalid data", SafeAreas);
-            Check("English remains active for a saved Russian preference", Language);
+            Check("English, Russian and Brazilian Portuguese preferences persist", Language);
             Check("Camera background lifecycle and explicit cancellation", CameraLifecycle);
             Check("Case rewards persistence, eligibility and replay protection", CaseRewardsRegression.Run);
             Check("Fight and reward navigation", FightFlowRegression.Run);
@@ -202,13 +202,19 @@ namespace PushStars.Editor
             string original = PlayerPrefs.GetString(key);
             try
             {
-                PlayerPrefs.SetString(key, "ru");
-                Require(new PlayerPrefsSettingsStore().Language == "en", "Legacy preference changed the supported language");
+                foreach (string language in new[] { "en", "ru", "pt-BR" })
+                {
+                    new PlayerPrefsSettingsStore().Language = language;
+                    Require(new PlayerPrefsSettingsStore().Language == language, "Language preference was not persisted: " + language);
+                }
+                new PlayerPrefsSettingsStore().Language = "unsupported";
+                Require(new PlayerPrefsSettingsStore().Language == "en", "Unsupported language must fall back to English");
             }
             finally
             {
                 if (existed) PlayerPrefs.SetString(key, original); else PlayerPrefs.DeleteKey(key);
                 PlayerPrefs.Save();
+                Localization.NotifyLanguageChanged();
             }
         }
 

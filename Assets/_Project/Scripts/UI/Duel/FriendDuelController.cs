@@ -1,3 +1,4 @@
+using System.Collections;
 using TMPro;
 using UnityEngine;
 using UnityEngine.UI;
@@ -39,12 +40,19 @@ namespace PushStars.UI
         private TextMeshProUGUI[] _modeLabels;
         private Color[] _modeLabelColors;
         private bool _modeDrained;
+        private CanvasGroup _overlayGroup;
+        private Coroutine _transition;
+        private Vector2 _sheetRest;
+        private float _shown;
+        private bool _closing;
+        private bool _motionInitialized;
 
         private void Start() => Initialize();
         public void Initialize()
         {
             if (_wired) return;
             _wired = true;
+            EnsureSheetMotion();
             Slot.onClick.AddListener(Open);
             ModeButton.onClick.AddListener(ExplainLockedMode);
             if (FriendAvatarButton != null) FriendAvatarButton.onClick.AddListener(Open);
@@ -68,17 +76,83 @@ namespace PushStars.UI
 
         private void Show(Page page)
         {
+            EnsureSheetMotion();
+            bool entering = !IsOpen || _closing;
             _page = page; Message.text = "";
             Overlay.SetActive(true); Overlay.transform.SetAsLastSibling();
             Refresh(); Fit();
+            if (entering) AnimateSheet(1f);
         }
 
         public void Back()
         {
+            if (_closing) return;
             if (_page == Page.Info) Show(_returnPage);
             else if (_page == Page.Leave) Show(Page.Room);
             else if (_page == Page.ConfirmJoin) Show(Page.Join);
-            else Overlay.SetActive(false);
+            else Hide();
+        }
+
+        public void Hide()
+        {
+            if (!IsOpen || _closing) return;
+            AnimateSheet(0f);
+        }
+
+        private void AnimateSheet(float target)
+        {
+            if (_transition != null) StopCoroutine(_transition);
+            _transition = null;
+            _closing = target == 0f;
+            // Isolated Editor previews render the final pose without a frame loop.
+            if (!Application.isPlaying)
+            {
+                _shown = target; SetSheetPosition();
+                if (_closing) Overlay.SetActive(false);
+                return;
+            }
+            _transition = StartCoroutine(SlideSheet(target));
+        }
+
+        private void EnsureSheetMotion()
+        {
+            if (!_motionInitialized)
+            {
+                _sheetRest = Sheet.anchoredPosition;
+                _motionInitialized = true;
+            }
+            if (_overlayGroup == null)
+            {
+                _overlayGroup = Overlay.GetComponent<CanvasGroup>();
+                if (_overlayGroup == null) _overlayGroup = Overlay.AddComponent<CanvasGroup>();
+            }
+        }
+
+        private IEnumerator SlideSheet(float target)
+        {
+            float from = _shown;
+            float duration = target > 0f ? .34f : .22f;
+            _overlayGroup.interactable = false;
+            for (float elapsed = 0f; elapsed < duration; elapsed += Time.unscaledDeltaTime)
+            {
+                float progress = Mathf.Clamp01(elapsed / duration);
+                float eased = target > 0f ? UITween.EaseOutBackSoft(progress) : UITween.EaseInCubic(progress);
+                _shown = Mathf.LerpUnclamped(from, target, eased);
+                SetSheetPosition();
+                _overlayGroup.interactable = target > 0f && progress >= .75f;
+                yield return null;
+            }
+            _shown = target; SetSheetPosition();
+            _overlayGroup.interactable = target > 0f;
+            if (target == 0f) Overlay.SetActive(false);
+            _transition = null;
+        }
+
+        private void SetSheetPosition()
+        {
+            Sheet.anchoredPosition = _sheetRest - Vector2.up *
+                ((1f - _shown) * (Sheet.sizeDelta.y * Sheet.localScale.y + 45f));
+            if (_overlayGroup != null) _overlayGroup.alpha = Mathf.Clamp01(_shown);
         }
 
         public void ShowInfo() { _returnPage = _page; Show(Page.Info); }
@@ -160,7 +234,7 @@ namespace PushStars.UI
         {
             if (_page == Page.Menu) Show(Page.Join);
             else if (_page == Page.Join || _page == Page.ConfirmJoin) Show(Page.Menu);
-            else if (_page == Page.Room) Overlay.SetActive(false);
+            else if (_page == Page.Room) Hide();
             else Back();
         }
 
@@ -218,6 +292,7 @@ namespace PushStars.UI
         {
             var size = ((RectTransform)Sheet.parent).rect.size;
             Sheet.localScale = Vector3.one * Mathf.Min(size.x / 390f, size.y * .94f / Sheet.sizeDelta.y);
+            SetSheetPosition();
         }
 
         public void Refresh()
@@ -336,7 +411,14 @@ namespace PushStars.UI
         {
             if (paused && HasRoom) { Session.Disconnect(Time.realtimeSinceStartupAsDouble); Refresh(); }
         }
-        private void OnDisable() { if (Overlay != null) Overlay.SetActive(false); }
+        private void OnDisable()
+        {
+            if (_transition != null) StopCoroutine(_transition);
+            _transition = null;
+            _shown = 0f; _closing = false;
+            if (Overlay != null) Overlay.SetActive(false);
+            if (_motionInitialized) SetSheetPosition();
+        }
         private void OnEnable() { if (_wired) Refresh(); }
         private void LayoutPage()
         {
