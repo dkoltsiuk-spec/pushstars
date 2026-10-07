@@ -15,6 +15,8 @@ namespace PushStars.Fight
     public sealed class BotLabScreen : MonoBehaviour
     {
         private static BotLabScreen _instance;
+        /// <summary>The panel is up — other lab entries stay out from under it.</summary>
+        public static bool IsOpen => _instance != null && _instance._panel != null && _instance._panel.activeSelf;
         private GameObject _entry, _panel;
         private RectTransform _safe;
         private RectTransform _content;

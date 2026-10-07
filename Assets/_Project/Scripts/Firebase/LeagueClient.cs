@@ -189,7 +189,10 @@ namespace PushStars.Services
                 if (Uid != uid) throw new InvalidOperationException("Account changed.");
                 Response<TResponse> response = null;
                 try { response = JsonUtility.FromJson<Response<TResponse>>(request.downloadHandler.text); } catch (ArgumentException) { }
-                if (response?.error != null) throw new LeagueCallException(response.error.status, response.error.message);
+                // JsonUtility never leaves a nested [Serializable] field null: a successful reply
+                // parses with an empty Error object. Only a filled one is an error.
+                if (response?.error != null && !(string.IsNullOrEmpty(response.error.status) && string.IsNullOrEmpty(response.error.message)))
+                    throw new LeagueCallException(response.error.status, response.error.message ?? response.error.status);
                 if (request.result != UnityWebRequest.Result.Success || response?.result == null)
                     throw new InvalidOperationException("League connection unavailable. Please retry.");
                 return response.result;

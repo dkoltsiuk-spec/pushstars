@@ -126,7 +126,7 @@ namespace PushStars.Fight
             bool main = SceneManager.GetActiveScene().name == FightConfig.MainSceneName;
             if (_uid != LeagueClient.Uid) { _uid = LeagueClient.Uid; _allowed = false; _accessChecked = false; }
             if (!Debug.isDebugBuild && !_accessChecked && Time.unscaledTime >= _nextCheck && !string.IsNullOrEmpty(_uid)) CheckAccess();
-            _entry.SetActive(main && !_panel.activeSelf && LabAccess.Visible(_allowed));
+            _entry.SetActive(main && !_panel.activeSelf && !BotLabScreen.IsOpen && LabAccess.Visible(_allowed));
             if (!main && _panel.activeSelf && !_busy) Close();
             if (!_panel.activeSelf) return;
             LayoutPreview();
