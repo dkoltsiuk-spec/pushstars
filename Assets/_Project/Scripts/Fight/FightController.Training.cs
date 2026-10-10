@@ -104,7 +104,7 @@ namespace PushStars.Fight
             string hint = _phase == Phase.WaitPlank ? (_session.Armer == null ? "LOADING CAMERA…" : "HOLD A PLANK TO START") :
                 _phase == Phase.Countdown ? Mathf.Max(1, Mathf.CeilToInt(_countdownEndTime - Time.time)).ToString() : "";
             _trainingScreen.ShowExercise(_training.CurrentSet, _training.Plan.Sets,
-                _phase == Phase.Live ? Mathf.Max(0, _session.Reps - _baselineReps) : 0,
+                _phase == Phase.Live ? _repTimes.Count : 0,
                 _session.Form, remaining, hint, _phase == Phase.Live && !_paused, _phase == Phase.Live);
         }
     }

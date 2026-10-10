@@ -19,7 +19,7 @@ namespace PushStars.Fight
     public sealed class GhostOpponent : MonoBehaviour, IOpponentFeed
     {
         private GhostRecord _record;
-        private int _nextRepIndex;
+        private int _nextRepIndex, _nextClapIndex;
         private string _displayName;
         public GhostMotionClip Motion { get; private set; }
         public float Elapsed { get; private set; }
@@ -51,6 +51,8 @@ namespace PushStars.Fight
         public bool IsWorking { get; private set; }
 
         public event Action<int> OnRep;
+        /// <summary>Raised with the running count each time the recording lands a clap push-up.</summary>
+        public event Action<int> OnClap;
 
         /// <summary>Hands the feed its recording. Returns false when there is nothing to replay, so
         /// the caller can fall back instead of shipping a silent opponent that never scores.</summary>
@@ -70,7 +72,7 @@ namespace PushStars.Fight
         {
             Reps = 0;
             Elapsed = 0; MotionPhase = GhostMotionClip.Live; PlaybackActive = true;
-            _nextRepIndex = 0;
+            _nextRepIndex = _nextClapIndex = 0;
             Depth01 = 0f;
             IsWorking = false;
         }
@@ -87,6 +89,9 @@ namespace PushStars.Fight
                 Reps++;
                 OnRep?.Invoke(Reps);
             }
+            var claps = _record.clapTimes;
+            while (claps != null && _nextClapIndex < claps.Length && claps[_nextClapIndex] <= elapsedSec)
+                OnClap?.Invoke(++_nextClapIndex);
 
             UpdateDepth(times, elapsedSec);
         }

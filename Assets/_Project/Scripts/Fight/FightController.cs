@@ -83,6 +83,7 @@ namespace PushStars.Fight
         private int _baselineReps;
         private readonly List<float> _repForms = new List<float>();
         private readonly List<float> _repTimes = new List<float>();
+        private readonly List<float> _clapTimes = new List<float>();
         private readonly string _rewardSessionId = System.Guid.NewGuid().ToString("N");
         // Aura inputs gathered live: clap push-ups landed, and the opponent's largest lead from the
         // comeback window on (a win after trailing there is a COMEBACK).
@@ -165,6 +166,7 @@ namespace PushStars.Fight
             ReleaseUnstartedRanked();
             GameAudio.ClearMusicOverride(GameAudio.AssessmentMusicName);
             if (_boss != null) _boss.OnRep -= HandleBossAttack;
+            ReleaseClapImpact();
             StopScreenPreview();
             if (_session != null) { _session.OnRep -= HandleRep; _session.OnClapRep -= HandleClapRep; }
             if (_exitButton != null) _exitButton.onClick.RemoveListener(ExitToCaller);
@@ -194,7 +196,7 @@ namespace PushStars.Fight
 
             if (mode == FightMode.Ghost)
             {
-                var recording = FightRequest.TestBot?.fight ?? (_ranked != null ? GhostRecord.From(_ranked.opponentTimes, 0, "ranked") : GhostStore.Load());
+                var recording = FightRequest.TestBot?.fight ?? (_ranked != null ? RankedOpponentRecord() : GhostStore.Load());
                 if (FightRequest.IsBotRecording && recording == null) recording = GhostRecord.From(System.Array.Empty<float>(), 0, "recording-partner");
                 if (_ghost != null && _ghost.Configure(recording, FightRequest.TestBot?.displayName ?? _ranked?.opponentName, FightRequest.IsBotRecording))
                 {
@@ -266,27 +268,32 @@ namespace PushStars.Fight
             if (_phase != Phase.Live || _bossEnding || _paused || _layoutPaused) return;
             float repTime = Time.time - _liveStartTime;
             if (repTime > FightConfig.DuelDurationSec) return;
+            SettleClapRep(repTime);
             if (_ranked != null && (repTime > FightConfig.DuelDurationSec || _repTimes.Count >= 65 ||
                 (_repTimes.Count > 0 && repTime - _repTimes[_repTimes.Count - 1] < .4f))) return;
             _repForms.Add(_session.Form);
             _repTimes.Add(repTime);
+            _lastRepSession = totalReps;
             _hud.SetPlayerReps(_repTimes.Count);
             if (_mode == FightMode.Training && !_paused && !_layoutPaused)
-                ShowRepMilestone(totalReps - _baselineReps);
+                ShowRepMilestone(_repTimes.Count);
             if (BossHealth != null) { BossHealth.PlayerRep(_session.Form); CheckBossKnockout(); }
         }
 
-        /// <summary>The clap of a clap push-up was confirmed on landing: the boss takes that rep's
-        /// damage a second time (x2 total). Only reps of this fight count.</summary>
+        /// <summary>The clap of a clap push-up was confirmed on landing: it counts as a second
+        /// rep, and the boss takes that rep's damage a second time (x2 either way). The clap
+        /// belongs to the rep just credited; one this fight refused earns nothing.</summary>
         private void HandleClapRep(int totalReps)
         {
             if (_phase != Phase.Live || _bossEnding) return;
-            int index = totalReps - _baselineReps - 1;
-            if (index < 0 || index >= _repForms.Count) return;
+            if (totalReps != _lastRepSession || _repForms.Count == 0) return;
+            float form = _repForms[_repForms.Count - 1];
             _clapReps++;
+            _clapTimes.Add(Time.time - _liveStartTime);
             ShowClapImpact();
+            QueueClapRep(form);
             if (BossHealth == null) return;
-            BossHealth.PlayerClapStrike(_repForms[index]); CheckBossKnockout();
+            BossHealth.PlayerClapStrike(form); CheckBossKnockout();
         }
 
         private void HandleBossAttack(int reps)
@@ -476,8 +483,11 @@ namespace PushStars.Fight
             _repMilestone?.ResetSet();
             _repForms.Clear();
             _repTimes.Clear();
+            _clapTimes.Clear();
             _motion = new GhostMotionClip();
             _clapReps = _lateDeficit = 0;
+            _lastRepSession = -1;
+            _clapRepAt = -1f;
             BeginClapImpact();
             _opponent?.Begin();
             _hud.FlashGo();
@@ -497,6 +507,7 @@ namespace PushStars.Fight
             }
             if (_bossEnding) return;
             TickClapTakeoff();
+            if (_clapRepAt >= 0f && elapsed >= _clapRepAt) AddClapRep();
             _hud.SetPlayerForm(_session.Form);
             _hud.SetPlayerTempo(_session.TempoRpm);
 
@@ -528,6 +539,10 @@ namespace PushStars.Fight
             _hud.HideCountdown();
             _hud.SetScoresVisible(false);
 
+            // A clap's second rep still on its way is credited if its moment has come, dropped if
+            // the set was cut short before it.
+            if (_clapRepAt >= 0f && Time.time - _liveStartTime >= _clapRepAt) AddClapRep();
+            _clapRepAt = -1f;
             int myReps = _repTimes.Count;
 
             _session.enabled = false;
@@ -546,7 +561,7 @@ namespace PushStars.Fight
                 _hud.ShowBanner("SAVING RANKED RESULT…", FightHud.BannerTone.Warn);
                 try
                 {
-                    _rankedReceipt = await PushStars.Services.LeagueClient.Finish(_ranked, _repTimes.ToArray(),
+                    _rankedReceipt = await PushStars.Services.LeagueClient.Finish(_ranked, _repTimes.ToArray(), _clapTimes.ToArray(),
                         Mathf.Clamp(Time.time - _liveStartTime, 1, FightConfig.DuelDurationSec));
                 }
                 catch (System.Exception exception) { Debug.LogException(exception, this); }
@@ -708,6 +723,7 @@ namespace PushStars.Fight
             var record = GhostRecord.From(_repTimes.ToArray(), AverageForm(), source);
             record.durationSec = Mathf.Clamp(Time.time - _liveStartTime, 1, FightConfig.DuelDurationSec);
             record.motionBase64 = RecordedMotion.Encode();
+            record.clapTimes = _clapTimes.ToArray();
             return record;
         }
 

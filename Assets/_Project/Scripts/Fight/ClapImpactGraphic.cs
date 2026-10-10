@@ -10,6 +10,9 @@ namespace PushStars.Fight
     /// hit over that half when the front arrives, and — on the last paid clap — a bolt out of
     /// the sky onto the opponent. Before the landing it only darkens the edges of the player's half while
     /// the hands are in the air. No textures; white plus the Aura violet, nothing else.
+    ///
+    /// <para>The opponent's clap is the same wave coming the other way, smaller and in red:
+    /// violet is the player's blow, red is one taken. It has no flash and no bolt.</para>
     /// <see cref="ClapImpactEffect"/> owns the clock and feeds every frame through
     /// <see cref="Draw"/>, in this graphic's own local units.
     /// </summary>
@@ -19,6 +22,8 @@ namespace PushStars.Fight
         public const float FlashSec = .09f, RingSec = .52f, HitSec = .34f, BoltSec = .42f;
         // The wave lies on the floor: a circle seen from the stage camera's low angle.
         private const float Squash = .62f, RingStart = 30f, RingEnd = 700f;
+        /// <summary>How far the opponent's wave runs next to the player's own.</summary>
+        public const float RivalReach = .8f;
         private const int Segments = 56;
         private static readonly Color Core = new Color(1f, .98f, 1f), Violet = new Color(.62f, .3f, 1f);
         private static readonly Color Hurt = new Color(1f, .14f, .2f), Shade = new Color(.02f, .01f, .07f);
@@ -29,14 +34,16 @@ namespace PushStars.Fight
         private bool _finisher;
         private Vector2 _origin, _target;
         private Rect _player, _opponent;
+        private float _rivalAge = -1f, _rivalHitAt;
+        private Vector2 _rivalOrigin;
         // The bolt lands when the wave does, so the two read as one blow.
         private float BoltAge => _age - _hitAt;
 
         /// <summary>Seconds after the landing at which the wave front has travelled
-        /// <paramref name="distance"/> straight up the screen from the palms.</summary>
-        public static float FrontReachSec(float distance, float unit)
+        /// <paramref name="distance"/> straight up (or down) the screen from the palms.</summary>
+        public static float FrontReachSec(float distance, float unit, float reach = 1f)
         {
-            float e = Mathf.Clamp01((distance / (Squash * unit) - RingStart) / (RingEnd - RingStart));
+            float e = Mathf.Clamp01((distance / (Squash * unit) - RingStart) / (RingEnd * reach - RingStart));
             return (1f - Mathf.Pow(1f - e, 1f / 3f)) * RingSec;
         }
 
@@ -58,17 +65,31 @@ namespace PushStars.Fight
             SetVerticesDirty();
         }
 
+        /// <summary>The opponent's clap, drawn with the next <see cref="Draw"/>.</summary>
+        /// <param name="age">Seconds since the opponent's palms planted; negative for none.</param>
+        /// <param name="hitAt">Age at which their wave reaches the player's half.</param>
+        public void SetRival(float age, Vector2 origin, float hitAt)
+        {
+            _rivalAge = age; _rivalOrigin = origin; _rivalHitAt = hitAt;
+        }
+
         protected override void OnPopulateMesh(VertexHelper vh)
         {
             vh.Clear();
             if (_anticipation > .001f && _age < 0f) Anticipation(vh);
+            if (_rivalAge >= 0f)
+            {
+                PlayerHit(vh);
+                Wave(vh, _rivalOrigin, _rivalAge, .85f, Hurt, RivalReach);
+                Flare(vh, _rivalOrigin, _rivalAge, .6f, Hurt);
+            }
             if (_age >= 0f)
             {
                 OpponentHit(vh);
-                Wave(vh, _age, 1f);
-                Wave(vh, _age - .07f, .55f);
+                Wave(vh, _origin, _age, 1f, Violet, 1f);
+                Wave(vh, _origin, _age - .07f, .55f, Violet, 1f);
                 if (_finisher) Bolt(vh);
-                Flare(vh);
+                Flare(vh, _origin, _age, 1f, Violet);
             }
             float flashSec = _finisher ? FlashSec * 1.5f : FlashSec;
             if (_flash >= 0f && _flash < flashSec)
@@ -91,19 +112,19 @@ namespace PushStars.Fight
             Gradient(vh, new Rect(_player.xMax - band, _player.yMin, band, _player.height), clear, edge, true);
         }
 
-        private void Wave(VertexHelper vh, float age, float strength)
+        private void Wave(VertexHelper vh, Vector2 origin, float age, float strength, Color glow, float reach)
         {
             if (age <= 0f || age >= RingSec) return;
             float x = age / RingSec, e = 1f - (1f - x) * (1f - x) * (1f - x);
-            float radius = Mathf.Lerp(RingStart, RingEnd, e) * _unit;
+            float radius = Mathf.Lerp(RingStart, RingEnd * reach, e) * _unit;
             float alpha = Mathf.Pow(1f - x, 1.3f) * strength;
-            float width = Mathf.Lerp(30f, 7f, e) * _unit;
-            Ellipse(vh, radius, width * 2.6f, Tint(Violet, .5f * alpha));
-            Ellipse(vh, radius, width, Tint(Core, alpha));
+            float width = Mathf.Lerp(30f, 7f, e) * reach * _unit;
+            Ellipse(vh, origin, radius, width * 2.6f, Tint(glow, .5f * alpha));
+            Ellipse(vh, origin, radius, width, Tint(Core, alpha));
         }
 
         /// <summary>A soft-edged ring: clear inside, full at <paramref name="radius"/>, clear outside.</summary>
-        private void Ellipse(VertexHelper vh, float radius, float width, Color tint)
+        private static void Ellipse(VertexHelper vh, Vector2 origin, float radius, float width, Color tint)
         {
             int first = vh.currentVertCount;
             Color clear = Tint(tint, 0f);
@@ -111,9 +132,9 @@ namespace PushStars.Fight
             {
                 float a = i * 2f * Mathf.PI / Segments;
                 var dir = new Vector2(Mathf.Cos(a), Mathf.Sin(a) * Squash);
-                vh.AddVert(_origin + dir * Mathf.Max(0f, radius - width), clear, Vector2.zero);
-                vh.AddVert(_origin + dir * radius, tint, Vector2.zero);
-                vh.AddVert(_origin + dir * (radius + width * .5f), clear, Vector2.zero);
+                vh.AddVert(origin + dir * Mathf.Max(0f, radius - width), clear, Vector2.zero);
+                vh.AddVert(origin + dir * radius, tint, Vector2.zero);
+                vh.AddVert(origin + dir * (radius + width * .5f), clear, Vector2.zero);
                 if (i == 0) continue;
                 int v = first + i * 3;
                 vh.AddTriangle(v - 3, v, v + 1); vh.AddTriangle(v - 3, v + 1, v - 2);
@@ -122,15 +143,15 @@ namespace PushStars.Fight
         }
 
         /// <summary>The hit spark where the palms land: a wide, flat four-point star.</summary>
-        private void Flare(VertexHelper vh)
+        private void Flare(VertexHelper vh, Vector2 origin, float age, float size, Color glow)
         {
             const float sec = .2f;
-            if (_age >= sec) return;
-            float u = _age / sec, fade = (1f - u) * (1f - u);
-            float wide = Mathf.Lerp(150f, 250f, u) * _unit, tall = 34f * fade * _unit;
-            Diamond(vh, _origin, wide * 1.15f, tall * 2.2f, Tint(Violet, .45f * fade));
-            Diamond(vh, _origin, wide, tall, Tint(Core, fade));
-            Diamond(vh, _origin, tall * 1.1f, Mathf.Lerp(70f, 120f, u) * fade * _unit, Tint(Core, fade));
+            if (age >= sec) return;
+            float u = age / sec, fade = (1f - u) * (1f - u), unit = _unit * size;
+            float wide = Mathf.Lerp(150f, 250f, u) * unit, tall = 34f * fade * unit;
+            Diamond(vh, origin, wide * 1.15f, tall * 2.2f, Tint(glow, .45f * fade));
+            Diamond(vh, origin, wide, tall, Tint(Core, fade));
+            Diamond(vh, origin, tall * 1.1f, Mathf.Lerp(70f, 120f, u) * fade * unit, Tint(Core, fade));
         }
 
         /// <summary>The wave arrives: the opponent's half takes it from the seam upwards.</summary>
@@ -141,6 +162,15 @@ namespace PushStars.Fight
             float fade = 1f - since / HitSec;
             float a = (_finisher ? .5f : .36f) * fade * fade;
             Gradient(vh, _opponent, Tint(Hurt, a), Tint(Hurt, a * .25f), false);
+        }
+
+        /// <summary>The opponent's wave arrives: the player's half takes it from the seam down.</summary>
+        private void PlayerHit(VertexHelper vh)
+        {
+            float since = _rivalAge - _rivalHitAt;
+            if (since < 0f || since >= HitSec) return;
+            float fade = 1f - since / HitSec, a = .3f * fade * fade;
+            Gradient(vh, _player, Tint(Hurt, a * .2f), Tint(Hurt, a), false);
         }
 
         private void Bolt(VertexHelper vh)

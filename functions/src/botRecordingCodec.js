@@ -1,5 +1,6 @@
 const { gunzipSync } = require('node:zlib');
 const crypto = require('node:crypto');
+const { cleanClapTimes } = require('./clapTimes');
 const FRAME_BYTES = 441, MAX_FRAMES = 6000, MAX_COMPRESSED = 2 * 1024 * 1024;
 
 function validateRecording(input, uid) {
@@ -42,11 +43,14 @@ function validateRecording(input, uid) {
   if (!/^[A-Z]{2}$/.test(input.countryCode || '') || !Number.isInteger(input.avatar) || input.avatar < 0 || input.avatar > 3 ||
       ![0, 1].includes(input.gender) || !Number.isInteger(input.trophies) || input.trophies < 0 || input.trophies > 999999999)
     bad('Invalid bot profile.');
+  // Left out when there are none, so a take recorded before claps were kept still hashes the same.
+  const clapTimes = cleanClapTimes(f.clapTimes, f.repTimes, f.durationSec);
   const recording = { version: 1, id: input.id, ownerUid: uid, displayName: text(input.displayName, 20) || 'TEST BOT',
     countryCode: input.countryCode, trophies: input.trophies, avatar: input.avatar, gender: input.gender,
     achievementIds: Array.isArray(input.achievementIds) ? input.achievementIds.slice(0, 3).map(x => text(x, 40)) : [],
     fight: { exercise: 'pushups', arenaId: text(f.arenaId, 80), reps: f.reps, durationSec: f.durationSec,
-      repTimes: f.repTimes, avgForm: f.avgForm, recordedAtUtc: text(f.recordedAtUtc, 40), source: 'bot-recording', motionBase64: f.motionBase64 },
+      repTimes: f.repTimes, avgForm: f.avgForm, recordedAtUtc: text(f.recordedAtUtc, 40), source: 'bot-recording', motionBase64: f.motionBase64,
+      ...(clapTimes.length ? { clapTimes } : {}) },
     cloudPath: '' };
   const json = JSON.stringify(recording);
   return { recording, json, hash: crypto.createHash('sha256').update(json).digest('hex'), phaseFrames, frames: count };

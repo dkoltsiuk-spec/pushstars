@@ -2,6 +2,7 @@
   clap_riser.wav        the hands leave the floor: a short suck of air that cuts off
   clap_impact_1..4.wav  the landing: boom + thunder crack + a marimba note one step up each clap
   clap_max.wav          the fifth clap (Aura cap): the same hit, bigger, with a rolling tail
+  clap_rival.wav        the opponent's clap: the hit heard from the other side, duller, no note
 Fully procedural, so there are no third-party samples. Every impact lands at sample 0 —
 ClapImpactEffect starts the clip on the landing frame. Also writes a listening demo to
 output/clap-impact/demo.wav (rep tick, riser, hit; five claps up the ladder)."""
@@ -165,6 +166,30 @@ def impact(note, seed, big=False):
     return mix.finish(0.16 if big else 0.135)
 
 
+def rival():
+    """The opponent's landing: the same floor hit with the top taken off and no note, so it
+    is told apart from the player's own by ear alone and never competes with it."""
+    rng = np.random.default_rng(61)
+    mix = Mix(0.75)
+    n = int(0.55 * RATE)
+    s = np.arange(n) / RATE
+    freq = 125 + 170 * np.exp(-s / 0.045)
+    phase = 2 * np.pi * np.cumsum(freq) / RATE
+    boom = np.sin(phase) * np.exp(-s / 0.15) * np.minimum(1, s / 0.002)
+    boom = np.tanh(boom * 2.6) / np.tanh(2.6)
+    boom += 0.5 * np.sin(2 * phase) * np.exp(-s / 0.11)
+    mix.place(boom, 0, 0.28)
+    n = int(0.2 * RATE)
+    s = np.arange(n) / RATE
+    mix.place(band(rng.standard_normal(n), 220, 1300) * np.exp(-s / 0.04), 0, 2.2)
+    # What is left of the crack after a wall: a short dull knock, rolled off above 2.5 kHz.
+    mix.place(lowpass(band(rng.standard_normal(n), 900, 5000) * np.exp(-s / 0.014), 2500, 4), 0, 2.4)
+    rumble = band(rng.standard_normal(n), 110, 420, 2) * np.exp(-s / 0.07) * np.minimum(1, s / 0.01)
+    mix.place(rumble, 0.02, 0.5, -0.2)
+    mix.room(rng, 0.16, 0.14)
+    return mix.finish(0.12)
+
+
 def demo(riser_clip, impacts, max_clip):
     """Rep tick (the push to the top), takeoff, landing — five times, as a fight would play them."""
     rep = None
@@ -198,4 +223,5 @@ if __name__ == "__main__":
         save(os.path.join(AUDIO, f"clap_impact_{i + 1}.wav"), clip)
     max_clip = impact(MAX_NOTE, 40, big=True)
     save(os.path.join(AUDIO, "clap_max.wav"), max_clip)
+    save(os.path.join(AUDIO, "clap_rival.wav"), rival())
     demo(riser_clip, impacts, max_clip)

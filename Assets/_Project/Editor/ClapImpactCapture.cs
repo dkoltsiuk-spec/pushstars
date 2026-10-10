@@ -17,12 +17,13 @@ namespace PushStars.Editor
 {
     /// <summary>
     /// Play-mode frames of the duel's clap push-up landing (<see cref="ClapImpactEffect"/>) on the
-    /// authored duel screen preview: the takeoff, a plain clap stepped through its timeline, and
-    /// the finisher. CV stays off; the effect is stepped with its own clockless Preview, so every
+    /// authored duel screen preview: the takeoff, a plain clap stepped through its timeline, the
+    /// finisher, and the opponent's clap coming back. CV stays off; the effect is stepped with its own clockless Preview, so every
     /// frame is the exact moment named. Output: output/clap-impact/*.png.
     ///
-    /// <para>The clip variant steps five claps in a row at 60 fps (rep, takeoff, confirm, palms
-    /// down — the timing measured on a real set) into output/clap-impact/clip/ with the list of
+    /// <para>The clip variant steps five claps at 60 fps (rep, takeoff, confirm, palms down —
+    /// the timing measured on a real set) with two of the opponent's between them, into
+    /// output/clap-impact/clip/ with the list of
     /// sounds the game would have played; tools/fx/mix_clap_clip.py turns that into an mp4.</para>
     /// </summary>
     [InitializeOnLoad]
@@ -39,15 +40,25 @@ namespace PushStars.Editor
         private const float ClipFps = 60f, CycleSec = 2f, RepAt = .4f, TakeoffAt = .53f, ConfirmAt = .77f, FlightSec = .32f;
         private const float PlantIn = TakeoffAt + FlightSec - ConfirmAt;
 
-        // name, clap number, anticipation, seconds since landing (negative = not landed).
-        private static readonly (string name, int clap, float anticipation, float age)[] Frames =
+        // name, clap number, anticipation, seconds since the player's landing and since the
+        // opponent's clap (negative = none).
+        private static readonly (string name, int clap, float anticipation, float age, float rival)[] Frames =
         {
-            ("a0-idle", 2, 0f, -1f), ("a1-takeoff", 2, 1f, -1f),
-            ("b-000", 2, 0f, .001f), ("b-030", 2, 0f, .03f), ("b-070", 2, 0f, .07f), ("b-120", 2, 0f, .12f),
-            ("b-180", 2, 0f, .18f), ("b-260", 2, 0f, .26f), ("b-420", 2, 0f, .42f), ("b-700", 2, 0f, .7f),
-            ("b-900", 2, 0f, .9f), ("c-max-030", 5, 0f, .03f), ("c-max-160", 5, 0f, .16f),
-            ("c-max-220", 5, 0f, .22f), ("c-max-340", 5, 0f, .34f), ("c-max-500", 5, 0f, .5f), ("d-after", 2, 0f, 2f),
+            ("a0-idle", 2, 0f, -1f, -1f), ("a1-takeoff", 2, 1f, -1f, -1f),
+            ("b-000", 2, 0f, .001f, -1f), ("b-030", 2, 0f, .03f, -1f), ("b-070", 2, 0f, .07f, -1f), ("b-120", 2, 0f, .12f, -1f),
+            ("b-180", 2, 0f, .18f, -1f), ("b-260", 2, 0f, .26f, -1f), ("b-420", 2, 0f, .42f, -1f), ("b-700", 2, 0f, .7f, -1f),
+            ("b-900", 2, 0f, .9f, -1f), ("c-max-030", 5, 0f, .03f, -1f), ("c-max-160", 5, 0f, .16f, -1f),
+            ("c-max-220", 5, 0f, .22f, -1f), ("c-max-340", 5, 0f, .34f, -1f), ("c-max-500", 5, 0f, .5f, -1f),
+            ("e-rival-090", 2, 0f, -1f, .09f), ("e-rival-130", 2, 0f, -1f, .13f), ("e-rival-200", 2, 0f, -1f, .2f),
+            ("e-rival-320", 2, 0f, -1f, .32f), ("e-rival-550", 2, 0f, -1f, .55f), ("e-rival-800", 2, 0f, -1f, .8f),
+            ("f-both", 3, 0f, .2f, .25f), ("d-after", 2, 0f, 2f, -1f),
         };
+
+        // The clip: the player's claps (number > 0) with the opponent's (number < 0) between them.
+        private static readonly int[] Sequence = { 1, 2, -1, 3, 4, -2, 5 };
+        // A clap's second rep goes on the count a legal rep's distance after the first.
+        private const float ClapRepAfter = .42f;
+        private const float RivalCycleSec = 1.5f, RivalRepAt = .2f, RivalTakeoffAt = .3f, RivalConfirmAt = .54f;
 
         private static int _step, _frame;
         private static double _due, _deadline;
@@ -156,23 +167,28 @@ namespace PushStars.Editor
                     if (_clip) { StageClipFrame(); _step++; break; }
                     if (_frame >= Frames.Length) { Finish("RESULT: done"); return; }
                     var f = Frames[_frame];
-                    SetFlight(f.anticipation > 0f ? .5f : 0f);
+                    SetFlight(true, f.anticipation > 0f ? .5f : 0f);
                     if (f.age > ClapImpactEffect.Duration) _effect.Cancel();
-                    else _effect.Preview(f.clap, EconomyConfig.AuraMaxClaps, EconomyConfig.AuraPerClap, f.anticipation, f.age, 0f);
+                    else _effect.Preview(f.clap, EconomyConfig.AuraMaxClaps, EconomyConfig.AuraPerClap, f.anticipation, f.age, 0f, f.rival);
                     _step++; Delay(.2);
                     break;
                 default:
                     if (_clip)
                     {
                         Capture($"clip/f{_frame:00000}", true);
-                        if (++_frame >= Mathf.RoundToInt(CycleSec * ClipFps) * EconomyConfig.AuraMaxClaps)
+                        if (++_frame >= ClipFrames())
                         {
                             File.WriteAllText(Output + "clip/events.txt", _events.ToString());
                             Finish($"RESULT: done, {_frame} frames at {ClipFps} fps");
                             return;
                         }
                     }
-                    else { Capture(Frames[_frame].name, false); _frame++; }
+                    else
+                    {
+                        Capture(Frames[_frame].name, false);
+                        if (Frames[_frame].rival >= 0f) SetFlight(false, 0f);
+                        _frame++;
+                    }
                     _step = 2;
                     break;
             }
@@ -182,25 +198,58 @@ namespace PushStars.Editor
         /// that start on it.</summary>
         private static void StageClipFrame()
         {
-            int perCycle = Mathf.RoundToInt(CycleSec * ClipFps), clap = _frame / perCycle + 1;
-            int local = _frame % perCycle;
-            float t = local / ClipFps, start = (clap - 1) * CycleSec;
+            // Which cycle of the sequence this frame falls in, and how far into it.
+            int cycle = 0, first = 0, playerReps = 21, rivalReps = 18;
+            for (; cycle < Sequence.Length - 1; cycle++)
+            {
+                int length = Mathf.RoundToInt((Sequence[cycle] > 0 ? CycleSec : RivalCycleSec) * ClipFps);
+                if (_frame < first + length) break;
+                first += length;
+                if (Sequence[cycle] > 0) playerReps += 2; else rivalReps += 2;
+            }
+            int local = _frame - first, clap = Sequence[cycle];
+            float t = local / ClipFps, start = first / ClipFps;
             void Sound(float at, string clip, float volume)
             {
                 if (local == Mathf.RoundToInt(at * ClipFps))
                     _events.AppendLine(string.Format(System.Globalization.CultureInfo.InvariantCulture, "{0:0.000} {1} {2:0.00}", start + at, clip, volume));
             }
+
+            if (clap < 0)
+            {
+                // The opponent's turn: their body replays the flight, the hit comes back.
+                Sound(RivalConfirmAt, "clap_rival", .6f);
+                _hud.SetPlayerReps(playerReps);
+                _hud.SetOpponentReps(rivalReps + (t >= RivalRepAt ? 1 : 0) + (t >= RivalRepAt + ClapRepAfter ? 1 : 0));
+                float rivalFlight = t >= RivalTakeoffAt ? (t - RivalTakeoffAt) / FlightSec : 0f;
+                SetFlight(true, 0f);
+                SetFlight(false, rivalFlight < 1f ? rivalFlight : 0f);
+                float rival = t - RivalConfirmAt;
+                if (rival < 0f || rival > ClapImpactEffect.RivalPlantIn + ClapImpactEffect.RivalDuration) _effect.Cancel();
+                else _effect.Preview(1, EconomyConfig.AuraMaxClaps, 0, 0f, -1f, 0f, rival);
+                return;
+            }
+
             Sound(RepAt, "rep_0" + ((clap - 1) % 3 + 1), .46f);
             Sound(TakeoffAt, "clap_riser", .5f);
             Sound(ConfirmAt, clap == EconomyConfig.AuraMaxClaps ? "clap_max" : "clap_impact_" + clap, clap == EconomyConfig.AuraMaxClaps ? 1f : .9f);
 
-            _hud.SetPlayerReps(21 + clap - (t >= RepAt ? 0 : 1));
+            _hud.SetOpponentReps(rivalReps);
+            _hud.SetPlayerReps(playerReps + (t >= RepAt ? 1 : 0) + (t >= RepAt + ClapRepAfter ? 1 : 0));
             float flight = t >= TakeoffAt ? (t - TakeoffAt) / FlightSec : 0f;
-            SetFlight(flight < 1f ? flight : 0f);
+            SetFlight(false, 0f);
+            SetFlight(true, flight < 1f ? flight : 0f);
             float age = t - ConfirmAt;
             if (t < TakeoffAt || age > PlantIn + ClapImpactEffect.Duration) _effect.Cancel();
             else _effect.Preview(clap, EconomyConfig.AuraMaxClaps, EconomyConfig.AuraPerClap,
                 Mathf.Clamp01((t - TakeoffAt) / .1f), age >= 0f ? age : -1f, PlantIn);
+        }
+
+        private static int ClipFrames()
+        {
+            int frames = 0;
+            foreach (int clap in Sequence) frames += Mathf.RoundToInt((clap > 0 ? CycleSec : RivalCycleSec) * ClipFps);
+            return frames;
         }
 
         /// <summary>The armed push-up at the top of a rep, as live play shows it: drivers off, the
@@ -222,12 +271,13 @@ namespace PushStars.Editor
             }
         }
 
-        /// <summary>The player's body in the air, palms together — the pose the takeoff beat plays over.</summary>
-        private static void SetFlight(float phase)
+        /// <summary>One fighter's body in the air, palms together — the pose the takeoff beat plays
+        /// over. The player's stage is the one driven by the CV avatar driver.</summary>
+        private static void SetFlight(bool player, float phase)
         {
             foreach (var avatar in Object.FindObjectsByType<FightAvatar>(FindObjectsSortMode.None))
             {
-                if (avatar.Character == null || avatar.GetComponent<PushupAvatarDriver>() == null) continue;
+                if (avatar.Character == null || (avatar.GetComponent<PushupAvatarDriver>() != null) != player) continue;
                 var animator = avatar.Character.GetComponentInChildren<Animator>();
                 if (animator != null) PushupPoseCorrection.Bind(animator).SetFlight(phase, 1f);
             }

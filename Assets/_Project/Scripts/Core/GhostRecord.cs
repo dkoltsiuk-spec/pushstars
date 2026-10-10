@@ -22,6 +22,10 @@ namespace PushStars.Core
         public float durationSec = FightConfig.DuelDurationSec;
         /// <summary>Seconds from the start of the live phase, ascending, all &lt; durationSec.</summary>
         public float[] repTimes = Array.Empty<float>();
+        /// <summary>When a clap push-up was confirmed (on its landing), same clock as
+        /// <see cref="repTimes"/>. Empty in recordings made before claps were kept — those
+        /// replay with the clap visible in the pose at most, and no hit.</summary>
+        public float[] clapTimes = Array.Empty<float>();
         /// <summary>Optional PSR1 Humanoid animation. Older timestamp-only saves still load.</summary>
         public string motionBase64 = "";
         /// <summary>Mean FORM (0..100) across the recorded reps — shown on the result screen.</summary>

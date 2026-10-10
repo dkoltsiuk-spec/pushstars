@@ -2,6 +2,7 @@ const functions = require('firebase-functions/v1');
 const admin = require('./admin');
 const { defaultProfile } = require('./profileDefaults');
 const C = require('./constants');
+const { cleanClapTimes } = require('./clapTimes');
 const db = admin.firestore();
 const { Timestamp } = admin.firestore;
 const MAX_TROPHIES = 999999999;
@@ -20,7 +21,8 @@ function entry(uid, profile) {
   const trophies = Math.min(MAX_TROPHIES, Math.max(0, profile.trophies || 0));
   const displayName = String(profile.displayName || 'PLAYER').replace(/[<>]/g, '').slice(0, 20);
   return { uid, displayName, trophies, league: leagueFor(trophies),
-    standing: standing(trophies, uid), bestTimes: profile.rankedBestTimes || [] };
+    standing: standing(trophies, uid), bestTimes: profile.rankedBestTimes || [],
+    bestClapTimes: profile.rankedBestClapTimes || [] };
 }
 function publicRow(row) {
   return { uid: row.uid, displayName: row.displayName, trophies: row.trophies, league: row.league, standing: row.standing };
@@ -123,6 +125,8 @@ exports.beginRankedMatch = functions.https.onCall(async (data, context) => {
     if (mode === 'ghost' && (!p.rankedSeeded || !p.rankedBestTimes?.length))
       fail('failed-precondition', 'Complete an online calibration from the League screen first.');
     let opponentTimes = mode === 'ghost' ? p.rankedBestTimes : [], opponentUid = uid, opponentName = 'YOUR GHOST';
+    // Claps of the same set the times come from; absent on sets recorded before they were kept.
+    let opponentClapTimes = mode === 'ghost' ? p.rankedBestClapTimes || [] : [];
     if (mode === 'ghost') {
       const pool = await tx.get(seasonRef(seasonAt(now)).collection('players')
         .where('league', '==', leagueFor(p.trophies || 0)).orderBy('standing').limit(50));
@@ -132,9 +136,11 @@ exports.beginRankedMatch = functions.https.onCall(async (data, context) => {
       if (candidates.length) {
         const opponent = candidates[0];
         opponentTimes = opponent.bestTimes; opponentUid = opponent.uid; opponentName = `${opponent.displayName} · GHOST`;
+        opponentClapTimes = opponent.bestClapTimes || [];
       }
     }
-    const publicData = { id, mode, uid, opponentTimes, opponentUid, opponentName, expiresAtMs: now + 15 * 60000 };
+    const publicData = { id, mode, uid, opponentTimes, opponentClapTimes, opponentUid, opponentName,
+      expiresAtMs: now + 15 * 60000 };
     tx.create(ref, { uid, mode, state: 'ready', createdAtMs: now, expiresAtMs: publicData.expiresAtMs,
       opponentTimes, opponentUid, opponentName, public: publicData });
     tx.set(userRef, { ...p, activeRankedId: id, activeRankedUntil: publicData.expiresAtMs });
@@ -198,9 +204,13 @@ async function settle(uid, id, data, expired = false) {
       trophies = reps >= 50 ? 420 : reps >= 35 ? 280 : reps >= 20 ? 150 : reps >= 10 ? 60 : 0;
     } else if (s.mode === 'ghost' && !draw) trophies += won ? C.TROPHY_GHOST_WIN + bonus : -C.TROPHY_GHOST_LOSS;
     trophies = Math.min(MAX_TROPHIES, Math.max(0, trophies));
+    // The best set and its claps are replaced together, or a ghost would clap at another set's times.
+    const best = reps > (p.rankedBestTimes?.length || 0);
     const next = { ...p, trophies, rank: leagueFor(trophies), rankedSeeded: true,
       rankedStreak: streak, activeRankedId: '', activeRankedUntil: 0,
-      rankedBestTimes: reps > (p.rankedBestTimes?.length || 0) ? data.repTimes : p.rankedBestTimes || [],
+      rankedBestTimes: best ? data.repTimes : p.rankedBestTimes || [],
+      rankedBestClapTimes: best ? cleanClapTimes(data.clapTimes, data.repTimes, data.durationSec)
+        : p.rankedBestClapTimes || [],
       lastMatchAt: Timestamp.fromMillis(now), totalReps: (p.totalReps || 0) + reps };
     if (reps > 0) next.rankedActiveDay = day;
     if (s.mode === 'ghost' && !draw) {

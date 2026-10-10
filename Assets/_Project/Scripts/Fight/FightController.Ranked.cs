@@ -12,6 +12,14 @@ namespace PushStars.Fight
         private bool _rankedStarting, _rankedStarted;
         private float _rankedRetryAt;
 
+        private GhostRecord RankedOpponentRecord()
+        {
+            var record = GhostRecord.From(_ranked.opponentTimes, 0, "ranked");
+            // Absent from sessions issued before the server kept claps.
+            record.clapTimes = _ranked.opponentClapTimes ?? Array.Empty<float>();
+            return record;
+        }
+
         private void TakeRankedSession()
         {
             if (FightRequest.IsBotTest) { _ranked = null; return; }

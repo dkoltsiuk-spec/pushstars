@@ -33,7 +33,7 @@ namespace PushStars.Services
     [Serializable] public sealed class RankedSession
     {
         public string id, uid, mode, opponentUid, opponentName;
-        public float[] opponentTimes;
+        public float[] opponentTimes, opponentClapTimes;
         public long expiresAtMs;
     }
     [Serializable] public sealed class RankedReceipt
@@ -59,7 +59,7 @@ namespace PushStars.Services
         [Serializable] private sealed class BeginRequest { public string requestId, mode; }
         [Serializable] private sealed class IdRequest { public string id; }
         [Serializable] private sealed class NameRequest { public string displayName; }
-        [Serializable] public sealed class PendingResult { public string id, uid; public float[] repTimes; public float durationSec; }
+        [Serializable] public sealed class PendingResult { public string id, uid; public float[] repTimes, clapTimes; public float durationSec; }
         [Serializable] private sealed class Outbox { public List<PendingResult> items = new List<PendingResult>(); }
         [Serializable] private sealed class Empty { }
         public static RankedSession PreparedSession;
@@ -109,9 +109,9 @@ namespace PushStars.Services
             _cached = null;
         }
 
-        public static async Task<RankedReceipt> Finish(RankedSession session, float[] times, float duration)
+        public static async Task<RankedReceipt> Finish(RankedSession session, float[] times, float[] clapTimes, float duration)
         {
-            var pending = new PendingResult { id = session.id, uid = session.uid, repTimes = times, durationSec = duration };
+            var pending = new PendingResult { id = session.id, uid = session.uid, repTimes = times, clapTimes = clapTimes, durationSec = duration };
             var outbox = ReadOutbox();
             if (!outbox.items.Exists(p => p.id == pending.id && p.uid == pending.uid)) { outbox.items.Add(pending); SaveOutbox(outbox); }
             try { return await SendPending(pending); }

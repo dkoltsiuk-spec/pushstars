@@ -19,6 +19,11 @@ namespace PushStars.Fight
     /// <para>Each clap of the fight plays one note higher; the last one Aura pays for is the
     /// finisher. Presentation only — no score or reward is written here.</para>
     ///
+    /// <para><see cref="OpponentLand"/> is the recording's clap coming back the other way: the
+    /// same wave in red out of their palms into the player's half, a duller hit with no note.
+    /// Deliberately the lesser of the two — no flash, no bolt, no Aura — so the player's own
+    /// clap stays the event, and the opponent's is the thing to answer.</para>
+    ///
     /// <para>No haptics on purpose: the phone is propped on the floor watching the player, and a
     /// buzz there shakes the camera the rep counter is reading.</para>
     /// </summary>
@@ -31,14 +36,22 @@ namespace PushStars.Fight
         /// <summary>A flight that never confirms a clap (a lift without one) lets go after this.</summary>
         private const float AnticipationHoldSec = .6f;
         private const float StampAtSec = .05f, AuraAtSec = .17f, FadeAtSec = .62f;
-        private const float RiserVolume = .5f, ImpactVolume = .9f, FinisherVolume = 1f;
-        private static readonly Color AuraTint = new Color(.9f, .8f, 1f);
+        private const float RiserVolume = .5f, ImpactVolume = .9f, FinisherVolume = 1f, RivalVolume = .6f;
+        /// <summary>The opponent's palms planted to their wave gone, and how long after a
+        /// recorded clap time the replayed body is back on the floor (it was recorded with the
+        /// same lag behind its player as the live character has).</summary>
+        public const float RivalDuration = .75f, RivalPlantIn = .08f;
+        private const float RivalFadeAtSec = .45f;
+        /// <summary>What the clap is worth, the same on both sides and on the boss screen's own
+        /// "×2": two reps. Which clap of the fight it is, is told by the rising note alone.</summary>
+        private const string DoubleCaption = "CLAP ×2";
+        private static readonly Color AuraTint = new Color(.9f, .8f, 1f), RivalTint = new Color(1f, .84f, .82f);
 
         private FightHud _hud;
-        private RectTransform _root, _stampRect, _auraRect;
+        private RectTransform _root, _stampRect, _auraRect, _rivalRect;
         private ClapImpactGraphic _art;
-        private TextMeshProUGUI _stamp, _aura;
-        private AudioClip _riser, _finisherClip;
+        private TextMeshProUGUI _stamp, _aura, _rival;
+        private AudioClip _riser, _finisherClip, _rivalClip;
         private AudioClip[] _impacts;
 
         // The live HUD pieces the hit moves, and where it found them.
@@ -46,11 +59,11 @@ namespace PushStars.Fight
         private Vector2 _playerHome, _opponentHome;
         private Vector3 _playerScale, _clockScale;
         private Rect _playerArea, _opponentArea;
-        private Vector2 _origin, _target;
-        private float _unit = 1f, _hitAt;
+        private Vector2 _origin, _target, _rivalOrigin;
+        private float _unit = 1f, _hitAt, _rivalHitAt;
         private bool _held;
 
-        private float _takeoffAt = -100f, _landAt = -100f, _plantIn;
+        private float _takeoffAt = -100f, _landAt = -100f, _plantIn, _rivalAt = -100f;
         private bool _finisher, _manual;
 
         /// <summary>Builds the artwork and loads the clips now, at the start of the fight: the
@@ -89,23 +102,37 @@ namespace PushStars.Fight
             EnsureClips();
             if (_finisher) GameAudio.PlayClip(_finisherClip, FinisherVolume);
             else GameAudio.PlayClip(_impacts[Mathf.Clamp(clapNumber, 1, _impacts.Length) - 1], ImpactVolume);
-            Sample(1f, 0f);
+            Sample(1f, 0f, RivalSince());
+        }
+
+        /// <summary>The opponent's recording landed a clap.</summary>
+        public void OpponentLand()
+        {
+            if (_hud == null) return;
+            Hold();
+            if (!_held || _opponent == null) return;
+            _manual = false;
+            _rivalAt = Time.unscaledTime;
+            EnsureClips();
+            GameAudio.PlayClip(_rivalClip, RivalVolume);
         }
 
         /// <summary>One frame of the timeline with no clock and no sound — the editor's frame
         /// capture steps through the effect with this. <paramref name="age"/> is seconds since
-        /// the clap was confirmed, negative before it.</summary>
-        public void Preview(int clapNumber, int paidClaps, long aura, float anticipation, float age, float plantIn)
+        /// the clap was confirmed, negative before it; <paramref name="rival"/> the same for the
+        /// opponent's clap.</summary>
+        public void Preview(int clapNumber, int paidClaps, long aura, float anticipation, float age, float plantIn,
+            float rival = -1f)
         {
             _manual = true;
             Stage(clapNumber, paidClaps, aura);
             _plantIn = plantIn;
-            Sample(age >= 0f && age < plantIn ? 1f : anticipation, age);
+            Sample(age >= 0f && age < plantIn ? 1f : anticipation, age, rival);
         }
 
         public void Cancel()
         {
-            _takeoffAt = _landAt = -100f;
+            _takeoffAt = _landAt = _rivalAt = -100f;
             Release();
         }
 
@@ -113,38 +140,49 @@ namespace PushStars.Fight
         {
             Hold();
             _finisher = clapNumber == paidClaps;
-            _stamp.text = clapNumber <= 1 ? "CLAP!" : "CLAP ×" + clapNumber;
             _aura.text = _finisher ? $"+{aura}  MAX AURA" : aura > 0 ? $"+{aura} AURA" : "";
+        }
+
+        /// <summary>Seconds since the opponent's clap, or negative once it has played out.</summary>
+        private float RivalSince()
+        {
+            float since = Time.unscaledTime - _rivalAt;
+            return since < RivalPlantIn + RivalDuration ? since : -1f;
         }
 
         private void Update()
         {
             if (_manual || !_held) return;
-            float now = Time.unscaledTime, age = now - _landAt, flight = now - _takeoffAt;
+            float now = Time.unscaledTime, age = now - _landAt, flight = now - _takeoffAt, rival = RivalSince();
             // Confirmed but still airborne: the half stays leaned in until the palms plant.
-            if (age < _plantIn + Duration) { Sample(age < _plantIn ? 1f : 0f, age); return; }
+            if (age < _plantIn + Duration) { Sample(age < _plantIn ? 1f : 0f, age, rival); return; }
             if (flight < AnticipationHoldSec + AnticipationOutSec)
             {
                 float a = Mathf.Clamp01(flight / AnticipationInSec)
                           * (1f - Mathf.Clamp01((flight - AnticipationHoldSec) / AnticipationOutSec));
-                Sample(a, -1f);
+                Sample(a, -1f, rival);
                 return;
             }
+            if (rival >= 0f) { Sample(0f, -1f, rival); return; }
             Release();
         }
 
-        /// <summary>The whole effect as a function of two numbers, so a captured frame and a live
-        /// one cannot disagree. <paramref name="confirmed"/> is seconds since the clap was
-        /// confirmed; everything but the flash runs off the palms planting, a moment later.</summary>
-        private void Sample(float anticipation, float confirmed)
+        /// <summary>The whole effect as a function of three numbers, so a captured frame and a
+        /// live one cannot disagree. <paramref name="confirmed"/> is seconds since the clap was
+        /// confirmed; everything but the flash runs off the palms planting, a moment later.
+        /// <paramref name="rivalConfirmed"/> is the same clock for the opponent's clap.</summary>
+        private void Sample(float anticipation, float confirmed, float rivalConfirmed)
         {
             if (!_held) return;
             float age = confirmed >= 0f ? confirmed - _plantIn : -1f;
+            // Their wave only exists once their palms are down; before that nothing shows.
+            float rivalAge = rivalConfirmed >= RivalPlantIn && _opponent != null ? rivalConfirmed - RivalPlantIn : -1f;
             bool landed = age >= 0f;
             // Player's half: leans in while airborne, kicks and rattles on the hit.
             float kick = landed && age < .26f ? Sq(1f - age / .26f) : 0f;
             _player.localScale = _playerScale * (1f + .028f * anticipation + .05f * kick);
-            _player.anchoredPosition = _playerHome + (landed ? Rattle(age, .3f, 10f, 0f) : Vector2.zero);
+            _player.anchoredPosition = _playerHome + (landed ? Rattle(age, .3f, 10f, 0f) : Vector2.zero)
+                + Rattle(rivalAge - _rivalHitAt, ClapImpactGraphic.HitSec, 8f, 2.6f);
 
             float since = age - _hitAt;
             if (_opponent != null)
@@ -155,26 +193,29 @@ namespace PushStars.Fight
                 _clock.localScale = _clockScale * (u > 0f && u < 1f ? 1f + .24f * Mathf.Sin(Mathf.PI * u) * (1f - u) : 1f);
             }
 
-            StampLabel(_stampRect, _stamp, age - StampAtSec, age, 0f, _finisher ? 1.12f : 1f);
-            StampLabel(_auraRect, _aura, age - AuraAtSec, age, -10f, 1f);
+            StampLabel(_stampRect, _stamp, age - StampAtSec, age, 0f, _finisher ? 1.12f : 1f, StampHome(90f), Duration, FadeAtSec);
+            StampLabel(_auraRect, _aura, age - AuraAtSec, age, -10f, 1f, StampHome(42f), Duration, FadeAtSec);
+            StampLabel(_rivalRect, _rival, rivalAge - StampAtSec, rivalAge, 0f, 1f, _rivalOrigin + new Vector2(96f, -34f) * _unit, RivalDuration, RivalFadeAtSec);
+            _art.SetRival(rivalAge, _rivalOrigin, _rivalHitAt);
             _art.Draw(anticipation, confirmed, age, _finisher, _unit, _hitAt, _origin, _target, _playerArea, _opponentArea);
         }
 
         /// <summary>Slammed in oversized, settled, then lifted away.</summary>
-        private void StampLabel(RectTransform rect, TextMeshProUGUI label, float since, float age, float fromY, float size)
+        private void StampLabel(RectTransform rect, TextMeshProUGUI label, float since, float age, float fromY, float size,
+            Vector2 home, float duration, float fadeAt)
         {
-            bool on = since >= 0f && age < Duration && label.text.Length > 0;
+            bool on = since >= 0f && age < duration && label.text.Length > 0;
             if (label.gameObject.activeSelf != on) label.gameObject.SetActive(on);
             if (!on) return;
             float pop = since < .09f ? Mathf.Lerp(1.7f, .9f, since / .09f) : Mathf.Lerp(.9f, 1f, Mathf.Clamp01((since - .09f) / .08f));
-            float fade = Mathf.Clamp01((age - FadeAtSec) / (Duration - FadeAtSec));
+            float fade = Mathf.Clamp01((age - fadeAt) / (duration - fadeAt));
             rect.localScale = Vector3.one * (pop * size * _unit);
-            rect.anchoredPosition = HomeOf(rect) + Vector2.up * ((fromY * (1f - Mathf.Clamp01(since / .12f)) + 16f * fade * fade) * _unit);
+            rect.anchoredPosition = home + Vector2.up * ((fromY * (1f - Mathf.Clamp01(since / .12f)) + 16f * fade * fade) * _unit);
             label.alpha = Mathf.Clamp01(since / .03f) * (1f - fade);
         }
 
-        private Vector2 HomeOf(RectTransform rect)
-            => new Vector2(_origin.x, _playerArea.yMin + (rect == _stampRect ? 90f : 42f) * _unit);
+        /// <summary>The player's captions sit on the floor under their own palms.</summary>
+        private Vector2 StampHome(float aboveBottom) => new Vector2(_origin.x, _playerArea.yMin + aboveBottom * _unit);
 
         /// <summary>A decaying two-axis shake; zero outside its window, so the piece ends exactly home.</summary>
         private Vector2 Rattle(float since, float seconds, float amplitude, float phase)
@@ -211,6 +252,8 @@ namespace PushStars.Fight
             _origin = new Vector2(_playerArea.center.x, _playerArea.yMin + (FightHud.DuelPlayerFloor + 8f) * _unit);
             _target = new Vector2(_opponentArea.center.x, _opponentArea.yMin + (FightHud.DuelOpponentFloor + 80f) * _unit);
             _hitAt = _opponent != null ? ClapImpactGraphic.FrontReachSec(_playerArea.yMax - _origin.y, _unit) : float.PositiveInfinity;
+            _rivalOrigin = new Vector2(_opponentArea.center.x, _opponentArea.yMin + (FightHud.DuelOpponentFloor + 6f) * _unit);
+            _rivalHitAt = ClapImpactGraphic.FrontReachSec(_rivalOrigin.y - _playerArea.yMax, _unit, ClapImpactGraphic.RivalReach);
         }
 
         private void Release()
@@ -240,11 +283,14 @@ namespace PushStars.Fight
             var group = _root.gameObject.AddComponent<CanvasGroup>();
             group.interactable = false; group.blocksRaycasts = false;
             _art = _root.gameObject.AddComponent<ClapImpactGraphic>();
-            _stamp = Label("Stamp", "CLAP!", 58, FightTypography.Role.Title, Color.white);
+            _stamp = Label("Stamp", DoubleCaption, 58, FightTypography.Role.Title, Color.white);
             _stampRect = _stamp.rectTransform;
             _stampRect.localRotation = Quaternion.Euler(0, 0, 5);
             _aura = Label("Aura", "", 30, FightTypography.Role.Heading, AuraTint);
             _auraRect = _aura.rectTransform;
+            _rival = Label("Rival", DoubleCaption, 30, FightTypography.Role.Title, RivalTint);
+            _rivalRect = _rival.rectTransform;
+            _rivalRect.localRotation = Quaternion.Euler(0, 0, -5);
             _root.gameObject.SetActive(false);
         }
 
@@ -253,6 +299,7 @@ namespace PushStars.Fight
             if (_impacts != null) return;
             _riser = Resources.Load<AudioClip>(GameAudio.ResourceFolder + "clap_riser");
             _finisherClip = Resources.Load<AudioClip>(GameAudio.ResourceFolder + "clap_max");
+            _rivalClip = Resources.Load<AudioClip>(GameAudio.ResourceFolder + "clap_rival");
             _impacts = new AudioClip[4];
             for (int i = 0; i < _impacts.Length; i++)
                 _impacts[i] = Resources.Load<AudioClip>(GameAudio.ResourceFolder + "clap_impact_" + (i + 1));
