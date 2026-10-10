@@ -106,6 +106,7 @@ namespace PushStars.Editor
             EnableMediaPipeDefine(NamedBuildTarget.iOS);
             CopyModelToStreamingAssets();
             ConfigureIOS();
+            MobileTextureCompression.Apply();
             FontSetup.BakeGlyphs();
 
             string outDir = GetArg("-buildOutput") ?? "ios_build";
@@ -147,6 +148,7 @@ namespace PushStars.Editor
             EnableMediaPipeDefine(NamedBuildTarget.Android);
             CopyModelToStreamingAssets();
             ConfigureAndroid();
+            MobileTextureCompression.Apply();
             FontSetup.BakeGlyphs();
             ResolveAndroidDependencies();
 
@@ -190,6 +192,7 @@ namespace PushStars.Editor
         {
             CopyModelToStreamingAssets();
             ConfigureIOS();
+            MobileTextureCompression.Apply();
 
             // Bake all UI glyphs before building the scenes. The Rubik
             // atlases are dynamic SDF32; a character missing from them is rendered by the player,
@@ -302,6 +305,9 @@ namespace PushStars.Editor
             // The MediaPipe library ships arm64 only, and Google Play requires arm64.
             PlayerSettings.Android.targetArchitectures = AndroidArchitecture.ARM64;
             PlayerSettings.Android.targetSdkVersion    = (AndroidSdkVersions)AndroidTargetSdk;
+            // Unlike iOS (see ConfigureRuntimePerformance) Unity compiles the Android C++ itself,
+            // at this level. The project file carried Debug: a 121 MB libil2cpp.so, unoptimised.
+            PlayerSettings.SetIl2CppCompilerConfiguration(NamedBuildTarget.Android, Il2CppCompilerConfiguration.Release);
 
             ConfigureRuntimePerformance();
         }
