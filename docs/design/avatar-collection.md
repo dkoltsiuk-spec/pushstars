@@ -1,5 +1,41 @@
 # Avatar collection
 
+## Catalog heroes (October 2026)
+
+Seven heroes were added as catalog rows that carry their own prefab (`AvatarOffer.Prefab`, a
+Resources path). Nothing in a scene references them: the collection clones its last authored
+card for every catalog slot past the authored ones, the shop clones its authored offer card for
+every listed Gems/Dollars hero (two per row, the sections below move down), and the home and
+fight stages load the prefab by the saved catalog slot (`character.homeAvatar` >= 5,
+`CharacterRoster.SetHero` / `AvatarCatalog.LoadPrefab`). Slots 0-4 keep their old save values.
+
+| slot | id | unlock |
+|---|---|---|
+| 5 | bogatyr | Aura 100K, 100 cards |
+| 6 | viking | Aura 500K, 500 cards |
+| 7 | zombie | 500 gems |
+| 8 | tigress | 800 gems |
+| 9 | skinny | $6.99 |
+| 10 | chubby | $6.99 |
+| 11 | skeleton | $9.99 |
+
+Prices live in `Assets/_Project/Resources/AvatarCatalog.asset` (mirrored in
+`AvatarCatalog.Defaults`). Dollar heroes show their price but cannot be bought until a store
+flow exists. To add a hero: put the rigged FBX at `Assets/Character/<Name>/<name>.fbx` with its
+diffuse in `Textures/`, add the catalog row with `Prefab = "Heroes/<Name>"`, and run
+`Tools > Push Stars > Character > Import Catalog Heroes` (`HeroRosterSetup`). Aura heroes with
+cards also need `Resources/AvatarCollection/<Name>Head.png` (`HeroRosterSetup.RenderHeads`
+renders the close-up; the sticker outline is added outside Unity). Collection cards outside the
+scroll window pause their preview camera.
+
+Shared-clip fixes for these bodies. The idle every hero rests in is Mixamo's briefcase stand,
+whose right hand is a fist: `Tools > Push Stars > Character > Open the idle's fist`
+(`MainCharacterSetup.BuildOpenHandIdle`) writes `Assets/Character/Animations/Idle.anim`, a copy
+with the left hand's finger curves mirrored onto the right, and repoints the controllers; the
+import tools now load that clip for the Idle state. Four prefabs carry `StandingArmSpread`
+(Chubby 12, Viking 11, Skinny 8, Tigress 8 degrees; tunable on the prefab and kept across
+re-imports), which opens the upper arms while the body is upright and fades out in a plank.
+
 ## Aura unlock bars (late September 2026 — supersedes the prices below)
 
 Aura is now a status score that is never spent (docs/design/economy.md §3). Robot and Gladiator

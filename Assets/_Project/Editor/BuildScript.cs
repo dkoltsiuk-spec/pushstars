@@ -135,6 +135,48 @@ namespace PushStars.Editor
         }
 
         /// <summary>
+        /// Headless Android build. Start the editor with <c>-buildTarget Android</c>: Firebase and
+        /// the dependency resolver only prepare the Android side while Android is the active platform.
+        ///   Unity -batchmode -buildTarget Android -projectPath . -executeMethod PushStars.Editor.BuildScript.BuildAndroid
+        /// Writes an APK to <c>-buildOutput</c>, or an AAB for Google Play with <c>-appBundle</c>.
+        /// Without a keystore in Player Settings the result is signed with the debug key.
+        /// </summary>
+        public static void BuildAndroid()
+        {
+            ValidateAppScenes();
+            EnableMediaPipeDefine(NamedBuildTarget.Android);
+            CopyModelToStreamingAssets();
+            ConfigureAndroid();
+            FontSetup.BakeGlyphs();
+            ResolveAndroidDependencies();
+
+            bool appBundle = HasArg("-appBundle");
+            string outPath = GetArg("-buildOutput") ?? "Builds/Android/PushupStars" + (appBundle ? ".aab" : ".apk");
+            Directory.CreateDirectory(Path.GetDirectoryName(Path.GetFullPath(outPath)));
+            EditorUserBuildSettings.buildAppBundle = appBundle;
+
+            var options = new BuildPlayerOptions
+            {
+                scenes           = AppScenes,
+                locationPathName = outPath,
+                target           = BuildTarget.Android,
+                targetGroup      = BuildTargetGroup.Android,
+                options          = HasArg("-botRecordingTest") ? BuildOptions.Development : BuildOptions.None,
+            };
+
+            var report = BuildPipeline.BuildPlayer(options);
+            if (report.summary.result != BuildResult.Succeeded)
+            {
+                Debug.LogError($"[Build] Android build FAILED: {report.summary.result} ({report.summary.totalErrors} errors)");
+                EditorApplication.Exit(1);
+                return;
+            }
+
+            Debug.Log($"[Build] Android build written to {outPath} ({report.summary.totalSize / (1024 * 1024)} MB)");
+            EditorApplication.Exit(0);
+        }
+
+        /// <summary>
         /// Pre-export hook for Unity Build Automation (set as the build target's "Pre-export method":
         /// <c>PushStars.Editor.BuildScript.PrepareForUBA</c>). UBA runs its own BuildPlayer, so this
         /// only prepares the project: sets the shipping scene list (Boot → Main + the regenerated CV
@@ -251,6 +293,42 @@ namespace PushStars.Editor
             ConfigureRuntimePerformance();
         }
 
+        private const int AndroidTargetSdk = 36;
+
+        private static void ConfigureAndroid()
+        {
+            PlayerSettings.SetApplicationIdentifier(NamedBuildTarget.Android, BundleId);
+            PlayerSettings.SetScriptingBackend(NamedBuildTarget.Android, ScriptingImplementation.IL2CPP);
+            // The MediaPipe library ships arm64 only, and Google Play requires arm64.
+            PlayerSettings.Android.targetArchitectures = AndroidArchitecture.ARM64;
+            PlayerSettings.Android.targetSdkVersion    = (AndroidSdkVersions)AndroidTargetSdk;
+
+            ConfigureRuntimePerformance();
+        }
+
+        /// <summary>
+        /// Has the External Dependency Manager write the Firebase and sign-in libraries into the
+        /// Gradle templates under Assets/Plugins/Android. A player built without them crashes as
+        /// soon as Firebase starts. Called by name: the resolver ships as editor-only DLLs that
+        /// this assembly does not reference.
+        /// </summary>
+        private static void ResolveAndroidDependencies()
+        {
+            var resolve = System.AppDomain.CurrentDomain.GetAssemblies()
+                .Select(a => a.GetType("GooglePlayServices.PlayServicesResolver"))
+                .FirstOrDefault(t => t != null)?
+                .GetMethods().FirstOrDefault(m => m.Name == "ResolveSync");
+            if (resolve == null)
+                throw new BuildFailedException("[Build] External Dependency Manager not loaded; Android libraries cannot be resolved.");
+
+            var args = resolve.GetParameters()
+                .Select((p, i) => i == 0 ? true : p.HasDefaultValue ? p.DefaultValue : false).ToArray();
+            if (!(bool)resolve.Invoke(null, args))
+                throw new BuildFailedException("[Build] Android dependency resolution failed. See the log above.");
+            AssetDatabase.Refresh();
+            Debug.Log("[Build] Android dependencies resolved.");
+        }
+
         /// <summary>
         /// Settings the player's speed depends on, asserted here rather than left to whatever the
         /// project file happens to carry — they are invisible in the editor and only bite in the
@@ -274,6 +352,9 @@ namespace PushStars.Editor
             Debug.Log($"[Build] Runtime perf: GPU skinning={PlayerSettings.gpuSkinning}. " +
                       $"(iOS optimisation level comes from the Xcode build configuration, not from here.)");
         }
+
+        private static bool HasArg(string name)
+            => System.Array.Exists(System.Environment.GetCommandLineArgs(), arg => arg == name);
 
         private static string GetArg(string name)
         {

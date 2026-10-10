@@ -38,6 +38,11 @@ namespace PushStars.UI
         [SerializeField] private GameObject _robotPrefab;
         public bool IsRobot { get; private set; }
 
+        /// <summary>Catalog slot of the equipped hero that brings its own prefab
+        /// (<see cref="AvatarCatalog.FirstPrefabSlot"/> and up), or 0 when one of the bodies
+        /// referenced above is standing.</summary>
+        public int HeroSlot { get; private set; }
+
         [Header("Stage")]
         [Tooltip("Stage the character is seated on. Found on this GameObject when left empty.")]
         [SerializeField] private CharacterStage _stage;
@@ -86,6 +91,7 @@ namespace PushStars.UI
             IsSonic = _sonicPrefab != null && homeAvatar == 1 && CaseRewards.OwnsAvatar("sonic");
             IsGladiator = _gladiatorPrefab != null && homeAvatar == 2 && CaseRewards.OwnsAvatar("gladiator");
             IsRobot = _robotPrefab != null && homeAvatar == 3 && CaseRewards.OwnsAvatar("robot");
+            HeroSlot = OwnedHeroSlot(homeAvatar);
             if (_switchButton != null) _switchButton.onClick.AddListener(Toggle);
         }
 
@@ -107,8 +113,9 @@ namespace PushStars.UI
         /// already standing there, so a UI that re-asserts its state does not rebuild the model.</summary>
         public void SetGender(CharacterGender gender)
         {
-            if (gender == Gender && !IsSonic && !IsGladiator && !IsRobot && _current != null) return;
+            if (gender == Gender && !IsSonic && !IsGladiator && !IsRobot && HeroSlot == 0 && _current != null) return;
 
+            HeroSlot = 0;
             IsRobot = false;
             IsSonic = false;
             IsGladiator = false;
@@ -124,6 +131,7 @@ namespace PushStars.UI
             IsSonic = true;
             IsGladiator = false;
             IsRobot = false;
+            HeroSlot = 0;
             PlayerPrefs.SetInt(HomeAvatarKey, 1);
             PlayerPrefs.Save();
             Apply(Gender);
@@ -147,6 +155,7 @@ namespace PushStars.UI
             IsGladiator = true;
             IsSonic = false;
             IsRobot = false;
+            HeroSlot = 0;
             PlayerPrefs.SetInt(HomeAvatarKey, 2);
             PlayerPrefs.Save();
             Apply(Gender);
@@ -157,16 +166,35 @@ namespace PushStars.UI
             if (!CaseRewards.OwnsAvatar("robot") || _robotPrefab == null || (IsRobot && _current != null)) return;
             IsRobot = true;
             IsGladiator = IsSonic = false;
+            HeroSlot = 0;
             PlayerPrefs.SetInt(HomeAvatarKey, 3);
             PlayerPrefs.Save();
             Apply(Gender);
         }
 
+        /// <summary>Equips an owned hero by catalog slot. The slot number is what is saved, so
+        /// the fight stage finds the same prefab without holding a reference to it.</summary>
+        public void SetHero(int slot)
+        {
+            if (OwnedHeroSlot(slot) == 0 || AvatarCatalog.LoadPrefab(slot) == null || (HeroSlot == slot && _current != null)) return;
+            HeroSlot = slot;
+            IsRobot = IsGladiator = IsSonic = false;
+            PlayerPrefs.SetInt(HomeAvatarKey, slot);
+            PlayerPrefs.Save();
+            Apply(Gender);
+        }
+
+        private static int OwnedHeroSlot(int slot)
+            => slot >= AvatarCatalog.FirstPrefabSlot && AvatarCatalog.IsListed(slot) &&
+               CaseRewards.OwnsAvatar(AvatarCatalog.At(slot).Id) ? slot : 0;
+
         private void Apply(CharacterGender gender)
         {
             RefreshSwitchLabel();
 
-            var prefab = IsRobot ? _robotPrefab : IsGladiator ? _gladiatorPrefab : IsSonic ? _sonicPrefab : PrefabFor(gender);
+            var prefab = IsRobot ? _robotPrefab : IsGladiator ? _gladiatorPrefab : IsSonic ? _sonicPrefab : null;
+            if (prefab == null && HeroSlot != 0) prefab = AvatarCatalog.LoadPrefab(HeroSlot);
+            if (prefab == null) prefab = PrefabFor(gender);
             if (prefab == null)
             {
                 // Neither body is in the project: leave whatever the scene was built with standing
@@ -226,7 +254,7 @@ namespace PushStars.UI
                 if (choice == 1 && CaseRewards.OwnsAvatar("sonic")) return 1;
                 if (choice == 2 && CaseRewards.OwnsAvatar("gladiator")) return 2;
                 if (choice == 3 && CaseRewards.OwnsAvatar("robot")) return 3;
-                return 0;
+                return OwnedHeroSlot(choice);
             }
         }
 

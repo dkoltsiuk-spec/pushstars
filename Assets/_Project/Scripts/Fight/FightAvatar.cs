@@ -483,6 +483,7 @@ namespace PushStars.Fight
                 case 1: if (_sonicPrefab != null) prefab = _sonicPrefab; break;
                 case 2: if (_gladiatorPrefab != null) prefab = _gladiatorPrefab; break;
                 case 3: if (_robotPrefab != null) prefab = _robotPrefab; break;
+                case int slot when AvatarCatalog.LoadPrefab(slot) is { } hero: prefab = hero; break;
             }
             bool bossBody = false;
             if (_opponentStage && FightRequest.HasRequest && FightRequest.Mode == FightMode.Boss)

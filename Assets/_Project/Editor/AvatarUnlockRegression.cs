@@ -20,14 +20,16 @@ namespace PushStars.Editor
             bool fail = false;
             int writes = 0;
             Action<string> persist = json => { if (fail) throw new IOException("Simulated write failure"); saved = json; writes++; };
-            var ledger = new CaseRewardLedger(null, () => 0, persist);
+            // The walk below is written for the two card heroes it names; later catalog heroes would join the drop pool.
+            var offers = Array.FindAll(AvatarCatalog.Defaults(), o => string.IsNullOrEmpty(o.Prefab));
+            var ledger = new CaseRewardLedger(null, () => 0, persist, offers);
             Require(ledger.OwnsAvatar("fighter") && !ledger.OwnsAvatar("robot"), "Initial ownership");
             Require(!ledger.TryBuyAvatar("robot") && ledger.AuraBalance == 0, "Aura hero bought");
             Open(ledger, "cards-a");
             var prize = ledger.Find("cards-a");
             Require(prize.AvatarId == "robot" && prize.AvatarCards == 10, "Legendary drop");
             Require(ledger.CardsFor("robot") == 0, "Opening granted cards before claiming");
-            ledger = new CaseRewardLedger(saved, () => throw new Exception("Prize rerolled"), persist);
+            ledger = new CaseRewardLedger(saved, () => throw new Exception("Prize rerolled"), persist, offers);
             Require(ledger.TryOpen("cards-a", out var replay) && replay.AvatarCards == 10, "Prize persistence");
             fail = true;
             try { ledger.TryClaim("cards-a", out _); throw new Exception("Expected claim save failure"); } catch (IOException) { }
@@ -54,7 +56,7 @@ namespace PushStars.Editor
             Require(ledger.AuraPeak == 40000 && ledger.OwnsAvatar("robot") && unlock.Unlocked.Count == 1 &&
                 unlock.Unlocked[0] == "robot" && ledger.AvatarPrice("robot") == 0, "Peak + cards reaching the goal unlocks");
             Require(Apply(ledger, "fight:5", -40000).Unlocked.Count == 0 && ledger.OwnsAvatar("robot"), "Losing Aura re-locked a hero");
-            ledger = new CaseRewardLedger(saved, () => 0, persist);
+            ledger = new CaseRewardLedger(saved, () => 0, persist, offers);
             Require(ledger.OwnsAvatar("robot") && ledger.AuraBalance == 0 && ledger.AuraPeak == 40000, "Unlock reload");
 
             // Gladiator: the 40K peak plus 210 cards × 1K fill its 250K bar on the 21st case.

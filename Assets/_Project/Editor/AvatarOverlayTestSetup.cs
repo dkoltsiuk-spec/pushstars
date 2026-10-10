@@ -345,7 +345,7 @@ namespace PushStars.Editor
 
             // The menu character's own standing idle. Optional: a checkout without the character
             // animations still gets a working controller, it just rests in the fighter's guard.
-            var standClip = LoadClip(MainCharacterSetup.IdleFbxPath);
+            var standClip = MainCharacterSetup.IdleClip();
             if (standClip == null)
                 Debug.LogWarning($"[AvatarOverlayTest] Standing idle not found at " +
                                  $"{MainCharacterSetup.IdleFbxPath} — bodies will rest in {IdleState}.");

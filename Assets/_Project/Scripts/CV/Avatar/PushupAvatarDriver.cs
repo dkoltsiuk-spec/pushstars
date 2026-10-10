@@ -63,6 +63,10 @@ namespace PushStars.CV
         /// 0.1–0.2 s before the hands leave the floor. The detector opens a "flight" on any rise
         /// of the wrists and only throws it out later — getting up after the set is one.</summary>
         private const float PushToTakeoffSec = 0.6f;
+        /// <summary>…or, thrown off before the lockout, while the push is still under way: an
+        /// explosive ascent leaves the floor 0.2–0.4 s after its bottom. A bottom older than this
+        /// is a rep given up on, and the hands coming off the floor are the player sitting up.</summary>
+        private const float BottomToTakeoffSec = 1.0f;
 
         /// <summary>The character's hands close as far as the player's did: palms together at the
         /// detector's own touch threshold, still planted-width apart from here up. Measured
@@ -78,6 +82,15 @@ namespace PushStars.CV
         /// <summary>The smoothed depth actually driving the clip this frame (0=top, 1=bottom).</summary>
         public float SmoothedDepth { get; private set; }
 
+        public PushupSession Session => _session;
+
+        /// <summary>The character is in the air of a clap push-up: a flight the detector opened
+        /// that came off a push, not the player getting up.</summary>
+        public bool InClapFlight => _flightPhase >= 0f;
+
+        /// <summary>Seconds until the character's palms are back on the floor; 0 when planted.</summary>
+        public float ClapFlightRemainingSec => _flightPhase >= 0f ? (1f - _flightPhase) * _clapFlightSec : 0f;
+
         private int _pushupHash;
         private int _idleHash;
         private int _restHash;
@@ -89,6 +102,8 @@ namespace PushStars.CV
         private float _handsClosed;                            // 0 = apart, 1 = palms together
         private float _clock;                                  // seconds stepped in the push-up
         private float _lastTopClock = float.NegativeInfinity;
+        private float _lastBottomClock = float.NegativeInfinity;
+        private bool _wasAscending;
         private bool _started;
         private bool _restPresentation;
         private PushupPoseCorrection _poseCorrection;
@@ -200,6 +215,9 @@ namespace PushStars.CV
             var tracker = _session.Tracker;
             _clock += deltaTime;
             if (tracker.TopLatchedThisTick) _lastTopClock = _clock;
+            bool ascending = tracker.ArcState == DepthArcState.AwaitTop;
+            if (ascending && !_wasAscending) _lastBottomClock = _clock;
+            _wasAscending = ascending;
 
             var clap = _session.Clap;
             if (_flightPhase >= 0f)
@@ -215,7 +233,7 @@ namespace PushStars.CV
             if (!clap.InFlight || clap.TakeoffSec == _flightTakeoff) return;
             _flightTakeoff = clap.TakeoffSec;
             // Thrown off the floor before the lockout: the rep is still on its way up.
-            bool pushed = tracker.ArcState == DepthArcState.AwaitTop
+            bool pushed = (ascending && _clock - _lastBottomClock <= BottomToTakeoffSec)
                           || _clock - _lastTopClock <= PushToTakeoffSec;
             if (!pushed) return;
             _flightPhase = 0f;
@@ -260,7 +278,9 @@ namespace PushStars.CV
         {
             var tracker = _session.Tracker;
             // Hold the last pose through invalid frames — the tracker freezes its signal too.
-            if (tracker.SignalValid) _targetDepth = tracker.CurrentDepth01;
+            // And while the hands are off the floor or the torso is upright: whatever the elbows
+            // read then is not a depth. Half a second of that disarms, and the mirror takes over.
+            if (tracker.SignalValid && !_session.Posture.Suspect) _targetDepth = tracker.CurrentDepth01;
             // Airborne, the elbow angle is not a depth (it can dip far enough to fake a bottom).
             // The real depth takes over again on landing, which is the dip that absorbs it.
             if (_flightPhase >= 0f) _targetDepth = 0f;

@@ -288,8 +288,8 @@ namespace PushStars.CV
 
             // ── 1) Camera permission FIRST, so the iOS prompt appears regardless of MediaPipe init. ──
             SetStatus("requesting camera permission");
-            yield return Application.RequestUserAuthorization(UserAuthorization.WebCam);
-            if (!Application.HasUserAuthorization(UserAuthorization.WebCam))
+            yield return CameraPermission.Request();
+            if (!CameraPermission.Granted)
             {
                 SetStatus("CAMERA PERMISSION DENIED");
                 IsRunning = false;
@@ -317,6 +317,12 @@ namespace PushStars.CV
 
             // ── 3) Make the model available, then build the Pose Landmarker. Any failure here leaves
             //       the camera preview running but disables detection (status shows why). ──
+#if UNITY_ANDROID && !UNITY_EDITOR
+            // Android keeps StreamingAssets inside the APK, out of reach of File.*; unpack the
+            // models first so StageModel finds them the way it does on iOS.
+            yield return UnpackFromApk(_modelFileName);
+            if (!IsLite(_modelFileName)) yield return UnpackFromApk("pose_landmarker_lite.bytes");
+#endif
             string modelPath = StageModel(); // editor: model name; device: absolute persistentData path
             if (modelPath == null)
             {
@@ -676,7 +682,7 @@ namespace PushStars.CV
                 string dst = System.IO.Path.Combine(Application.persistentDataPath, modelFileName);
                 if (!System.IO.File.Exists(dst))
                 {
-                    if (!System.IO.File.Exists(src)) return null; // (Android packs StreamingAssets in the APK — needs UnityWebRequest; iOS is a real path)
+                    if (!System.IO.File.Exists(src)) return null; // (Android: UnpackFromApk has already written dst; iOS is a real path)
                     System.IO.File.Copy(src, dst, true);
                 }
                 return dst;
@@ -688,6 +694,31 @@ namespace PushStars.CV
             }
 #endif
         }
+
+#if UNITY_ANDROID && !UNITY_EDITOR
+        /// <summary>Copies a model out of the APK into persistentData. Written to a side file and
+        /// renamed, so an interrupted copy is never mistaken for a model.</summary>
+        private IEnumerator UnpackFromApk(string modelFileName)
+        {
+            string dst = System.IO.Path.Combine(Application.persistentDataPath, modelFileName);
+            if (System.IO.File.Exists(dst)) yield break;
+
+            string part = dst + ".part";
+            using (var request = UnityEngine.Networking.UnityWebRequest.Get(
+                       Application.streamingAssetsPath + "/" + modelFileName))
+            {
+                request.downloadHandler = new UnityEngine.Networking.DownloadHandlerFile(part) { removeFileOnAbort = true };
+                yield return request.SendWebRequest();
+                if (request.result != UnityEngine.Networking.UnityWebRequest.Result.Success)
+                {
+                    SetStatus("MODEL UNPACK ERROR: " + request.error);
+                    yield break;
+                }
+            }
+            try { System.IO.File.Move(part, dst); }
+            catch (Exception e) { SetStatus("STAGE ERROR: " + e.Message); }
+        }
+#endif
 
         private static bool IsLite(string modelFileName)
             => modelFileName != null && modelFileName.Contains("lite");

@@ -94,6 +94,7 @@ namespace PushStars.Fight
         private float _goFlashUntil;
         private Vector3 _playerRepsBaseScale = Vector3.one;
         private float _playerRepsPopTime = -10f;
+        private float _playerRepsPop = RepPop;
         /// <summary>Whether this set has an opponent at all. A level test must not get
         /// its empty half back when the scoreboards are re-shown.</summary>
         private bool _showOpponent = true;
@@ -155,6 +156,7 @@ namespace PushStars.Fight
         {
             if (_sounds) GameAudio.Play(SoundCue.Rep);
             _playerRepsPopTime = Time.time;
+            _playerRepsPop = RepPop;
         }
 
         private void HandleRepRejected(RepVote vote)
@@ -172,7 +174,7 @@ namespace PushStars.Fight
             if (_repsOut != null)
             {
                 float t = (Time.time - _playerRepsPopTime) / 0.25f;
-                float k = t < 1f ? 1f + 0.35f * (1f - t) * Mathf.Sin(t * Mathf.PI) : 1f;
+                float k = t < 1f ? 1f + _playerRepsPop * (1f - t) * Mathf.Sin(t * Mathf.PI) : 1f;
                 _repsOut.rectTransform.localScale = _playerRepsBaseScale * k;
             }
 

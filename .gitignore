@@ -135,3 +135,17 @@ layout_dump.txt
 /Assets/_Project/Art/Emotes/Clips/*_Fused.anim
 /Assets/_Project/Art/Emotes/Clips/*_Fused.anim.meta
 /tools/EmoteMocap/tracks/*_gvhmr.json
+
+# Android: сгенерировано при сборке (Firebase-редактор и резолвер зависимостей). Первое содержит
+# ключи из google-services.json, остальное пересоздаётся каждой сборкой.
+/Assets/Plugins/Android/FirebaseApp.androidlib/
+/Assets/Plugins/Android/FirebaseApp.androidlib.meta
+/Assets/Plugins/Android/FirebaseCrashlytics.androidlib/
+/Assets/Plugins/Android/FirebaseCrashlytics.androidlib.meta
+/Assets/GeneratedLocalRepo/
+/Assets/GeneratedLocalRepo.meta
+/.utmp/
+
+# Bot Lab takes pulled for cleaning (originals are the backup of the cloud drafts)
+/tools/BotRecordings/originals/
+/tools/BotRecordings/cleaned/

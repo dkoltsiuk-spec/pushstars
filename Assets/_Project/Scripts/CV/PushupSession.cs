@@ -12,8 +12,8 @@ namespace PushStars.CV
     /// and training screen bind to for REPS / FORM / TEMPO.
     ///
     /// <para><b>Per-frame tick order is strict</b> (frontal addendum):
-    /// ViewClassifier → KneeBend → WristAnchor → KneeDrop → FootMonitor → Armer → Tracker →
-    /// Auditor.RecordSample → Counter.Process. The armer's predicate reads verdicts produced
+    /// ViewClassifier → KneeBend → WristAnchor → KneeDrop → FootMonitor → Armer → Clap → Posture →
+    /// Tracker → Auditor.RecordSample → Counter.Process. The armer's predicate reads verdicts produced
     /// earlier in the chain; the tracker's latches must exist before the counter consumes them;
     /// the audit sample must be in the window before the counter can fire the audit.</para>
     /// </summary>
@@ -41,6 +41,7 @@ namespace PushStars.CV
         public AmplitudeTracker  Tracker     { get; } = new AmplitudeTracker();
         public WorkoutSetTracker SetTracker  { get; } = new WorkoutSetTracker();
         public ClapDetector      Clap        { get; } = new ClapDetector();
+        public PushupPostureMonitor Posture  { get; } = new PushupPostureMonitor();
         public PlankArmer        Armer       { get; private set; }
         public AntiCheatAuditor  Auditor     { get; private set; }
 
@@ -158,6 +159,7 @@ namespace PushStars.CV
             Tracker.Reset();
             SetTracker.Reset();
             Clap.Reset();
+            Posture.Reset();
             Armer?.Reset();
             Auditor?.Clear();
             ClapReps = 0;
@@ -231,6 +233,16 @@ namespace PushStars.CV
 
             // ── 3b. Clap push-up flight (reads armed; pairs with reps in HandleFlightLanded) ──
             Clap.Tick(frame, isArmed, now);
+
+            // ── 3c. Left the push-up position (sat back, knelt up, stood): disarm now. The
+            // armer's grace would hold for as long as the elbows stay bent, and until it ran out
+            // the tracker below would go on reading a resting player's arms as push-up depth.
+            Posture.Tick(frame, trackingOk, isArmed, View.View, Clap.RiseSw, Clap.PlantedShoulderWidth, now);
+            if (Posture.LeftPose)
+            {
+                Armer.Disarm(PlankRejectReason.LeftPushupPose, now);
+                isArmed = false;
+            }
 
             bool anchorOk = WristAnchor.LastVerdict == AnchorVerdict.Anchored;
 
@@ -330,6 +342,7 @@ namespace PushStars.CV
         private void HandleDisarmed(PlankRejectReason reason)
         {
             Auditor.Clear();
+            if (_logReps) Debug.Log($"[PushupSession] Disarmed ({reason})");
         }
 
         private void HandleRepRejected(RepVote vote)

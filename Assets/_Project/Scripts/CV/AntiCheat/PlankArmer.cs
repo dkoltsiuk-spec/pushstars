@@ -212,6 +212,20 @@ namespace PushStars.CV.AntiCheat
             }
         }
 
+        /// <summary>Drops an armed plank straight to Disarmed, without the Cooling grace. The grace
+        /// absorbs skeleton glitches and the bent elbows of a rep; it has nothing to absorb when
+        /// something else has established that the player is no longer in a push-up at all
+        /// (<see cref="PushupPostureMonitor"/>).</summary>
+        public void Disarm(PlankRejectReason reason, float nowSec)
+        {
+            if (!IsArmed) return;
+            LastRejectReason = reason;
+            EnterState(PlankArmerState.Disarmed, nowSec);
+            ArmingProgress01 = 0f;
+            CoolingTimeLeftSec = 0f;
+            OnDisarmed?.Invoke(reason);
+        }
+
         private void EnterState(PlankArmerState s, float nowSec)
         {
             State = s;
@@ -442,7 +456,7 @@ namespace PushStars.CV.AntiCheat
 
         /// <summary>κ = (hipMid_y − shoulderMid_y)/sw when the shoulders are wide enough in the
         /// image for the ratio to be meaningful (sw ≥ KappaReliableMinSw). False otherwise.</summary>
-        private static bool TryReliableKappa(in PoseFrame f, out float kappa)
+        internal static bool TryReliableKappa(in PoseFrame f, out float kappa)
         {
             kappa = 0f;
             float aspect = f.Aspect;

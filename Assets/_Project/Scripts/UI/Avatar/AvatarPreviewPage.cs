@@ -43,7 +43,7 @@ namespace PushStars.UI
         public void Present(int index)
         {
             _index = index;
-            Preview.SetPrefab(Prefabs[index]);
+            Preview.SetPrefab(index < Prefabs.Length ? Prefabs[index] : AvatarCatalog.LoadPrefab(index));
             Name.text = AvatarCollectionScreen.AvatarName(index);
             Refresh();
         }

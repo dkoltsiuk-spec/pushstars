@@ -393,5 +393,17 @@ namespace PushStars.CV
         public const float ClapRepBeforeTakeoffSec = 0.6f;
         /// <summary>…or, if the top only latches on landing, to a rep credited this long after it.</summary>
         public const float ClapRepAfterLandingSec = 0.4f;
+
+        // ── Left the push-up position mid-set (PushupPostureMonitor) ──
+        // Same recordings: a push-up flight keeps the wrists up for 0.07–0.20 s; kneeling to slap
+        // or clap 0.40–0.67 s; standing up — for good. κ peaks at 0.91 on a plank top and 1.08 at
+        // the apex of a flight, and reads 1.35–1.76 on an upright body.
+        /// <summary>Evidence held this long = the player sat or stood up. Above any flight, well
+        /// under the armer's grace — which a bent elbow freezes for <see cref="MaxRepSeconds"/>.</summary>
+        public const float PostureLeftHoldSec = 0.5f;
+        /// <summary>κ at/above which the torso counts as upright…</summary>
+        public const float PostureUprightKappa = 1.20f;
+        /// <summary>…and below which it is horizontal again.</summary>
+        public const float PostureUprightReleaseKappa = 1.00f;
     }
 }

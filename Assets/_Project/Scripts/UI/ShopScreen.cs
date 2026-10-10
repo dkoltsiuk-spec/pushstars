@@ -22,6 +22,10 @@ namespace PushStars.UI
         public static readonly int[] GemAmounts = { 30, 120, 360 };
         public static readonly string[] GemPrices = { "$1.99", "$5.99", "$5.99" };
         private int _openedFrame;
+        // Catalog slot behind each offer card: the authored cards first, then one per hero on sale.
+        private int[] _offerSlots;
+        private const float OfferColumn = 184f, OfferRowGap = 18f;
+        public const int OfferPreviewSlot = 20;
         private ShopEmoteSection _emotes;
         public const string NoticeSaveKey = "shop.seen_notices.v1";
         private ShopNoticeLedger _notices;
@@ -38,6 +42,7 @@ namespace PushStars.UI
                 PlayerPrefs.Save();
             });
             _noticeBadge = EnsureEntryBadge(Entry);
+            AddHeroOffers();
             Entry.onClick.AddListener(Show);
             Back.onClick.AddListener(Hide);
             Home.onClick.AddListener(Hide);
@@ -46,15 +51,15 @@ namespace PushStars.UI
             for (int i = 0; i < Offers.Length; i++)
             {
                 int index = i;
-                Offers[i].onClick.AddListener(() => Preview(index));
-                Info[i].onClick.AddListener(() => Preview(index));
+                Offers[i].onClick.AddListener(() => Preview(_offerSlots[index]));
+                Info[i].onClick.AddListener(() => Preview(_offerSlots[index]));
             }
             for (int i = 0; i < Packs.Length; i++)
             {
                 int index = i;
                 Packs[i].onClick.AddListener(() => ShowPack(index));
             }
-            HideUnlistedOffers();
+            LayoutOffers();
             _emotes = ShopEmoteSection.Install(this);
             Hide();
             RefreshNoticeBadge();
@@ -86,7 +91,7 @@ namespace PushStars.UI
         public List<string> CaptureNotices()
         {
             var notices = new List<string>();
-            for (int i = 0; i < Offers.Length; i++)
+            foreach (int i in _offerSlots ?? System.Array.Empty<int>())
             {
                 var offer = AvatarCatalog.At(i);
                 if (AvatarCatalog.IsListed(i))
@@ -120,29 +125,69 @@ namespace PushStars.UI
             RefreshNoticeBadge();
         }
 
-        /// <summary>Hides offers whose catalog slot is retired. When none are left, the
-        /// SPECIAL OFFERS header (the sibling right above the first offer) goes too and every row
-        /// below moves up into its space, so the shop never shows an empty section.</summary>
-        private void HideUnlistedOffers()
+        /// <summary>Heroes sold for gems or money get an offer card each, copied from the authored
+        /// one: the catalog decides what the shop sells, the scene only says what a card looks like.</summary>
+        private void AddHeroOffers()
         {
-            bool anyListed = false;
+            var slots = new List<int>();
+            for (int i = 0; i < Offers.Length; i++) slots.Add(i);
+            if (Offers.Length > 0)
+                for (int i = Offers.Length; i < AvatarCatalog.All.Length; i++)
+                {
+                    var offer = AvatarCatalog.At(i);
+                    if (!AvatarCatalog.IsListed(i) || (offer.Kind != AvatarPurchaseKind.Gems && offer.Kind != AvatarPurchaseKind.Dollars)) continue;
+                    var prefab = AvatarCatalog.LoadPrefab(i);
+                    if (prefab == null) continue;
+                    var template = Offers[0];
+                    var card = Instantiate(template, template.transform.parent);
+                    card.transform.SetSiblingIndex(template.transform.GetSiblingIndex() + slots.Count);
+                    card.name = offer.Id + "Offer";
+                    card.transform.Find("Name").GetComponent<TextMeshProUGUI>().text = offer.Name;
+                    var preview = card.GetComponentInChildren<AvatarCardPreview>(true);
+                    preview.Slot = OfferPreviewSlot + i;
+                    preview.SetPrefab(prefab);
+                    System.Array.Resize(ref Offers, Offers.Length + 1);
+                    System.Array.Resize(ref Info, Offers.Length);
+                    System.Array.Resize(ref OfferActions, Offers.Length);
+                    Offers[Offers.Length - 1] = card;
+                    Info[Offers.Length - 1] = card.transform.Find("Info").GetComponent<Button>();
+                    OfferActions[Offers.Length - 1] = card.transform.Find("Action").GetComponent<TextMeshProUGUI>();
+                    slots.Add(i);
+                }
+            _offerSlots = slots.ToArray();
+        }
+
+        /// <summary>Lays the listed offers out two to a row from where the first one was authored
+        /// and moves every row below to follow. Offers whose catalog slot is retired are hidden;
+        /// when none are left, the SPECIAL OFFERS header (the sibling right above the first offer)
+        /// goes too, so the shop never shows an empty section.</summary>
+        private void LayoutOffers()
+        {
+            if (Offers.Length == 0) return;
+            var first = (RectTransform)Offers[0].transform;
+            Vector2 origin = first.anchoredPosition;
+            float rowPitch = first.rect.height + OfferRowGap;
+            int shown = 0;
             for (int i = 0; i < Offers.Length; i++)
             {
-                bool listed = AvatarCatalog.IsListed(i);
+                bool listed = AvatarCatalog.IsListed(_offerSlots[i]);
                 Offers[i].gameObject.SetActive(listed);
-                anyListed |= listed;
+                if (!listed) continue;
+                ((RectTransform)Offers[i].transform).anchoredPosition = origin + new Vector2(shown % 2 * OfferColumn, -(shown / 2) * rowPitch);
+                shown++;
             }
-            if (anyListed || Offers.Length == 0) return;
 
-            var first = Offers[0].transform;
             int headerIndex = first.GetSiblingIndex() - 1;
             int nextIndex = first.GetSiblingIndex() + 1;
             while (nextIndex < Content.childCount && System.Array.Exists(Offers, o => o.transform == Content.GetChild(nextIndex))) nextIndex++;
             if (first.parent != Content || headerIndex < 0 || nextIndex >= Content.childCount) return;
 
             var header = (RectTransform)Content.GetChild(headerIndex);
-            float lift = header.anchoredPosition.y - ((RectTransform)Content.GetChild(nextIndex)).anchoredPosition.y;
-            header.gameObject.SetActive(false);
+            // Up over the whole section when it is empty, down by the rows added to it otherwise.
+            float lift = shown == 0
+                ? header.anchoredPosition.y - ((RectTransform)Content.GetChild(nextIndex)).anchoredPosition.y
+                : -((shown + 1) / 2 - 1) * rowPitch;
+            if (shown == 0) header.gameObject.SetActive(false);
             for (int s = nextIndex; s < Content.childCount; s++)
                 ((RectTransform)Content.GetChild(s)).anchoredPosition += new Vector2(0, lift);
             Content.SetSizeWithCurrentAnchors(RectTransform.Axis.Vertical, Mathf.Max(0, Content.rect.height - lift));
@@ -202,9 +247,12 @@ namespace PushStars.UI
             Balance.text = $"{CaseRewards.GemsBalance:N0}";
             if (_emotes != null) _emotes.Refresh();
             for (int i = 0; i < Offers.Length; i++)
-                if (AvatarCatalog.IsListed(i))
-                    OfferActions[i].text = Collection.IsLocked(i) ? AvatarCollectionScreen.PriceLabel(i)
-                    : Collection.IsSelected(i) ? "SELECTED" : "OWNED";
+            {
+                int slot = _offerSlots[i];
+                if (AvatarCatalog.IsListed(slot))
+                    OfferActions[i].text = Collection.IsLocked(slot) ? AvatarCollectionScreen.PriceLabel(slot)
+                    : Collection.IsSelected(slot) ? "SELECTED" : "OWNED";
+            }
         }
 
         public void ShowPack(int index)

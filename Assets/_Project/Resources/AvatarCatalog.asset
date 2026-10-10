@@ -16,6 +16,7 @@ MonoBehaviour:
   - Id: sonic
     Name: RETIRED
     HeadIcon: 
+    Prefab: 
     Kind: 3
     Price: 599
     RequiredCards: 0
@@ -23,6 +24,7 @@ MonoBehaviour:
   - Id: madam-engry
     Name: MADAM ENGRY
     HeadIcon: 
+    Prefab: 
     Kind: 0
     Price: 0
     RequiredCards: 0
@@ -30,6 +32,7 @@ MonoBehaviour:
   - Id: fighter
     Name: FIGHTER
     HeadIcon: 
+    Prefab: 
     Kind: 0
     Price: 0
     RequiredCards: 0
@@ -37,6 +40,7 @@ MonoBehaviour:
   - Id: robot
     Name: ROBOT
     HeadIcon: AvatarCollection/RobotHead
+    Prefab: 
     Kind: 1
     Price: 50000
     RequiredCards: 50
@@ -44,7 +48,64 @@ MonoBehaviour:
   - Id: gladiator
     Name: GLADIATOR
     HeadIcon: AvatarCollection/GladiatorHead
+    Prefab: 
     Kind: 1
     Price: 250000
     RequiredCards: 250
     StoreProductId: 
+  - Id: bogatyr
+    Name: BOGATYR
+    HeadIcon: AvatarCollection/BogatyrHead
+    Prefab: Heroes/Bogatyr
+    Kind: 1
+    Price: 100000
+    RequiredCards: 100
+    StoreProductId: 
+  - Id: viking
+    Name: VIKING
+    HeadIcon: AvatarCollection/VikingHead
+    Prefab: Heroes/Viking
+    Kind: 1
+    Price: 500000
+    RequiredCards: 500
+    StoreProductId: 
+  - Id: zombie
+    Name: ZOMBIE
+    HeadIcon: 
+    Prefab: Heroes/Zombie
+    Kind: 2
+    Price: 500
+    RequiredCards: 0
+    StoreProductId: 
+  - Id: tigress
+    Name: TIGRESS
+    HeadIcon: 
+    Prefab: Heroes/Tigress
+    Kind: 2
+    Price: 800
+    RequiredCards: 0
+    StoreProductId: 
+  - Id: skinny
+    Name: SKINNY
+    HeadIcon: 
+    Prefab: Heroes/Skinny
+    Kind: 3
+    Price: 699
+    RequiredCards: 0
+    StoreProductId: hero_skinny
+  - Id: chubby
+    Name: CHUBBY
+    HeadIcon: 
+    Prefab: Heroes/Chubby
+    Kind: 3
+    Price: 699
+    RequiredCards: 0
+    StoreProductId: hero_chubby
+  - Id: skeleton
+    Name: SKELETON
+    HeadIcon: 
+    Prefab: Heroes/Skeleton
+    Kind: 3
+    Price: 999
+    RequiredCards: 0
+    StoreProductId: hero_skeleton

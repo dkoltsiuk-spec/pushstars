@@ -55,5 +55,10 @@ namespace PushStars.CV.AntiCheat
         /// <summary>Frontal κ (body incline) outside [−0.35, 0.35] — user is kneeling-tall,
         /// sitting, standing or piked rather than horizontal.</summary>
         BodyIncline,
+
+        /// <summary>Mid-set: <see cref="PushupPostureMonitor"/> saw the hands leave the floor or
+        /// the torso come upright for longer than any push-up flight — the player sat or stood up.
+        /// Only ever a disarm reason; the next frame's predicate reports what is wrong now.</summary>
+        LeftPushupPose,
     }
 }

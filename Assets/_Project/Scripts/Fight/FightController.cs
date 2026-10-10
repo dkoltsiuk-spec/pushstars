@@ -284,6 +284,7 @@ namespace PushStars.Fight
             int index = totalReps - _baselineReps - 1;
             if (index < 0 || index >= _repForms.Count) return;
             _clapReps++;
+            ShowClapImpact();
             if (BossHealth == null) return;
             BossHealth.PlayerClapStrike(_repForms[index]); CheckBossKnockout();
         }
@@ -477,6 +478,7 @@ namespace PushStars.Fight
             _repTimes.Clear();
             _motion = new GhostMotionClip();
             _clapReps = _lateDeficit = 0;
+            BeginClapImpact();
             _opponent?.Begin();
             _hud.FlashGo();
         }
@@ -494,6 +496,7 @@ namespace PushStars.Fight
                     _lateDeficit = Mathf.Max(_lateDeficit, _opponent.Reps - _repTimes.Count);
             }
             if (_bossEnding) return;
+            TickClapTakeoff();
             _hud.SetPlayerForm(_session.Form);
             _hud.SetPlayerTempo(_session.TempoRpm);
 
@@ -751,6 +754,7 @@ namespace PushStars.Fight
             PlankRejectReason.KneesBent           => "EXTEND YOUR BODY — move knees back",
             PlankRejectReason.NotAtTop            => "STRAIGHTEN YOUR ARMS",
             PlankRejectReason.WristsAirborne      => "PLACE YOUR PALMS ON THE FLOOR",
+            PlankRejectReason.LeftPushupPose      => "GET INTO A PUSH-UP POSITION",
             _                                     => "GET INTO A PLANK IN FRONT OF THE CAMERA",
         };
     }

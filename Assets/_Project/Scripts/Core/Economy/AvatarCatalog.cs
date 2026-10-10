@@ -15,6 +15,8 @@ namespace PushStars.Core
     public sealed class AvatarOffer
     {
         public string Id, Name, HeadIcon;
+        [Tooltip("Resources path of the body prefab. Empty for the heroes the home and fight stages reference directly.")]
+        public string Prefab;
         public AvatarPurchaseKind Kind;
         [Tooltip("Aura heroes: peak Aura goal. Gems: price. Dollars: price in cents.")]
         [Min(0)] public int Price;
@@ -47,12 +49,25 @@ namespace PushStars.Core
         private const string RetiredId = "sonic";
         public static bool IsListed(int index) => At(index) is { } offer && offer.Id != RetiredId;
 
+        /// <summary>Slots from here on carry their own <see cref="AvatarOffer.Prefab"/> and are
+        /// equipped by slot number; the slots below are the bodies the stages hold by reference.</summary>
+        public const int FirstPrefabSlot = 5;
+        public static GameObject LoadPrefab(int index)
+            => At(index) is { } offer && !string.IsNullOrEmpty(offer.Prefab) ? Resources.Load<GameObject>(offer.Prefab) : null;
+
         public static AvatarOffer[] Defaults() => new[] {
             new AvatarOffer { Id = RetiredId, Name = "RETIRED", Kind = AvatarPurchaseKind.Dollars, Price = 599 },
             new AvatarOffer { Id = "madam-engry", Name = "MADAM ENGRY", Kind = AvatarPurchaseKind.Included },
             new AvatarOffer { Id = "fighter", Name = "FIGHTER", Kind = AvatarPurchaseKind.Included },
             new AvatarOffer { Id = "robot", Name = "ROBOT", Kind = AvatarPurchaseKind.Aura, Price = 50000, RequiredCards = 50, HeadIcon = "AvatarCollection/RobotHead" },
-            new AvatarOffer { Id = "gladiator", Name = "GLADIATOR", Kind = AvatarPurchaseKind.Aura, Price = 250000, RequiredCards = 250, HeadIcon = "AvatarCollection/GladiatorHead" }
+            new AvatarOffer { Id = "gladiator", Name = "GLADIATOR", Kind = AvatarPurchaseKind.Aura, Price = 250000, RequiredCards = 250, HeadIcon = "AvatarCollection/GladiatorHead" },
+            new AvatarOffer { Id = "bogatyr", Name = "BOGATYR", Kind = AvatarPurchaseKind.Aura, Price = 100000, RequiredCards = 100, HeadIcon = "AvatarCollection/BogatyrHead", Prefab = "Heroes/Bogatyr" },
+            new AvatarOffer { Id = "viking", Name = "VIKING", Kind = AvatarPurchaseKind.Aura, Price = 500000, RequiredCards = 500, HeadIcon = "AvatarCollection/VikingHead", Prefab = "Heroes/Viking" },
+            new AvatarOffer { Id = "zombie", Name = "ZOMBIE", Kind = AvatarPurchaseKind.Gems, Price = 500, Prefab = "Heroes/Zombie" },
+            new AvatarOffer { Id = "tigress", Name = "TIGRESS", Kind = AvatarPurchaseKind.Gems, Price = 800, Prefab = "Heroes/Tigress" },
+            new AvatarOffer { Id = "skinny", Name = "SKINNY", Kind = AvatarPurchaseKind.Dollars, Price = 699, StoreProductId = "hero_skinny", Prefab = "Heroes/Skinny" },
+            new AvatarOffer { Id = "chubby", Name = "CHUBBY", Kind = AvatarPurchaseKind.Dollars, Price = 699, StoreProductId = "hero_chubby", Prefab = "Heroes/Chubby" },
+            new AvatarOffer { Id = "skeleton", Name = "SKELETON", Kind = AvatarPurchaseKind.Dollars, Price = 999, StoreProductId = "hero_skeleton", Prefab = "Heroes/Skeleton" }
         };
     }
 }

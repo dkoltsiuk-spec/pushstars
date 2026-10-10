@@ -13,6 +13,9 @@ Balance changes, retired offers and emotes without a playable clip do not notify
 `CheckInteractions()` checks the actual entry and badge in Play Mode without
 changing player notice saves or the wallet.
 
+- SPECIAL OFFERS lists every catalog hero sold for gems or money (October 2026: Zombie,
+  Tigress, Skinny, Chubby, Skeleton), built at runtime from the authored offer card; see
+  avatar-collection.md. The original offer below is retired.
 - One special offer: Sonic, $5.99. The shared AvatarCatalog marks Sonic as Dollars;
   the collection, premium filter, home roster and fight selection respect ownership.
   Madam Engry and Fighter remain included.

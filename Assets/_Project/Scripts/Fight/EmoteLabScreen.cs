@@ -192,8 +192,8 @@ namespace PushStars.Fight
 
         private IEnumerator StartCamera()
         {
-            yield return Application.RequestUserAuthorization(UserAuthorization.WebCam);
-            if (!Application.HasUserAuthorization(UserAuthorization.WebCam)) { Say("Camera permission denied."); yield break; }
+            yield return PushStars.CV.CameraPermission.Request();
+            if (!PushStars.CV.CameraPermission.Granted) { Say("Camera permission denied."); yield break; }
             string device = null;
             foreach (var d in WebCamTexture.devices)
                 if (d.isFrontFacing == _front) { device = d.name; break; }

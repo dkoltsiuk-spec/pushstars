@@ -25,10 +25,15 @@ namespace PushStars.UI
         private System.Action _returnToSource;
         private Material _selectedGlowMaterial;
         private readonly Dictionary<Image, Material> _originalGlowMaterials = new Dictionary<Image, Material>();
+        private AvatarCardPreview[] _previews;
+        private readonly Vector3[] _corners = new Vector3[4];
         public bool IsOpen => Overlay != null && Overlay.activeSelf;
 
         private void Awake()
         {
+            AddCatalogCards();
+            _previews = new AvatarCardPreview[Cards.Length];
+            for (int i = 0; i < Cards.Length; i++) _previews[i] = Cards[i].GetComponentInChildren<AvatarCardPreview>(true);
             Back.onClick.AddListener(Hide);
             Home.onClick.AddListener(Hide);
             InfoClose.onClick.AddListener(CloseInfo);
@@ -47,10 +52,58 @@ namespace PushStars.UI
             InfoPanel.SetActive(false);
         }
 
+        /// <summary>The scene authors the first cards. Every later catalog slot gets a copy of the
+        /// last authored one, so a new hero is a catalog row and a prefab, not a scene edit.</summary>
+        private void AddCatalogCards()
+        {
+            int authored = Cards.Length, total = AvatarCatalog.All.Length;
+            if (authored == 0 || total <= authored) return;
+            var template = Cards[authored - 1];
+            System.Array.Resize(ref Cards, total);
+            System.Array.Resize(ref InfoButtons, total);
+            System.Array.Resize(ref Plates, total);
+            System.Array.Resize(ref Footers, total);
+            System.Array.Resize(ref Actions, total);
+            for (int i = authored; i < total; i++)
+            {
+                var card = Instantiate(template, template.transform.parent);
+                card.name = "Card" + i;
+                card.transform.Find("Name").GetComponent<TextMeshProUGUI>().text = AvatarName(i);
+                var preview = card.GetComponentInChildren<AvatarCardPreview>(true);
+                // Each preview owns a patch of world by slot; 8 and 20+ are the detail page and the shop.
+                preview.Slot = CatalogCardSlot + i;
+                preview.SetPrefab(AvatarCatalog.LoadPrefab(i));
+                Cards[i] = card;
+                InfoButtons[i] = card.transform.Find("Info").GetComponent<Button>();
+                Plates[i] = card.image;
+                Footers[i] = card.transform.Find("Footer").GetComponent<Image>();
+                Actions[i] = card.transform.Find("Action").GetComponent<TextMeshProUGUI>();
+            }
+        }
+
+        public const int CatalogCardSlot = 40;
+
+        /// <summary>Every card renders its hero through a camera of its own; only the cards
+        /// inside the scroll window need theirs running.</summary>
+        private void CullPreviews()
+        {
+            if (!(Grid.parent is RectTransform viewport)) return;
+            viewport.GetWorldCorners(_corners);
+            float bottom = _corners[0].y, top = _corners[1].y;
+            for (int i = 0; i < Cards.Length; i++)
+            {
+                if (_previews[i] == null || !Cards[i].gameObject.activeInHierarchy) continue;
+                ((RectTransform)Cards[i].transform).GetWorldCorners(_corners);
+                bool visible = _corners[1].y >= bottom && _corners[0].y <= top;
+                if (_previews[i].enabled != visible) _previews[i].enabled = visible;
+            }
+        }
+
         private void Update()
         {
             if (!IsOpen) return;
             Fit();
+            CullPreviews();
             if (Input.GetKeyDown(KeyCode.Escape))
             {
                 if (InfoPanel.activeSelf) CloseInfo();
@@ -159,7 +212,8 @@ namespace PushStars.UI
         public void Select(int index)
         {
             if (IsLocked(index) || !AvatarCatalog.IsListed(index)) return;
-            if (index == 0) Roster.SetSonic();
+            if (index >= AvatarCatalog.FirstPrefabSlot) Roster.SetHero(index);
+            else if (index == 0) Roster.SetSonic();
             else if (index == 3) Roster.SetRobot();
             else if (index == 4) Roster.SetGladiator();
             else Roster.SetGender(index == 1 ? CharacterGender.Female : CharacterGender.Male);
@@ -200,7 +254,7 @@ namespace PushStars.UI
             }
         }
 
-        public bool IsSelected(int index) => !IsLocked(index) && Roster != null && (Roster.IsRobot ? index == 3 : Roster.IsGladiator ? index == 4 : Roster.IsSonic ? index == 0 :
+        public bool IsSelected(int index) => !IsLocked(index) && Roster != null && (Roster.HeroSlot != 0 ? index == Roster.HeroSlot : Roster.IsRobot ? index == 3 : Roster.IsGladiator ? index == 4 : Roster.IsSonic ? index == 0 :
             index == 1 && Roster.Gender == CharacterGender.Female || index == 2 && Roster.Gender == CharacterGender.Male);
 
         private void OnDestroy()
@@ -241,7 +295,7 @@ namespace PushStars.UI
                 "Robot is coming to your collection.\n\nPreview only for now.",
                 "Gladiator is coming to your collection.\n\nPreview only for now." };
             InfoTitle.text = AvatarName(index);
-            InfoBody.text = descriptions[index];
+            InfoBody.text = descriptions[Mathf.Min(index, descriptions.Length - 1)];
             InfoPanel.SetActive(true);
         }
 

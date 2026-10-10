@@ -118,6 +118,8 @@ namespace PushStars.Editor
         /// and the one they see on the pre-duel card are the same character, and it should be
         /// standing the same way in both.</summary>
         public static string IdleFbxPath => $"{AnimDir}/{Clips.First(c => c.state == IdleState).file}";
+        /// <summary>The idle as the game plays it. See <see cref="BuildOpenHandIdle"/>.</summary>
+        public const string OpenHandIdlePath = AnimDir + "/Idle.anim";
         public static string VictoryFbxPath => $"{AnimDir}/{Clips.First(c => c.state == "Victory").file}";
 
         /// <summary>The stylised character shader (flat shading + inverted-hull outline), at
@@ -1802,9 +1804,76 @@ namespace PushStars.Editor
         }
 
         private static AnimationClip LoadClip(string fbxPath)
+            => fbxPath == IdleFbxPath && AssetDatabase.LoadAssetAtPath<AnimationClip>(OpenHandIdlePath) is { } openHand
+                ? openHand
+                : LoadSourceClip(fbxPath);
+
+        private static AnimationClip LoadSourceClip(string fbxPath)
             => AssetDatabase.LoadAllAssetsAtPath(fbxPath)
                             .OfType<AnimationClip>()
                             .FirstOrDefault(c => !c.name.StartsWith("__preview"));
+
+        /// <summary>The idle every body rests in: the Mixamo take with its fist opened
+        /// (see <see cref="BuildOpenHandIdle"/>), or the take itself until that has been built.</summary>
+        public static AnimationClip IdleClip() => LoadClip(IdleFbxPath);
+
+        /// <summary>The idle is Mixamo's "standing with a briefcase", so its right hand is a fist
+        /// around a handle that is not there. This writes a copy of the take whose right-hand finger
+        /// muscles are the left hand's — finger muscles mean the same thing on both sides, so the
+        /// copy is the mirror image — and points every controller that played the take at it.
+        /// The asset is rewritten in place, so those references survive a rebuild.</summary>
+        [MenuItem("Tools/Push Stars/Character/Open the idle's fist", priority = 326)]
+        public static void BuildOpenHandIdle()
+        {
+            var source = LoadSourceClip(IdleFbxPath);
+            if (source == null) { Fail($"No idle take in {IdleFbxPath}."); return; }
+
+            var clip = AssetDatabase.LoadAssetAtPath<AnimationClip>(OpenHandIdlePath);
+            if (clip == null)
+            {
+                clip = Object.Instantiate(source);
+                clip.name = IdleState;
+                AssetDatabase.CreateAsset(clip, OpenHandIdlePath);
+            }
+            else
+            {
+                EditorUtility.CopySerialized(source, clip);
+                clip.name = IdleState;
+            }
+
+            const string fist = "RightHand.", open = "LeftHand.";
+            int fingers = 0;
+            foreach (var binding in AnimationUtility.GetCurveBindings(source))
+            {
+                if (!binding.propertyName.StartsWith(fist)) continue;
+                var mirrored = binding;
+                mirrored.propertyName = open + binding.propertyName.Substring(fist.Length);
+                var curve = AnimationUtility.GetEditorCurve(source, mirrored);
+                if (curve == null) continue;
+                AnimationUtility.SetEditorCurve(clip, binding, curve);
+                fingers++;
+            }
+            EditorUtility.SetDirty(clip);
+
+            int states = 0;
+            foreach (string path in AssetDatabase.FindAssets("t:AnimatorController").Select(AssetDatabase.GUIDToAssetPath))
+            {
+                var controller = AssetDatabase.LoadAssetAtPath<AnimatorController>(path);
+                if (controller == null) continue;
+                foreach (var layer in controller.layers)
+                    foreach (var child in layer.stateMachine.states)
+                    {
+                        if (child.state.motion != source) continue;
+                        child.state.motion = clip;
+                        EditorUtility.SetDirty(child.state);
+                        EditorUtility.SetDirty(controller);
+                        states++;
+                    }
+            }
+            AssetDatabase.SaveAssets();
+            Debug.Log($"[MainCharacter] Idle with the fist opened: {fingers} finger curve(s) mirrored " +
+                      $"from the left hand, {states} controller state(s) repointed.");
+        }
 
         private static Bounds InstanceBounds(GameObject go)
         {

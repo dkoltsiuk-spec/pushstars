@@ -209,6 +209,7 @@ namespace PushStars.CV
                 PlankRejectReason.KneesBent           => "EXTEND YOUR BODY — move knees back",
                 PlankRejectReason.NotAtTop            => "STRAIGHTEN YOUR ARMS",
                 PlankRejectReason.WristsAirborne      => "PLACE YOUR PALMS ON THE FLOOR",
+                PlankRejectReason.LeftPushupPose      => "GET INTO A PUSH-UP POSITION",
                 _                                     => "GET INTO A PLANK",
             };
         }

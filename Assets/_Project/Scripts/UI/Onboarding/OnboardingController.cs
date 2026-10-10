@@ -5,6 +5,7 @@ using UnityEngine.Events;
 using UnityEngine.SceneManagement;
 using UnityEngine.UI;
 using PushStars.Core;
+using PushStars.CV;
 using PushStars.OTA;
 
 namespace PushStars.UI
@@ -234,10 +235,10 @@ namespace PushStars.UI
         {
             if (_allowButton != null) _allowButton.interactable = false;
 
-            if (!Application.HasUserAuthorization(UserAuthorization.WebCam))
-                yield return Application.RequestUserAuthorization(UserAuthorization.WebCam);
+            if (!CameraPermission.Granted)
+                yield return CameraPermission.Request();
 
-            if (!Application.HasUserAuthorization(UserAuthorization.WebCam))
+            if (!CameraPermission.Granted)
                 Debug.LogWarning("[Onboarding] Camera permission refused — asked again before the level test.");
 
             if (_allowButton != null) _allowButton.interactable = true;
@@ -250,7 +251,7 @@ namespace PushStars.UI
         private void RefreshCameraStatus()
         {
             if (_cameraStatus == null) return;
-            _cameraStatus.text = Application.HasUserAuthorization(UserAuthorization.WebCam)
+            _cameraStatus.text = CameraPermission.Granted
                 ? ""
                 : "Camera access denied — reps cannot be counted";
         }
@@ -282,10 +283,10 @@ namespace PushStars.UI
             _starting = true;
             if (_nextLabel != null) _nextLabel.text = "…";
 
-            if (!Application.HasUserAuthorization(UserAuthorization.WebCam))
-                yield return Application.RequestUserAuthorization(UserAuthorization.WebCam);
+            if (!CameraPermission.Granted)
+                yield return CameraPermission.Request();
 
-            if (!Application.HasUserAuthorization(UserAuthorization.WebCam))
+            if (!CameraPermission.Granted)
                 Debug.LogWarning("[Onboarding] Camera permission denied — the level test will not count reps.");
 
             OnboardingState.IntroSeen = true;
