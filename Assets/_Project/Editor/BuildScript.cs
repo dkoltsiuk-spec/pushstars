@@ -140,7 +140,8 @@ namespace PushStars.Editor
         /// the dependency resolver only prepare the Android side while Android is the active platform.
         ///   Unity -batchmode -buildTarget Android -projectPath . -executeMethod PushStars.Editor.BuildScript.BuildAndroid
         /// Writes an APK to <c>-buildOutput</c>, or an AAB for Google Play with <c>-appBundle</c>.
-        /// Without a keystore in Player Settings the result is signed with the debug key.
+        /// Signed with the upload key from <see cref="AndroidSigningFile"/> (or the PUSHSTARS_KEYSTORE_*
+        /// env vars on CI); without one an APK falls back to the debug key, and an AAB fails.
         /// </summary>
         public static void BuildAndroid()
         {
@@ -153,6 +154,8 @@ namespace PushStars.Editor
             ResolveAndroidDependencies();
 
             bool appBundle = HasArg("-appBundle");
+            if (!ConfigureAndroidSigning() && appBundle)
+                throw new BuildFailedException($"[Build] No upload keystore ({AndroidSigningFile}); Google Play rejects a debug-signed bundle.");
             string outPath = GetArg("-buildOutput") ?? "Builds/Android/PushupStars" + (appBundle ? ".aab" : ".apk");
             Directory.CreateDirectory(Path.GetDirectoryName(Path.GetFullPath(outPath)));
             EditorUserBuildSettings.buildAppBundle = appBundle;
@@ -166,7 +169,9 @@ namespace PushStars.Editor
                 options          = HasArg("-botRecordingTest") ? BuildOptions.Development : BuildOptions.None,
             };
 
-            var report = BuildPipeline.BuildPlayer(options);
+            BuildReport report;
+            try { report = BuildPipeline.BuildPlayer(options); }
+            finally { ClearAndroidSigning(); }
             if (report.summary.result != BuildResult.Succeeded)
             {
                 Debug.LogError($"[Build] Android build FAILED: {report.summary.result} ({report.summary.totalErrors} errors)");
@@ -310,6 +315,64 @@ namespace PushStars.Editor
             PlayerSettings.SetIl2CppCompilerConfiguration(NamedBuildTarget.Android, Il2CppCompilerConfiguration.Release);
 
             ConfigureRuntimePerformance();
+        }
+
+        /// <summary>Gitignored with the rest of <c>signing/</c>; key=value lines, storeFile relative to it.</summary>
+        private const string AndroidSigningFile = "signing/android/keystore.properties";
+
+        /// <summary>
+        /// Points the player at the upload keystore for this build only. Its SHA-1/256 are registered
+        /// on the Firebase Android app — Google sign-in refuses an app signed with any other key.
+        /// CI supplies PUSHSTARS_KEYSTORE_PATH / _PASS / _ALIAS / _KEY_PASS instead of the file.
+        /// </summary>
+        private static bool ConfigureAndroidSigning()
+        {
+            var values = new System.Collections.Generic.Dictionary<string, string>();
+            string path = System.Environment.GetEnvironmentVariable("PUSHSTARS_KEYSTORE_PATH");
+            if (!string.IsNullOrEmpty(path))
+            {
+                values["storeFile"]     = path;
+                values["storePassword"] = System.Environment.GetEnvironmentVariable("PUSHSTARS_KEYSTORE_PASS");
+                values["keyAlias"]      = System.Environment.GetEnvironmentVariable("PUSHSTARS_KEYSTORE_ALIAS");
+                values["keyPassword"]   = System.Environment.GetEnvironmentVariable("PUSHSTARS_KEYSTORE_KEY_PASS");
+            }
+            else if (File.Exists(AndroidSigningFile))
+            {
+                foreach (var line in File.ReadAllLines(AndroidSigningFile))
+                {
+                    int eq = line.IndexOf('=');
+                    if (eq > 0) values[line.Substring(0, eq).Trim()] = line.Substring(eq + 1).Trim();
+                }
+                if (values.TryGetValue("storeFile", out var file))
+                    values["storeFile"] = Path.Combine(Path.GetDirectoryName(Path.GetFullPath(AndroidSigningFile)), file);
+            }
+
+            if (!values.TryGetValue("storeFile", out var store) || !File.Exists(store))
+            {
+                Debug.LogWarning("[Build] No upload keystore — signing with the debug key. Google sign-in will not work in this build.");
+                return false;
+            }
+
+            values.TryGetValue("storePassword", out var storePass);
+            values.TryGetValue("keyAlias", out var alias);
+            values.TryGetValue("keyPassword", out var keyPass);
+            PlayerSettings.Android.useCustomKeystore = true;
+            PlayerSettings.Android.keystoreName      = store;
+            PlayerSettings.Android.keystorePass      = storePass;
+            PlayerSettings.Android.keyaliasName      = alias;
+            PlayerSettings.Android.keyaliasPass      = string.IsNullOrEmpty(keyPass) ? storePass : keyPass;
+            Debug.Log($"[Build] Signing with upload keystore {Path.GetFileName(store)} (alias {alias}).");
+            return true;
+        }
+
+        /// <summary>Keeps the local keystore path and passwords out of the committed ProjectSettings.</summary>
+        private static void ClearAndroidSigning()
+        {
+            PlayerSettings.Android.useCustomKeystore = false;
+            PlayerSettings.Android.keystoreName      = "";
+            PlayerSettings.Android.keystorePass      = "";
+            PlayerSettings.Android.keyaliasName      = "";
+            PlayerSettings.Android.keyaliasPass      = "";
         }
 
         /// <summary>
