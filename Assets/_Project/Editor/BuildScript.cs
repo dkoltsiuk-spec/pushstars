@@ -413,6 +413,11 @@ namespace PushStars.Editor
         /// </summary>
         private static void ConfigureRuntimePerformance()
         {
+            // Not performance, but shared by both platforms and just as invisible in the editor: the
+            // project shipped PortraitUpsideDown since the skeleton. Face ID iPhones ignore it; Android
+            // turns the whole app over.
+            PlayerSettings.defaultInterfaceOrientation = UIOrientation.Portrait;
+
             // The characters are ~50k-vertex skinned meshes and one of them is on screen at all
             // times, so skinning them on the CPU is the single most expensive thing the app does
             // per frame. Metal does it for free on the GPU.
