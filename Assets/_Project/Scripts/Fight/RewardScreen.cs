@@ -360,6 +360,7 @@ namespace PushStars.Fight
         /// when it won and a GG when it lost, so the button is discovered in context.</summary>
         private void AttachEmotes()
         {
+            if (!EmoteCatalog.Enabled) return;
             var ui = _summaryUi;
             if (ui.Avatar == null || ui.Continue == null || _outcome == Outcome.Solo) return;
             Animator Body(FightAvatar a) => a != null && a.isActiveAndEnabled && a.Character != null

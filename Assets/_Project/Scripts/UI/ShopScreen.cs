@@ -60,7 +60,7 @@ namespace PushStars.UI
                 Packs[i].onClick.AddListener(() => ShowPack(index));
             }
             LayoutOffers();
-            _emotes = ShopEmoteSection.Install(this);
+            if (EmoteCatalog.Enabled) _emotes = ShopEmoteSection.Install(this);
             Hide();
             RefreshNoticeBadge();
         }
@@ -99,7 +99,7 @@ namespace PushStars.UI
             }
             for (int i = 0; i < Packs.Length; i++)
                 notices.Add($"gems:{GemAmounts[i]}:{GemPrices[i]}");
-            foreach (var emote in EmoteCatalog.All)
+            foreach (var emote in EmoteCatalog.Enabled ? EmoteCatalog.All : System.Array.Empty<EmoteDef>())
             {
                 if (emote.Clip == null) continue;
                 notices.Add($"emote:{emote.Id}:{emote.Rarity}:{emote.Price}");

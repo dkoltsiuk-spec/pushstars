@@ -46,6 +46,10 @@ namespace PushStars.Core
     {
         public EmoteDef[] Emotes = new EmoteDef[0];
 
+        /// <summary>Emotes are switched off until they are reworked: no emote button on the
+        /// preparation and result screens, no shop section, no EMOTE LAB. Owned emotes stay in the save.</summary>
+        public static bool Enabled => false;
+
         private static EmoteDef[] _all;
         public static EmoteDef[] All => _all ?? (_all = EditorPreview(Resources.Load<EmoteCatalog>("EmoteCatalog")?.Emotes ?? new EmoteDef[0]));
 

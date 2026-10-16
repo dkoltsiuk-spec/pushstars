@@ -66,6 +66,7 @@ namespace PushStars.Fight
         /// portrait shows their render, the same test <see cref="DuelReadyPanel"/> uses.</summary>
         private void AttachEmotes(bool opponentEmotes)
         {
+            if (!EmoteCatalog.Enabled) return;
             var host = _panel.Root.transform as RectTransform;
             if (host == null) return;
             FightAvatar Side(bool opponent) => System.Array.Find(

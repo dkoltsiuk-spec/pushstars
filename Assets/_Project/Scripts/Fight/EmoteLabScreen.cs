@@ -62,7 +62,7 @@ namespace PushStars.Fight
         [RuntimeInitializeOnLoadMethod(RuntimeInitializeLoadType.AfterSceneLoad)]
         private static void Install()
         {
-            if (_instance != null) return;
+            if (_instance != null || !EmoteCatalog.Enabled) return;
             var root = new GameObject("EmoteLab");
             DontDestroyOnLoad(root);
             _instance = root.AddComponent<EmoteLabScreen>();

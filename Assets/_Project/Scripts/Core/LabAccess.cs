@@ -3,7 +3,7 @@ using UnityEngine;
 namespace PushStars.Core
 {
     /// <summary>
-    /// Who sees the private authoring tools on the home screen (BOT LAB, EMOTE LAB).
+    /// Who sees the private authoring tools on the home screen (BOT LAB; EMOTE LAB while emotes are on).
     ///
     /// <para><b>Turn <see cref="OpenToEveryone"/> off before the app goes to a store.</b> While the
     /// owner is the only tester the labs show in every build, so an ordinary (fast) release build
