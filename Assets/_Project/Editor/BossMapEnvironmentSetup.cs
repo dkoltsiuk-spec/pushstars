@@ -34,7 +34,7 @@ namespace PushStars.Editor
             var forest = (RectTransform)c.MapContent.Find("ForestChapter");
             var forestBiome = forest.GetComponent<BossMapBiome>() ?? forest.gameObject.AddComponent<BossMapBiome>();
             forestBiome.LightAnchors = new[] { (RectTransform)forest.Find("ForestIsland") }
-                .Concat(c.Nodes.Select(n => (RectTransform)n.Button.transform)).ToArray();
+                .Concat(c.Nodes.Where(n => n.Button.transform.IsChildOf(forest)).Select(n => (RectTransform)n.Button.transform)).ToArray();
             var ice = c.MapContent.Find("IceChapter") as RectTransform;
             if (ice == null)
             {

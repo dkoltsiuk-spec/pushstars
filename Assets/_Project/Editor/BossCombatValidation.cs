@@ -52,6 +52,16 @@ namespace PushStars.Editor
             }
         }
 
+        /// <summary>Same island to arena mapping as BossCombatScreen's preparation backdrop.</summary>
+        private static string IslandArena()
+        {
+            string chapter = BossCatalog.ChapterOf(BossCatalog.Current.Id)?.Id;
+            return chapter == "lava" ? "lava-forge" : chapter == "ice" ? "ice-temple" : "jungle";
+        }
+
+        /// <summary>Forest layers and petals belong to the first island's battle only.</summary>
+        private static bool InForest(BossCombatScreen c) => c.Forest != null && IslandArena() == "jungle";
+
         private static void CheckHealth()
         {
             foreach (int form in new[] { 0, 50, 100 })
@@ -114,7 +124,7 @@ namespace PushStars.Editor
                 {
                     var backdrop = c.Root.GetComponentInChildren<PreparationArenaBackdrop>(true);
                     Require(backdrop != null && backdrop.transform.Find("OpponentArena").GetComponent<RawImage>().texture
-                        == ArenaCatalog.Get("jungle").Home.texture, "Boss uses PVP arena backdrop");
+                        == ArenaCatalog.Get(IslandArena()).Home.texture, "Boss uses its island's PVP arena backdrop");
                     Require(backdrop.transform.Find("PlayerArena").GetComponent<RawImage>().texture
                         == backdrop.transform.Find("OpponentArena").GetComponent<RawImage>().texture,
                         "Both preparation halves use the boss location");
@@ -163,7 +173,7 @@ namespace PushStars.Editor
                     finally { foreach (var skin in snapshots) skin.Dispose(); }
                     correction.Apply(0f); c.PlayerStage.StageCamera.Render();
                 }
-                if (!c.Preparation && c.Forest != null) GoblinForestValidation.Check(c,camera,output,Capture);
+                if (!c.Preparation && InForest(c)) GoblinForestValidation.Check(c,camera,output,Capture);
                 if (!c.Preparation)
                 {
                     var health = (BossCombatState)typeof(BossCombatScreen).GetField("_health",Private).GetValue(c);
@@ -171,7 +181,7 @@ namespace PushStars.Editor
                     Require(Mathf.Abs(c.BossHpFill.FillAmount-(maxHp-100f)/maxHp)<.001f && c.PlayerHpFill.FillAmount==.925f, "Actual HP drives fills");
                     Require(c.DamageLabels.Count(x => x.gameObject.activeSelf)==2, "Both damage numbers shown");
                     Capture(camera,output,name+"-damage");
-                    if (c.Forest != null && c.Forest.Effects != null)
+                    if (InForest(c) && c.Forest.Effects != null)
                     {
                         var fx = c.Forest.Effects;
                         Require(fx.HitBursts == 1, "Only boss damage triggers petals; player damage does not");
@@ -187,10 +197,10 @@ namespace PushStars.Editor
                     rect.sizeDelta = size; camera.orthographicSize = size.y * .5f;
                     var resized = new RenderTexture(size.x * 2, size.y * 2, 24); textures.Add(resized); camera.targetTexture = resized;
                     Canvas.ForceUpdateCanvases(); c.Refresh(0);
-                    if (!c.Preparation && c.Forest != null) GoblinForestValidation.CheckLayout(c);
+                    if (!c.Preparation && InForest(c)) GoblinForestValidation.CheckLayout(c);
                     Capture(camera, resized, name + (size.x == 320 ? "-small" : "-" + size.x + "x" + size.y));
                 }
-                if (!c.Preparation && c.Forest != null && c.Forest.Effects != null)
+                if (!c.Preparation && InForest(c) && c.Forest.Effects != null)
                 {
                     rect.sizeDelta = new Vector2(390,844); camera.orthographicSize = 422; camera.targetTexture = output;
                     Canvas.ForceUpdateCanvases(); c.Refresh(0);

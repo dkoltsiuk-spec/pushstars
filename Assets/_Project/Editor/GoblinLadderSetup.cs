@@ -13,12 +13,14 @@ namespace PushStars.Editor
     {
         public static void ExpandMap(BossMapController c)
         {
+            // Forest nodes only: later islands own their nodes (BossMapRewardsSetup) and no home plate.
             var nodes = c.Nodes.ToList();
             var template = nodes[0];
             var progress = template.ProgressPlate.transform.parent;
-            while (nodes.Count < BossCatalog.Bosses.Count)
+            int forest = BossCatalog.Chapters[0].Bosses.Count;
+            while (nodes.Count(n => n.ProgressPlate != null) < forest)
             {
-                int index = nodes.Count;
+                int index = nodes.Count(n => n.ProgressPlate != null);
                 var root = Object.Instantiate(template.Button.gameObject, template.Button.transform.parent).transform;
                 root.name = "Boss" + (index + 1);
                 ((RectTransform)root).anchoredPosition = new Vector2(index % 2 == 0 ? -73 : 72, 420 + index * 135);
@@ -33,12 +35,12 @@ namespace PushStars.Editor
                 };
                 var pulse = root.GetComponentInChildren<BossPulseRings>(true);
                 if (pulse != null) pulse.ActiveMarker = node.Fight.gameObject;
-                nodes.Add(node);
+                nodes.Insert(index, node);
             }
             c.Nodes = nodes.ToArray();
             c.FinalGoblin = AssetDatabase.LoadAssetAtPath<Sprite>(GoblinKingSetup.PortraitPath);
             c.FinalLockedGoblin = c.FinalGoblin;
-            for (int i = 0; i < c.Nodes.Length; i++)
+            for (int i = 0; i < forest; i++)
                 c.Nodes[i].ProgressPlate.rectTransform.anchoredPosition = new Vector2(-112 + i * 56, 0);
             foreach (string name in new[] { "Milestone", "RewardStep", "ChestStep" })
             {
@@ -53,13 +55,14 @@ namespace PushStars.Editor
 
         public static void Validate()
         {
-            if (BossCatalog.Bosses.Count != 5) throw new Exception("Expected five goblins");
+            var goblins = BossCatalog.Chapters[0].Bosses;
+            if (goblins.Count != 5) throw new Exception("Expected five goblins");
             for (int damage = 70; damage <= 100; damage++)
             {
                 int previous = 0;
-                for (int i = 0; i < BossCatalog.Bosses.Count; i++)
+                for (int i = 0; i < goblins.Count; i++)
                 {
-                    var profile = BossCatalog.Bosses[i];
+                    var profile = goblins[i];
                     int reps = Mathf.CeilToInt(profile.MaxHp / (float)damage);
                     if (i > 0 && (reps - previous < (i == 4 ? 2 : 1) || reps - previous > (i == 4 ? 3 : 2)))
                         throw new Exception("Rep increment outside requested bounds");
@@ -84,7 +87,7 @@ namespace PushStars.Editor
                     BossCatalog.ReportResult(false);
                     if (BossCatalog.CurrentIndex != i) throw new Exception("Loss advanced ladder");
                     BossCatalog.ReportResult(true);
-                    if (BossCatalog.CurrentIndex != Mathf.Min(i + 1, 4)) throw new Exception("Win progression failed");
+                    if (BossCatalog.CurrentIndex != Mathf.Min(i + 1, BossCatalog.Bosses.Count - 1)) throw new Exception("Win progression failed");
                 }
             }
             finally

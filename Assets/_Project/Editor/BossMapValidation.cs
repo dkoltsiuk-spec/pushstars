@@ -50,8 +50,8 @@ namespace PushStars.Editor
                 Require(c.Home.activeSelf && !c.Map.activeSelf && c.Background.activeSelf, "Boss opens island home");
                 Require(c.CharacterDecor.All(go => !go.activeSelf), "Character, glow, wardrobe and friend entry hidden");
                 Require(c.Nodes.Count(n => n.Fight.gameObject.activeSelf) == 1, "Exactly one active boss");
-                Require(c.Nodes.Length == BossCatalog.Bosses.Count && c.Nodes.Select(n => n.BossIndex).SequenceEqual(Enumerable.Range(0, 5)), "Five ordered boss nodes");
-                Require(c.Nodes.All(n => n.Button && n.Platform.sprite && n.Disc.sprite && n.Face.sprite && n.ProgressFace.sprite), "All boss nodes have art and interaction");
+                Require(c.Nodes.Length == BossCatalog.Bosses.Count && c.Nodes.Select(n => n.BossIndex).SequenceEqual(Enumerable.Range(0, BossCatalog.Bosses.Count)), "Ordered boss nodes for every ladder boss");
+                Require(c.Nodes.All(n => n.Button && n.Platform.sprite && n.Disc.sprite && n.Face.sprite && (n.ProgressPlate == null || n.ProgressFace.sprite)), "All boss nodes have art and interaction");
                 var actionLabel = panel.Find("ActionRow/BattleButton/Label").GetComponent<TMPro.TextMeshProUGUI>();
                 actionLabel.text = "FIGHT";
                 var modeLabel = panel.Find("ActionRow/PvpButton/Label").GetComponent<TMPro.TextMeshProUGUI>();
@@ -100,8 +100,8 @@ namespace PushStars.Editor
                 "Procedural atmosphere replaces the static background and does not block input");
             Require(backdrop.Biomes.Length == 2, "Forest and ice biomes are configured");
             var ice = (RectTransform)c.MapContent.Find("IceChapter");
-            Require(ice != null && ice.GetComponentsInChildren<Button>().Length == 0, "Ice is a preview until combat is supplied");
-            Require(ice.GetComponentsInChildren<Image>().All(i => i.sprite != null), "Ice preview has supplied art");
+            Require(ice != null && c.Nodes.Count(n => n.Button.transform.IsChildOf(ice)) == 5, "Ice carries five live golem nodes");
+            Require(ice.GetComponentsInChildren<Image>().All(i => i.sprite != null || i.color.a == 0), "Ice island has supplied art");
             float boundary = c.MapContent.InverseTransformPoint(ice.position).y;
             var forestColor = backdrop.Sample(new Vector2(0, 200), .5f);
             var winterColor = backdrop.Sample(new Vector2(0, boundary + 500), .5f);

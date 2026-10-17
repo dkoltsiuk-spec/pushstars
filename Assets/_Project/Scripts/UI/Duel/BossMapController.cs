@@ -16,7 +16,11 @@ namespace PushStars.UI
             public int BossIndex;
             public Image Platform, Disc, Face;
             public Button Button, Fight;
+            /// <summary>Home-strip slot; only the first island's nodes own one, the strip follows the
+            /// island the player is on.</summary>
             public Image ProgressPlate, ProgressFace;
+            /// <summary>Island-specific art (ice golem portrait, ice platform); null keeps the goblin set.</summary>
+            public Sprite FaceArt, PlatformArt;
         }
 
         public enum RewardKind { Gems, Chest }
@@ -30,6 +34,8 @@ namespace PushStars.UI
             public Button Button;
             /// <summary>Optional platform under the reward (grass once reached, stone while locked).</summary>
             public Image Platform;
+            /// <summary>Island platform art used in every state (tinted while locked); null keeps grass/stone.</summary>
+            public Sprite PlatformArt;
             public Image Icon;
             public RewardBounce Bounce;
         }
@@ -52,6 +58,8 @@ namespace PushStars.UI
         public Sprite Grass, Stone, Complete, Current, Locked, Goblin, LockedGoblin;
         public Sprite ProgressCurrent, ProgressLocked;
         public Sprite FinalGoblin, FinalLockedGoblin;
+        /// <summary>Home island art per chapter (catalog order); a missing entry keeps the authored one.</summary>
+        public Sprite[] HomeIslands = new Sprite[0];
         public FriendDuelController FriendDuel;
         public SearchOpponentController Battle;
         public Toast Hint;
@@ -127,30 +135,90 @@ namespace PushStars.UI
                 // With everything cleared the last boss stays current: it keeps its FIGHT rematch.
                 bool current = node.BossIndex == BossCatalog.CurrentIndex;
                 bool cleared = BossCatalog.IsCleared(node.BossIndex) && !current;
-                node.Platform.sprite = current || cleared ? Grass : Stone;
+                bool open = current || cleared;
+                node.Platform.sprite = node.PlatformArt != null ? node.PlatformArt : open ? Grass : Stone;
+                node.Platform.color = node.PlatformArt != null && !open ? LockedTint : Color.white;
                 node.Disc.sprite = current ? Current : cleared ? Complete : Locked;
-                bool final = node.BossIndex == BossCatalog.Bosses.Count - 1;
-                var face = final && FinalGoblin != null ? FinalGoblin : Goblin;
-                var lockedFace = final && FinalLockedGoblin != null ? FinalLockedGoblin : LockedGoblin;
-                node.Face.sprite = current || cleared ? face : lockedFace;
+                Face(node.BossIndex, open, out var face, out var tint);
+                node.Face.sprite = face; node.Face.color = tint;
                 node.Fight.gameObject.SetActive(current);
-                node.ProgressPlate.sprite = current || cleared ? ProgressCurrent : ProgressLocked;
-                node.ProgressPlate.color = cleared ? new Color(.65f, 1f, .35f) : Color.white;
-                node.ProgressFace.sprite = current || cleared ? face : lockedFace;
-                node.Face.color = node.ProgressFace.color = final && !current && !cleared
-                    ? new Color(.45f, .45f, .45f, 1) : Color.white;
             }
+            RefreshHome();
             RefreshRewards();
+        }
+
+        private static readonly Color LockedTint = new Color(.45f, .45f, .45f, 1);
+
+        /// <summary>Island the player is on: the chapter of the current ladder boss.</summary>
+        private static BossChapter HomeChapter
+            => BossCatalog.Bosses.Count > 0 ? BossCatalog.ChapterOf(BossCatalog.Current.Id) : null;
+
+        /// <summary>The home strip and island follow the island the player is on: plate k shows
+        /// that island's k-th boss.</summary>
+        private void RefreshHome()
+        {
+            var chapter = HomeChapter;
+            if (chapter == null) return;
+            int start = BossCatalog.LadderStart(chapter), slot = 0;
+            foreach (var plate in Nodes)
+            {
+                if (plate.ProgressPlate == null) continue;
+                int index = start + slot;
+                bool exists = slot++ < chapter.Bosses.Count;
+                plate.ProgressPlate.gameObject.SetActive(exists);
+                if (!exists) continue;
+                bool current = index == BossCatalog.CurrentIndex;
+                bool cleared = BossCatalog.IsCleared(index) && !current;
+                plate.ProgressPlate.sprite = current || cleared ? ProgressCurrent : ProgressLocked;
+                plate.ProgressPlate.color = cleared ? new Color(.65f, 1f, .35f) : Color.white;
+                Face(index, current || cleared, out var face, out var tint);
+                plate.ProgressFace.sprite = face; plate.ProgressFace.color = tint;
+            }
+            int chapterIndex = IndexOf(chapter);
+            if (HomeIslands != null && chapterIndex < HomeIslands.Length && HomeIslands[chapterIndex] != null
+                && Island.targetGraphic is Image island)
+                island.sprite = HomeIslands[chapterIndex];
+        }
+
+        private static int IndexOf(BossChapter chapter)
+        {
+            for (int i = 0; i < BossCatalog.Chapters.Count; i++) if (BossCatalog.Chapters[i] == chapter) return i;
+            return -1;
+        }
+
+        /// <summary>Face of a ladder boss: island art when its node has some, else the goblin set
+        /// with the king's portrait on each island's last boss.</summary>
+        private void Face(int ladderIndex, bool open, out Sprite sprite, out Color tint)
+        {
+            var node = Array.Find(Nodes, n => n.BossIndex == ladderIndex);
+            if (node != null && node.FaceArt != null)
+            {
+                sprite = node.FaceArt; tint = open ? Color.white : LockedTint;
+                return;
+            }
+            var boss = ladderIndex < BossCatalog.Bosses.Count ? BossCatalog.Bosses[ladderIndex] : null;
+            var chapter = boss != null ? BossCatalog.ChapterOf(boss.Id) : null;
+            bool final = chapter != null && chapter.Bosses[chapter.Bosses.Count - 1] == boss;
+            var face = final && FinalGoblin != null ? FinalGoblin : Goblin;
+            var lockedFace = final && FinalLockedGoblin != null ? FinalLockedGoblin : LockedGoblin;
+            sprite = open ? face : lockedFace;
+            tint = final && !open ? LockedTint : Color.white;
         }
 
         private void RefreshRewards()
         {
-            if (HomeGemBubble != null && BossCatalog.Chapters.Count > 0)
-                HomeGemBubble.SetActive(BossMapRewards.Gems(BossCatalog.Chapters[0]) != BossMapRewardState.Collected);
+            var home = HomeChapter;
+            if (HomeGemBubble != null && home != null)
+                HomeGemBubble.SetActive(BossMapRewards.Gems(home) != BossMapRewardState.Collected);
             foreach (var reward in Rewards)
             {
                 var state = State(reward);
-                if (reward.Platform != null) reward.Platform.sprite = state == BossMapRewardState.Locked ? Stone : Grass;
+                if (reward.Platform != null && reward.PlatformArt != null)
+                {
+                    reward.Platform.sprite = reward.PlatformArt;
+                    reward.Platform.color = state == BossMapRewardState.Locked ? LockedTint : Color.white;
+                }
+                else if (reward.Platform != null) reward.Platform.sprite = state == BossMapRewardState.Locked ? Stone : Grass;
                 reward.Icon.gameObject.SetActive(reward.Kind == RewardKind.Chest || state != BossMapRewardState.Collected);
                 reward.Icon.color = state == BossMapRewardState.Locked ? new Color(.5f, .52f, .48f, 1)
                     : state == BossMapRewardState.Collected ? new Color(1, 1, 1, .4f) : Color.white;

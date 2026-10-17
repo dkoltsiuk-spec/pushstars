@@ -106,6 +106,7 @@ namespace PushStars.Core
         /// ice: 12 / 14 / 15 / 17 / 19; lava: 20 / 22 / 24 / 26 / 28 / 30, where each hit costs 80 HP
         /// so the player falls on hit 13 (~51.5 s). IDs of COMING SOON bosses name their future
         /// prefabs in Resources/Bosses. The gem islet opens after the third boss of each island.
+        /// Ice has three golem bodies: the small one for bosses 1–2, the big one for 3–4, the king.
         /// </summary>
         public static readonly IReadOnlyList<BossChapter> Chapters = new[]
         {
@@ -115,11 +116,11 @@ namespace PushStars.Core
                 Goblin("champion", 700),
                 Goblin("goblin-guard", 825),
                 Goblin("goblin-king", 1025, true)),
-            new BossChapter("ice", "ICE ISLAND", false, 2, 80,
-                Boss("ice-golem-1", "BOSS FROST GOLEM", 1200),
-                Boss("ice-golem-2", "BOSS FROST GOLEM", 1400),
-                Boss("ice-golem-3", "BOSS FROST GOLEM", 1500),
-                Boss("ice-golem-4", "BOSS FROST GOLEM", 1700),
+            new BossChapter("ice", "ICE ISLAND", true, 2, 80,
+                Boss("ice-golem-1", "BOSS FROST GOLEM", 1200, "ice-golem-mini"),
+                Boss("ice-golem-2", "BOSS FROST GOLEM", 1400, "ice-golem-mini"),
+                Boss("ice-golem-3", "BOSS FROST GOLEM", 1500, "ice-golem-max"),
+                Boss("ice-golem-4", "BOSS FROST GOLEM", 1700, "ice-golem-max"),
                 Boss("ice-golem-king", "BOSS GLACIER KING", 1900)),
             new BossChapter("lava", "LAVA ISLAND", false, 2, 120,
                 Boss("lava-golem-1", "BOSS MAGMA GOLEM", 2000, attackDamage: 80),

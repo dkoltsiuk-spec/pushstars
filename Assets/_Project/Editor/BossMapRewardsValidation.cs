@@ -27,16 +27,18 @@ namespace PushStars.Editor
             ValidateRules();
             ValidateMap();
             File.WriteAllText(Output + "rewards-validation.txt",
-                "PASS: forest ladder unchanged (5 bosses, 5-11 reps), ice 12-19 and lava 20-30 perfect reps authored as COMING SOON; " +
+                "PASS: forest (5 bosses, 5-11 reps) then ice (5 golems, 12-19 reps) playable, lava 20-30 perfect reps authored as COMING SOON; " +
                 "timeout by HP share; lava hits for 80; cleared count survives the last boss; gem/case receipts pay once and survive old saves; " +
-                "map: gem islet after boss 3, bouncing chest after the king, locked/ready/collected states, ice shows five golems without buttons.\n");
+                "map: gem islet after boss 3, bouncing chest after the king, locked/ready/collected states, ice has five live golem nodes, its own gems and chest.\n");
             Debug.Log("PASS: boss map rewards");
         }
 
         private static void ValidateRules()
         {
             var forest = BossCatalog.Chapters[0];
-            Require(BossCatalog.Bosses.Count == 5 && BossCatalog.Bosses.SequenceEqual(forest.Bosses), "Only the forest is playable");
+            var iceChapter = BossCatalog.FindChapter("ice");
+            Require(BossCatalog.Bosses.Count == 10 && BossCatalog.Bosses.SequenceEqual(forest.Bosses.Concat(iceChapter.Bosses)),
+                "Forest then ice are playable, lava is not");
             Require(BossCatalog.Chapters.Count(c => c.Id == "ice") == 1 && BossCatalog.FindChapter("ice").Bosses.Count == 5, "Ice has five golems");
             var lava = BossCatalog.FindChapter("lava");
             Require(lava.Bosses.Count >= 5 && lava.Bosses.Count <= 7, "Lava has 5-7 bosses");
@@ -74,10 +76,16 @@ namespace PushStars.Editor
                 Require(BossCatalog.IsGemIsletReached(forest) && !BossCatalog.IsChapterCleared(forest), "Gems open after boss 3");
                 PlayerPrefs.SetInt("boss_progress", 4);
                 BossCatalog.ReportResult(true);
-                Require(BossCatalog.ClearedCount == 5 && BossCatalog.CurrentIndex == 4 && BossCatalog.IsChapterCleared(forest), "King opens the chest");
+                Require(BossCatalog.ClearedCount == 5 && BossCatalog.CurrentIndex == 5 && BossCatalog.IsChapterCleared(forest), "King opens the chest");
+                Require(BossCatalog.Current == iceChapter.Bosses[0] && !BossCatalog.IsGemIsletReached(iceChapter), "The goblin king leads to the first golem");
+                PlayerPrefs.SetInt("boss_progress", 8);
+                Require(BossCatalog.IsGemIsletReached(iceChapter) && !BossCatalog.IsChapterCleared(iceChapter), "Ice gems open after golem 3");
+                PlayerPrefs.SetInt("boss_progress", 9);
                 BossCatalog.ReportResult(true);
-                Require(BossCatalog.ClearedCount == 5, "Rematches never overflow");
-                Require(!BossCatalog.IsGemIsletReached(BossCatalog.FindChapter("ice")), "COMING SOON islands pay nothing");
+                Require(BossCatalog.ClearedCount == 10 && BossCatalog.CurrentIndex == 9 && BossCatalog.IsChapterCleared(iceChapter), "Glacier king opens the ice chest");
+                BossCatalog.ReportResult(true);
+                Require(BossCatalog.ClearedCount == 10, "Rematches never overflow");
+                Require(!BossCatalog.IsGemIsletReached(BossCatalog.FindChapter("lava")), "COMING SOON islands pay nothing");
             }
             finally
             {
@@ -133,16 +141,22 @@ namespace PushStars.Editor
                 SelectedGameMode.Current = GameMode.Boss;
                 Canvas.ForceUpdateCanvases(); c.RefreshMode();
 
-                Require(c.Rewards.Length == 2 && c.Rewards.All(r => r.Button && r.Icon && r.Bounce && r.ChapterId == "forest"), "Forest gems and chest are bound");
-                var gems = c.Rewards.Single(r => r.Kind == BossMapController.RewardKind.Gems);
-                var chest = c.Rewards.Single(r => r.Kind == BossMapController.RewardKind.Chest);
+                Require(c.Rewards.Length == 4 && c.Rewards.All(r => r.Button && r.Icon && r.Bounce)
+                    && c.Rewards.Count(r => r.ChapterId == "forest") == 2 && c.Rewards.Count(r => r.ChapterId == "ice") == 2,
+                    "Forest and ice gems and chests are bound");
+                var gems = c.Rewards.Single(r => r.ChapterId == "forest" && r.Kind == BossMapController.RewardKind.Gems);
+                var chest = c.Rewards.Single(r => r.ChapterId == "forest" && r.Kind == BossMapController.RewardKind.Chest);
+                var iceGems = c.Rewards.Single(r => r.ChapterId == "ice" && r.Kind == BossMapController.RewardKind.Gems);
+                var iceChest = c.Rewards.Single(r => r.ChapterId == "ice" && r.Kind == BossMapController.RewardKind.Chest);
                 float Y(Component t) => c.MapContent.InverseTransformPoint(t.transform.position).y;
                 Require(Y(c.Nodes[2].Button) < Y(gems.Button) && Y(gems.Button) < Y(c.Nodes[3].Button), "Gem islet sits between bosses 3 and 4");
                 Require(Y(c.Nodes[4].Button) < Y(chest.Button), "Chest sits above the main boss");
                 Require(gems.Button.onClick.GetPersistentEventCount() == 0 && chest.Button.onClick.GetPersistentEventCount() == 0, "No 'coming later' listeners remain");
                 var ice = c.MapContent.Find("IceChapter");
-                Require(Enumerable.Range(1, 5).All(i => ice.Find("IceBoss" + i) != null) && ice.GetComponentsInChildren<Button>(true).Length == 0,
-                    "Ice previews five golems without interaction");
+                Require(Enumerable.Range(1, 5).All(i => c.Nodes[4 + i].Button == ice.Find("IceBoss" + i).GetComponent<Button>() && c.Nodes[4 + i].FaceArt != null),
+                    "Ice has five live golem nodes with portraits");
+                Require(Y(c.Nodes[7].Button) < Y(iceGems.Button) && Y(iceGems.Button) < Y(c.Nodes[8].Button), "Ice gems sit between golems 3 and 4");
+                Require(Y(c.Nodes[9].Button) < Y(iceChest.Button) && iceGems.PlatformArt != null, "Ice chest sits above the glacier king");
 
                 // Collected states depend on the player's wallet; this render shows whatever it holds.
                 SetMap(c, true);
