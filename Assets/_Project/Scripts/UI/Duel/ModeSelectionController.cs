@@ -86,8 +86,6 @@ namespace PushStars.UI
             CacheHomeLayout();
             _started = true;
             ArenaProfile.Changed += ApplySelection;
-            var arenaHome = gameObject.GetComponent<ArenaHomeController>() ?? gameObject.AddComponent<ArenaHomeController>();
-            arenaHome.Configure(_openButton.transform.parent.parent, _overlay.transform.parent, _homeLabel.font);
             _openButton.onClick.AddListener(Show);
             _backdropButton.onClick.AddListener(Back);
             _closeButton.onClick.AddListener(Hide);

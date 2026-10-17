@@ -82,18 +82,12 @@ namespace PushStars.Editor
                 var mode=scene.GetRootGameObjects().SelectMany(r=>r.GetComponentsInChildren<ModeSelectionController>(true)).Single();
                 var so=new SerializedObject(mode);
                 var open=(Button)so.FindProperty("_openButton").objectReferenceValue;
-                var overlay=(GameObject)so.FindProperty("_overlay").objectReferenceValue;
-                var label=(TextMeshProUGUI)so.FindProperty("_homeLabel").objectReferenceValue;
                 var background=(Image)so.FindProperty("_homeBackground").objectReferenceValue;
                 var home=open.transform.parent.parent;
                 foreach(Transform item in home.parent)if(item.name=="LeaguePanel"||item.name=="ProfilePanel")item.gameObject.SetActive(false);
                 home.gameObject.SetActive(true); background.sprite=ArenaCatalog.Get("underwater").Home;
-                var controller=mode.gameObject.AddComponent<ArenaHomeController>(); controller.Configure(home,overlay.transform.parent,label.font);
                 var canvas=mode.GetComponentInParent<Canvas>().rootCanvas;
                 Capture(canvas,scene,"home-390",390,844);
-                controller.Show();
-                Capture(canvas,scene,"collection-390",390,844);
-                Capture(canvas,scene,"collection-320",320,568);
             }
             finally {EditorSceneManager.ClosePreviewScene(scene);}
         }
@@ -125,7 +119,6 @@ namespace PushStars.Editor
             {
                 Canvas.ForceUpdateCanvases();
                 foreach(var popup in canvas.GetComponentsInChildren<ArenaSelectionPopup>())popup.SendMessage("Update");
-                foreach(var collection in canvas.GetComponentsInChildren<ArenaHomeController>())collection.SendMessage("Update");
                 Canvas.ForceUpdateCanvases();camera.Render();RenderTexture.active=rt;image.ReadPixels(new Rect(0,0,rt.width,rt.height),0,0);image.Apply();File.WriteAllBytes(Output+"/"+name+".png",image.EncodeToPNG());
             }
             finally {RenderTexture.active=previous;Object.DestroyImmediate(image);camera.targetTexture=null;rt.Release();Object.DestroyImmediate(rt);Object.DestroyImmediate(go);}

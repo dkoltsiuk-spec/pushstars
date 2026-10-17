@@ -63,8 +63,8 @@ namespace PushStars.Editor
                 switch(_step++)
                 {
                     case 0:
-                        var home=Object.FindFirstObjectByType<ArenaHomeController>();Check(home!=null,"MAPS entry created in real Main");
-                        home.Show();Check(home.IsOpen,"Collection opens");
+                        var home=Object.FindFirstObjectByType<AvatarCollectionScreen>(FindObjectsInactive.Include);Check(home!=null,"Avatar collection in real Main");
+                        home.ShowArenas();Check(home.IsOpen&&home.ShowingArenas,"ARENAS tab opens");
                         var card=Object.FindObjectsByType<Button>(FindObjectsSortMode.None).Single(b=>b.name=="jungle");card.onClick.Invoke();
                         Check(ArenaProfile.SelectedId=="jungle","Card tap selects and persists");
                         var mode=Object.FindFirstObjectByType<ModeSelectionController>();var image=(Image)new SerializedObject(mode).FindProperty("_homeBackground").objectReferenceValue;
