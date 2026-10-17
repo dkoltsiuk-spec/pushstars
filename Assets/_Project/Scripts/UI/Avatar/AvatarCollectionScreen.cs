@@ -193,8 +193,14 @@ namespace PushStars.UI
                 bool arenas = i == 1;
                 button.onClick.AddListener(() => SetMode(arenas));
                 var label = ArenaUi.Label(half, "Label", names[i], new Vector2(90, 30), Vector2.zero, 16);
-                if (title != null) label.font = title.font;
-                label.fontStyle = FontStyles.Bold | FontStyles.Italic;
+                // Lettered like the ALL / OPENED / PREMIUM tabs: white with their dark outline.
+                var style = Tabs.Length > 0 ? Tabs[0].GetComponentInChildren<TextMeshProUGUI>(true) : title;
+                if (style != null)
+                {
+                    label.font = style.font;
+                    label.fontSharedMaterial = style.fontSharedMaterial;
+                    label.fontStyle = style.fontStyle;
+                }
                 _modeFills[i] = fill; _modeLabels[i] = label;
             }
             PaintModeSwitch();
@@ -207,7 +213,7 @@ namespace PushStars.UI
                 if (_modeFills[i] == null) continue;
                 bool on = (i == 1) == _arenas;
                 _modeFills[i].color = on ? new Color32(255, 196, 24, 255) : new Color32(255, 255, 255, 0);
-                _modeLabels[i].color = on ? new Color32(27, 25, 48, 255) : new Color32(255, 255, 255, 170);
+                _modeLabels[i].color = on ? Color.white : new Color32(255, 255, 255, 140);
             }
         }
 
