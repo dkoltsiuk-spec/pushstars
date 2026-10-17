@@ -106,7 +106,8 @@ namespace PushStars.Core
         /// ice: 12 / 14 / 15 / 17 / 19; lava: 20 / 22 / 24 / 26 / 28 / 30, where each hit costs 80 HP
         /// so the player falls on hit 13 (~51.5 s). IDs of COMING SOON bosses name their future
         /// prefabs in Resources/Bosses. The gem islet opens after the third boss of each island.
-        /// Ice has three golem bodies: the small one for bosses 1–2, the big one for 3–4, the king.
+        /// Ice and lava have three golem bodies each: the small one for bosses 1–2, the big one up to
+        /// the king (3–4 on ice, 3–5 on lava), the king.
         /// </summary>
         public static readonly IReadOnlyList<BossChapter> Chapters = new[]
         {
@@ -122,12 +123,12 @@ namespace PushStars.Core
                 Boss("ice-golem-3", "BOSS FROST GOLEM", 1500, "ice-golem-max"),
                 Boss("ice-golem-4", "BOSS FROST GOLEM", 1700, "ice-golem-max"),
                 Boss("ice-golem-king", "BOSS GLACIER KING", 1900)),
-            new BossChapter("lava", "LAVA ISLAND", false, 2, 120,
-                Boss("lava-golem-1", "BOSS MAGMA GOLEM", 2000, attackDamage: 80),
-                Boss("lava-golem-2", "BOSS MAGMA GOLEM", 2200, attackDamage: 80),
-                Boss("lava-golem-3", "BOSS MAGMA GOLEM", 2400, attackDamage: 80),
-                Boss("lava-golem-4", "BOSS MAGMA GOLEM", 2600, attackDamage: 80),
-                Boss("lava-golem-5", "BOSS MAGMA GOLEM", 2800, attackDamage: 80),
+            new BossChapter("lava", "LAVA ISLAND", true, 2, 120,
+                Boss("lava-golem-1", "BOSS MAGMA GOLEM", 2000, "lava-golem-mini", 80),
+                Boss("lava-golem-2", "BOSS MAGMA GOLEM", 2200, "lava-golem-mini", 80),
+                Boss("lava-golem-3", "BOSS MAGMA GOLEM", 2400, "lava-golem-max", 80),
+                Boss("lava-golem-4", "BOSS MAGMA GOLEM", 2600, "lava-golem-max", 80),
+                Boss("lava-golem-5", "BOSS MAGMA GOLEM", 2800, "lava-golem-max", 80),
                 Boss("lava-golem-king", "BOSS VOLCANO KING", 3000, attackDamage: 80)),
         };
 

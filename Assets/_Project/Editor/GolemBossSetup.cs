@@ -13,21 +13,39 @@ using Object = UnityEngine.Object;
 namespace PushStars.Editor
 {
     /// <summary>
-    /// Ice island golems: three AccuRig bodies (small, big, king) become boss prefabs under the
-    /// prefab IDs <see cref="BossCatalog"/> gives the ice chapter. The golems have no clips of their
+    /// Island golems: per island, three AccuRig bodies (small, big, king) become boss prefabs under
+    /// the prefab IDs <see cref="BossCatalog"/> gives that chapter. The golems have no clips of their
     /// own: the Goblin King's humanoid controller (stand/battle idle, punch, kick, hit, defeat…)
     /// retargets onto them, so <see cref="BossAvatarPresentation"/> drives them unchanged.
     /// </summary>
-    public static class IceGolemSetup
+    public static class GolemBossSetup
     {
-        public const string Root = "Assets/_Project/Art/Characters/IceGolems";
-        private const string Output = "output/ice-golems/";
-
-        private static readonly (string folder, string prefabId, string displayName, float height)[] Golems =
+        private sealed class Island
         {
-            ("Mini", "ice-golem-mini", "Frost Golem", 2.0f),
-            ("Max", "ice-golem-max", "Frost Golem", 2.2f),
-            ("King", "ice-golem-king", "Glacier King", 2.4f),
+            public string Chapter, Root, Output;
+            public (string folder, string prefabId, string displayName, float height)[] Golems;
+        }
+
+        private static readonly Island Ice = new Island
+        {
+            Chapter = "ice", Root = "Assets/_Project/Art/Characters/IceGolems", Output = "output/ice-golems/",
+            Golems = new[]
+            {
+                ("Mini", "ice-golem-mini", "Frost Golem", 2.0f),
+                ("Max", "ice-golem-max", "Frost Golem", 2.2f),
+                ("King", "ice-golem-king", "Glacier King", 2.4f),
+            }
+        };
+
+        private static readonly Island Lava = new Island
+        {
+            Chapter = "lava", Root = "Assets/_Project/Art/Characters/LavaGolems", Output = "output/lava-golems/",
+            Golems = new[]
+            {
+                ("Mini", "lava-golem-mini", "Magma Golem", 2.0f),
+                ("Max", "lava-golem-max", "Magma Golem", 2.2f),
+                ("King", "lava-golem-king", "Volcano King", 2.4f),
+            }
         };
 
         private static readonly string[] States =
@@ -37,20 +55,32 @@ namespace PushStars.Editor
         public static string PortraitPath(string prefabId) => "Assets/_Project/Resources/Bosses/" + prefabId + "-portrait.png";
 
         [MenuItem("Tools/Push Stars/Boss/Import Ice Golems")]
-        public static void Import()
+        public static void ImportIce() => Import(Ice);
+
+        [MenuItem("Tools/Push Stars/Boss/Import Lava Golems")]
+        public static void ImportLava() => Import(Lava);
+
+        [MenuItem("Tools/Push Stars/Boss/Validate Ice Golems")]
+        public static void ValidateIce() => Validate(Ice);
+
+        [MenuItem("Tools/Push Stars/Boss/Validate Lava Golems")]
+        public static void ValidateLava() => Validate(Lava);
+
+        private static void Import(Island island)
         {
             if (EditorApplication.isPlayingOrWillChangePlaymode) throw new InvalidOperationException("Exit Play mode first.");
-            Directory.CreateDirectory(Output);
+            Directory.CreateDirectory(island.Output);
             var controller = AssetDatabase.LoadAssetAtPath<AnimatorController>(GoblinKingSetup.Root + "/GoblinKing.controller");
             if (controller == null) throw new InvalidOperationException("Goblin King controller missing; run Import Goblin King first.");
-            foreach (var golem in Golems) ImportGolem(golem.folder, golem.prefabId, golem.displayName, golem.height, controller);
+            foreach (var golem in island.Golems)
+                ImportGolem(island.Root + "/" + golem.folder, golem.folder, golem.prefabId, golem.displayName, golem.height, controller);
             AssetDatabase.SaveAssets();
-            Validate();
+            Validate(island);
         }
 
-        private static void ImportGolem(string folder, string prefabId, string displayName, float height, AnimatorController controller)
+        private static void ImportGolem(string dir, string folder, string prefabId, string displayName, float height, AnimatorController controller)
         {
-            string dir = Root + "/" + folder, bodyPath = dir + "/Body.fbx";
+            string bodyPath = dir + "/Body.fbx";
             Directory.CreateDirectory(dir + "/Textures");
             AssetDatabase.Refresh();
             var importer = (ModelImporter)AssetImporter.GetAtPath(bodyPath)
@@ -174,15 +204,14 @@ namespace PushStars.Editor
             }
         }
 
-        /// <summary>Every ice boss resolves to a prefab with every presentation state, and a
-        /// contact sheet per golem (rows = states, three phases each) lands in output/ice-golems.</summary>
-        [MenuItem("Tools/Push Stars/Boss/Validate Ice Golems")]
-        public static void Validate()
+        /// <summary>Every boss of the island resolves to a prefab with every presentation state, and
+        /// a contact sheet per golem (rows = states, three phases each) lands in the island's output.</summary>
+        private static void Validate(Island island)
         {
-            Directory.CreateDirectory(Output);
+            Directory.CreateDirectory(island.Output);
             var report = new StringBuilder();
-            var ice = BossCatalog.FindChapter("ice");
-            foreach (var boss in ice.Bosses)
+            var chapter = BossCatalog.FindChapter(island.Chapter);
+            foreach (var boss in chapter.Bosses)
             {
                 var prefab = Resources.Load<GameObject>("Bosses/" + boss.PrefabId);
                 if (prefab == null) throw new InvalidOperationException("Missing boss prefab " + boss.PrefabId);
@@ -193,12 +222,13 @@ namespace PushStars.Editor
                     throw new InvalidOperationException(boss.PrefabId + " is not a humanoid boss prefab");
                 report.AppendLine(boss.Id + " -> " + boss.PrefabId + " (" + boss.MaxHp + " HP)");
             }
-            foreach (var golem in Golems) RenderSheet(golem.prefabId);
-            File.WriteAllText(Output + "import.txt", "PASS: three humanoid golem bodies, ten states each, portraits; ice ladder resolves.\n" + report);
-            Debug.Log("PASS: ice golems\n" + report);
+            foreach (var golem in island.Golems) RenderSheet(golem.prefabId, island.Output);
+            File.WriteAllText(island.Output + "import.txt",
+                "PASS: three humanoid golem bodies, ten states each, portraits; " + island.Chapter + " ladder resolves.\n" + report);
+            Debug.Log("PASS: " + island.Chapter + " golems\n" + report);
         }
 
-        private static void RenderSheet(string prefabId)
+        private static void RenderSheet(string prefabId, string output)
         {
             var prefab = AssetDatabase.LoadAssetAtPath<GameObject>(PrefabPath(prefabId));
             var scene = EditorSceneManager.NewPreviewScene();
@@ -240,7 +270,7 @@ namespace PushStars.Editor
                     Object.DestroyImmediate(body);
                 }
                 sheet.Apply();
-                File.WriteAllBytes(Output + prefabId + ".png", sheet.EncodeToPNG());
+                File.WriteAllBytes(output + prefabId + ".png", sheet.EncodeToPNG());
                 camera.targetTexture = null;
             }
             finally

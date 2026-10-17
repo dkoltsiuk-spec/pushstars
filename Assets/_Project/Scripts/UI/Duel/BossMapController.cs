@@ -23,6 +23,15 @@ namespace PushStars.UI
             public Sprite FaceArt, PlatformArt;
         }
 
+        /// <summary>A home-strip slot that no forest node owns (the sixth plate of a six-boss island).</summary>
+        [Serializable]
+        public sealed class HomePlate
+        {
+            public Image Plate, Face;
+        }
+
+        private const float PlateStep = 56;
+
         public enum RewardKind { Gems, Chest }
 
         /// <summary>A collectible on an island: the gem islet or the main-boss chest.</summary>
@@ -53,6 +62,8 @@ namespace PushStars.UI
         public CanvasGroup MapGroup;
         public Node[] Nodes;
         public RewardNode[] Rewards = new RewardNode[0];
+        /// <summary>Home-strip plates beyond the forest's five, in strip order.</summary>
+        public HomePlate[] ExtraPlates = new HomePlate[0];
         /// <summary>Home island's gem bubble; hidden once the first island's gems are collected.</summary>
         public GameObject HomeGemBubble;
         public Sprite Grass, Stone, Complete, Current, Locked, Goblin, LockedGoblin;
@@ -159,21 +170,31 @@ namespace PushStars.UI
         {
             var chapter = HomeChapter;
             if (chapter == null) return;
-            int start = BossCatalog.LadderStart(chapter), slot = 0;
-            foreach (var plate in Nodes)
+            int start = BossCatalog.LadderStart(chapter), count = chapter.Bosses.Count, slot = 0;
+            var plates = new List<HomePlate>();
+            foreach (var node in Nodes)
+                if (node.ProgressPlate != null) plates.Add(new HomePlate { Plate = node.ProgressPlate, Face = node.ProgressFace });
+            plates.AddRange(ExtraPlates);
+            foreach (var plate in plates)
             {
-                if (plate.ProgressPlate == null) continue;
                 int index = start + slot;
-                bool exists = slot++ < chapter.Bosses.Count;
-                plate.ProgressPlate.gameObject.SetActive(exists);
+                // Plates centre on the strip for the island's boss count (five forest/ice, six lava).
+                float x = (slot - (count - 1) * .5f) * PlateStep;
+                bool exists = slot++ < count;
+                plate.Plate.gameObject.SetActive(exists);
                 if (!exists) continue;
+                var rect = plate.Plate.rectTransform;
+                rect.anchoredPosition = new Vector2(x, rect.anchoredPosition.y);
                 bool current = index == BossCatalog.CurrentIndex;
                 bool cleared = BossCatalog.IsCleared(index) && !current;
-                plate.ProgressPlate.sprite = current || cleared ? ProgressCurrent : ProgressLocked;
-                plate.ProgressPlate.color = cleared ? new Color(.65f, 1f, .35f) : Color.white;
+                plate.Plate.sprite = current || cleared ? ProgressCurrent : ProgressLocked;
+                plate.Plate.color = cleared ? new Color(.65f, 1f, .35f) : Color.white;
                 Face(index, current || cleared, out var face, out var tint);
-                plate.ProgressFace.sprite = face; plate.ProgressFace.color = tint;
+                plate.Face.sprite = face; plate.Face.color = tint;
             }
+            // The gem bubble sits between the plates of the bosses around the island's gem islet.
+            if (HomeGemBubble != null && HomeGemBubble.transform is RectTransform bubble)
+                bubble.anchoredPosition = new Vector2((chapter.GemsAfterBoss + .5f - (count - 1) * .5f) * PlateStep, bubble.anchoredPosition.y);
             int chapterIndex = IndexOf(chapter);
             if (HomeIslands != null && chapterIndex < HomeIslands.Length && HomeIslands[chapterIndex] != null
                 && Island.targetGraphic is Image island)

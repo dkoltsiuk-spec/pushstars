@@ -98,7 +98,7 @@ namespace PushStars.Editor
             var backdrop = c.Background.GetComponentInChildren<BossMapBackdrop>(true);
             Require(backdrop != null && !backdrop.raycastTarget && !c.Background.GetComponent<Image>().enabled,
                 "Procedural atmosphere replaces the static background and does not block input");
-            Require(backdrop.Biomes.Length == 2, "Forest and ice biomes are configured");
+            Require(backdrop.Biomes.Length == 3, "Forest, ice and lava biomes are configured");
             var ice = (RectTransform)c.MapContent.Find("IceChapter");
             Require(ice != null && c.Nodes.Count(n => n.Button.transform.IsChildOf(ice)) == 5, "Ice carries five live golem nodes");
             Require(ice.GetComponentsInChildren<Image>().All(i => i.sprite != null || i.color.a == 0), "Ice island has supplied art");

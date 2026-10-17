@@ -17,9 +17,9 @@ namespace PushStars.Editor
     /// <summary>
     /// Island path layout and collectibles. Every island reads bottom to top: boss 1–3, the gem
     /// islet, the remaining bosses, then the main boss's chest. The forest's gem islet and chest are
-    /// live <see cref="BossMapController.RewardNode"/>s. A playable ice island gets live golem nodes
-    /// (forest node clones with golem portraits on ice platforms) and its own gems and chest; an
-    /// unplayable one stays a non-interactive COMING SOON preview. Idempotent:
+    /// live <see cref="BossMapController.RewardNode"/>s. Playable golem islands (ice, lava) get live
+    /// nodes (forest node clones with golem portraits on island platforms) and their own gems and
+    /// chest; an unplayable ice island stays a non-interactive COMING SOON preview. Idempotent:
     /// positions are absolute and objects are found by name before anything is created.
     /// </summary>
     public static class BossMapRewardsSetup
@@ -45,7 +45,8 @@ namespace PushStars.Editor
                 Directory.CreateDirectory("output/boss-map");
                 File.WriteAllText("output/boss-map/rewards-install.txt",
                     "Forest: bosses 1-3, gem islet, bosses 4-5, bouncing chest. Ice: five golems, gems and chest" +
-                    (BossCatalog.FindChapter("ice").Playable ? " (live).\n" : " (COMING SOON).\n"));
+                    (BossCatalog.FindChapter("ice").Playable ? " (live)." : " (COMING SOON).") +
+                    (BossCatalog.FindChapter("lava").Playable ? " Lava: six golems, gems and chest (live).\n" : "\n"));
             }
             finally { if (opened) EditorSceneManager.CloseScene(scene, true); }
         }
@@ -85,10 +86,16 @@ namespace PushStars.Editor
                 c.HomeGemBubble = bubble.gameObject;
             }
 
-            if (BossCatalog.FindChapter("ice").Playable) BuildIceIsland(c, rewards);
+            var ice = BossCatalog.FindChapter("ice");
+            if (ice.Playable) BuildIsland(c, rewards, ice, (RectTransform)c.MapContent.Find("IceChapter"), "Ice");
             else BuildIcePreview(c);
+            var lava = BossCatalog.FindChapter("lava");
+            // One shared lava icon on the map for now; the fight HUD still shows each body's portrait.
+            if (lava.Playable) BuildIsland(c, rewards, lava, LavaChapter(c), "Lava",
+                AssetDatabase.LoadAssetAtPath<Sprite>(BossMapSceneSetup.Art + "lava-face.png"));
             c.Rewards = rewards.ToArray();
-            c.HomeIslands = new[] { "forest-island", "ice-island" }
+            EnsureHomePlates(c);
+            c.HomeIslands = new[] { "forest-island", "ice-island", "lava-island" }
                 .Select(art => AssetDatabase.LoadAssetAtPath<Sprite>(BossMapSceneSetup.Art + art + ".png")).ToArray();
             c.RefreshProgress();
             EditorUtility.SetDirty(c);
@@ -209,35 +216,37 @@ namespace PushStars.Editor
             EditorUtility.SetDirty(text);
         }
 
-        /// <summary>Live ice island: golem nodes cloned from a forest node (platform, disc, face,
-        /// FIGHT), the gem islet after golem 3 and the king's chest, all on ice platforms.</summary>
-        private static void BuildIceIsland(BossMapController c, List<BossMapController.RewardNode> rewards)
+        /// <summary>Live golem island ("Ice", "Lava"): nodes cloned from a forest node (platform,
+        /// disc, face, FIGHT), the gem islet after golem 3 and the king's chest, all on the island's
+        /// platform art. Objects are named prefix + Island/Boss1../GemIslet/Chest. Faces are the
+        /// golem portraits unless the island passes one shared face.</summary>
+        private static void BuildIsland(BossMapController c, List<BossMapController.RewardNode> rewards,
+            BossChapter chapter, RectTransform ice, string prefix, Sprite face = null)
         {
-            var ice = (RectTransform)c.MapContent.Find("IceChapter");
             foreach (string obsolete in new[] { "IcePlatform", "IceDisc", "IceFace" })
             {
                 var old = ice.Find(obsolete);
                 if (old != null) Undo.DestroyObjectImmediate(old.gameObject);
             }
-            var chapter = BossCatalog.FindChapter("ice");
             int start = BossCatalog.LadderStart(chapter);
-            var island = (RectTransform)ice.Find("IceIsland");
+            var island = (RectTransform)ice.Find(prefix + "Island");
             float first = island.anchoredPosition.y + island.sizeDelta.y * .5f + 107;
             var slots = PathSlots(first, chapter);
-            var platformArt = AssetDatabase.LoadAssetAtPath<Sprite>(BossMapSceneSetup.Art + "ice-platform.png");
+            string platformName = prefix.ToLowerInvariant() + "-platform";
+            var platformArt = AssetDatabase.LoadAssetAtPath<Sprite>(BossMapSceneSetup.Art + platformName + ".png");
             var template = c.Nodes.First(n => n.ProgressPlate != null).Button.gameObject;
             var nodes = c.Nodes.Where(n => !n.Button.transform.IsChildOf(ice)).ToList();
             var anchors = new List<RectTransform> { island };
             for (int i = 0; i < chapter.Bosses.Count; i++)
             {
-                string name = "IceBoss" + (i + 1);
+                string name = prefix + "Boss" + (i + 1);
                 var root = ice.Find(name) as RectTransform;
                 if (root != null && root.Find("Fight") == null) { Undo.DestroyObjectImmediate(root.gameObject); root = null; }
                 if (root == null)
                 {
                     root = (RectTransform)Object.Instantiate(template, ice).transform;
                     root.name = name;
-                    Undo.RegisterCreatedObjectUndo(root.gameObject, "Add ice golem node");
+                    Undo.RegisterCreatedObjectUndo(root.gameObject, "Add golem node");
                 }
                 root.anchorMin = root.anchorMax = new Vector2(.5f, 0);
                 root.anchoredPosition = slots.Bosses[i];
@@ -248,11 +257,11 @@ namespace PushStars.Editor
                     Platform = root.Find("Platform").GetComponent<Image>(),
                     Disc = root.Find("Disc").GetComponent<Image>(), Face = root.Find("Goblin").GetComponent<Image>(),
                     Fight = root.Find("Fight").GetComponent<Button>(),
-                    FaceArt = AssetDatabase.LoadAssetAtPath<Sprite>(IceGolemSetup.PortraitPath(chapter.Bosses[i].PrefabId)),
+                    FaceArt = face != null ? face : AssetDatabase.LoadAssetAtPath<Sprite>(GolemBossSetup.PortraitPath(chapter.Bosses[i].PrefabId)),
                     PlatformArt = platformArt
                 };
                 if (node.FaceArt == null)
-                    throw new InvalidOperationException("Missing golem portrait for " + chapter.Bosses[i].Id + "; run Import Ice Golems first.");
+                    throw new InvalidOperationException("Missing golem portrait for " + chapter.Bosses[i].Id + "; run the island's Import Golems first.");
                 var pulse = root.GetComponentInChildren<BossPulseRings>(true);
                 if (pulse != null) { pulse.ActiveMarker = node.Fight.gameObject; EditorUtility.SetDirty(pulse); }
                 nodes.Add(node);
@@ -260,13 +269,13 @@ namespace PushStars.Editor
             }
             c.Nodes = nodes.OrderBy(n => n.BossIndex).ToArray();
 
-            var gems = Group(ice, "IceGemIslet", slots.Gems, new Vector2(142, 148));
-            var gemPlatform = Picture(gems, "Platform", "ice-platform", new Vector2(0, -26), new Vector2(164, 164), Color.white);
+            var gems = Group(ice, prefix + "GemIslet", slots.Gems, new Vector2(142, 148));
+            var gemPlatform = Picture(gems, "Platform", platformName, new Vector2(0, -26), new Vector2(164, 164), Color.white);
             var gem = Picture(gems, "Gem", null, new Vector2(0, -12), new Vector2(64, 64), Color.white);
             gem.sprite = AssetDatabase.LoadAssetAtPath<Sprite>("Assets/_Project/UI/Sprites/gem.png");
             gem.rectTransform.pivot = new Vector2(.5f, 0);
-            var chest = Group(ice, "IceChest", slots.Chest, new Vector2(142, 148));
-            var chestPlatform = Picture(chest, "Platform", "ice-platform", new Vector2(0, -26), new Vector2(164, 164), Color.white);
+            var chest = Group(ice, prefix + "Chest", slots.Chest, new Vector2(142, 148));
+            var chestPlatform = Picture(chest, "Platform", platformName, new Vector2(0, -26), new Vector2(164, 164), Color.white);
             chestPlatform.transform.SetAsFirstSibling();
             var chestIcon = Picture(chest, "Chest", "chest", new Vector2(0, -36), new Vector2(104, 112), Color.white);
             chestIcon.rectTransform.pivot = new Vector2(.5f, 0);
@@ -276,7 +285,7 @@ namespace PushStars.Editor
                 (BossMapController.RewardKind.Chest, chest, chestPlatform, chestIcon, 16f)
             })
             {
-                var reward = Reward(c, "ice", kind, root, platform, icon, hop);
+                var reward = Reward(c, chapter.Id, kind, root, platform, icon, hop);
                 reward.PlatformArt = platformArt;
                 rewards.Add(reward);
                 anchors.Add(root);
@@ -288,6 +297,67 @@ namespace PushStars.Editor
             ice.sizeDelta = new Vector2(390, slots.Chest.y + 100);
             var biome = ice.GetComponent<BossMapBiome>();
             if (biome != null) { biome.LightAnchors = anchors.ToArray(); EditorUtility.SetDirty(biome); }
+        }
+
+        /// <summary>Lava chapter above the ice one: the supplied lava island and a molten biome.</summary>
+        private static RectTransform LavaChapter(BossMapController c)
+        {
+            var lava = c.MapContent.Find("LavaChapter") as RectTransform;
+            if (lava == null)
+            {
+                foreach (string asset in new[] { "lava-island", "lava-platform", "lava-face" })
+                {
+                    var importer = (TextureImporter)AssetImporter.GetAtPath(BossMapSceneSetup.Art + asset + ".png");
+                    importer.textureType = TextureImporterType.Sprite;
+                    importer.spriteImportMode = SpriteImportMode.Single;
+                    importer.alphaIsTransparency = true; importer.mipmapEnabled = false;
+                    importer.npotScale = TextureImporterNPOTScale.None;
+                    importer.maxTextureSize = 2048;
+                    importer.textureCompression = TextureImporterCompression.CompressedHQ;
+                    importer.SaveAndReimport();
+                }
+                lava = Group((RectTransform)c.MapContent, "LavaChapter", Vector2.zero, new Vector2(390, 740));
+                lava.anchorMin = lava.anchorMax = lava.pivot = new Vector2(.5f, 0);
+            }
+            lava.SetAsLastSibling();
+            var island = Picture(lava, "LavaIsland", "lava-island", new Vector2(0, 240), new Vector2(325, 340), Color.white);
+            island.rectTransform.anchorMin = island.rectTransform.anchorMax = new Vector2(.5f, 0);
+            var biome = lava.GetComponent<BossMapBiome>();
+            if (biome == null) biome = lava.gameObject.AddComponent<BossMapBiome>();
+            biome.Background = new Color(.36f, .13f, .16f);
+            biome.Mist = new Color(.95f, .46f, .2f);
+            biome.Light = new Color(1f, .72f, .36f);
+            EditorUtility.SetDirty(biome);
+            var backdrop = c.Background.GetComponentInChildren<BossMapBackdrop>(true);
+            if (backdrop != null)
+            {
+                backdrop.Biomes = c.MapContent.Cast<Transform>().Select(t => t.GetComponent<BossMapBiome>()).Where(b => b != null).ToArray();
+                EditorUtility.SetDirty(backdrop);
+            }
+            return lava;
+        }
+
+        /// <summary>The home strip needs a plate per boss of the longest playable island; the
+        /// forest nodes own five, the rest are clones of the first.</summary>
+        private static void EnsureHomePlates(BossMapController c)
+        {
+            var owned = c.Nodes.Where(n => n.ProgressPlate != null).ToList();
+            int need = BossCatalog.Chapters.Where(ch => ch.Playable).Max(ch => ch.Bosses.Count) - owned.Count;
+            var strip = owned[0].ProgressPlate.transform.parent;
+            var extra = new List<BossMapController.HomePlate>();
+            for (int i = 0; i < need; i++)
+            {
+                string name = "BossProgress" + (owned.Count + i + 1);
+                var plate = strip.Find(name)?.GetComponent<Image>();
+                if (plate == null)
+                {
+                    plate = Object.Instantiate(owned[0].ProgressPlate, strip);
+                    plate.name = name;
+                    Undo.RegisterCreatedObjectUndo(plate.gameObject, "Add home plate");
+                }
+                extra.Add(new BossMapController.HomePlate { Plate = plate, Face = plate.transform.Find("Goblin").GetComponent<Image>() });
+            }
+            c.ExtraPlates = extra.ToArray();
         }
 
         private static RectTransform Group(RectTransform parent, string name, Vector2 position, Vector2 size)

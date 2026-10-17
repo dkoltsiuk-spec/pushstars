@@ -27,9 +27,9 @@ namespace PushStars.Editor
             ValidateRules();
             ValidateMap();
             File.WriteAllText(Output + "rewards-validation.txt",
-                "PASS: forest (5 bosses, 5-11 reps) then ice (5 golems, 12-19 reps) playable, lava 20-30 perfect reps authored as COMING SOON; " +
+                "PASS: forest (5 bosses, 5-11 reps), ice (5 golems, 12-19 reps) and lava (6 golems, 20-30 reps) playable in order; " +
                 "timeout by HP share; lava hits for 80; cleared count survives the last boss; gem/case receipts pay once and survive old saves; " +
-                "map: gem islet after boss 3, bouncing chest after the king, locked/ready/collected states, ice has five live golem nodes, its own gems and chest.\n");
+                "map: gem islet after boss 3, bouncing chest after the king, locked/ready/collected states, ice has five and lava six live golem nodes, each island its own gems and chest.\n");
             Debug.Log("PASS: boss map rewards");
         }
 
@@ -37,8 +37,9 @@ namespace PushStars.Editor
         {
             var forest = BossCatalog.Chapters[0];
             var iceChapter = BossCatalog.FindChapter("ice");
-            Require(BossCatalog.Bosses.Count == 10 && BossCatalog.Bosses.SequenceEqual(forest.Bosses.Concat(iceChapter.Bosses)),
-                "Forest then ice are playable, lava is not");
+            var lavaChapter = BossCatalog.FindChapter("lava");
+            Require(BossCatalog.Bosses.Count == 16 && BossCatalog.Bosses.SequenceEqual(forest.Bosses.Concat(iceChapter.Bosses).Concat(lavaChapter.Bosses)),
+                "Forest, ice and lava are playable in order");
             Require(BossCatalog.Chapters.Count(c => c.Id == "ice") == 1 && BossCatalog.FindChapter("ice").Bosses.Count == 5, "Ice has five golems");
             var lava = BossCatalog.FindChapter("lava");
             Require(lava.Bosses.Count >= 5 && lava.Bosses.Count <= 7, "Lava has 5-7 bosses");
@@ -82,10 +83,15 @@ namespace PushStars.Editor
                 Require(BossCatalog.IsGemIsletReached(iceChapter) && !BossCatalog.IsChapterCleared(iceChapter), "Ice gems open after golem 3");
                 PlayerPrefs.SetInt("boss_progress", 9);
                 BossCatalog.ReportResult(true);
-                Require(BossCatalog.ClearedCount == 10 && BossCatalog.CurrentIndex == 9 && BossCatalog.IsChapterCleared(iceChapter), "Glacier king opens the ice chest");
+                Require(BossCatalog.ClearedCount == 10 && BossCatalog.CurrentIndex == 10 && BossCatalog.IsChapterCleared(iceChapter), "Glacier king opens the ice chest");
+                Require(BossCatalog.Current == lavaChapter.Bosses[0] && !BossCatalog.IsGemIsletReached(lavaChapter), "The glacier king leads to the first magma golem");
+                PlayerPrefs.SetInt("boss_progress", 13);
+                Require(BossCatalog.IsGemIsletReached(lavaChapter) && !BossCatalog.IsChapterCleared(lavaChapter), "Lava gems open after golem 3");
+                PlayerPrefs.SetInt("boss_progress", 15);
                 BossCatalog.ReportResult(true);
-                Require(BossCatalog.ClearedCount == 10, "Rematches never overflow");
-                Require(!BossCatalog.IsGemIsletReached(BossCatalog.FindChapter("lava")), "COMING SOON islands pay nothing");
+                Require(BossCatalog.ClearedCount == 16 && BossCatalog.CurrentIndex == 15 && BossCatalog.IsChapterCleared(lavaChapter), "Volcano king opens the lava chest");
+                BossCatalog.ReportResult(true);
+                Require(BossCatalog.ClearedCount == 16, "Rematches never overflow");
             }
             finally
             {
@@ -141,9 +147,9 @@ namespace PushStars.Editor
                 SelectedGameMode.Current = GameMode.Boss;
                 Canvas.ForceUpdateCanvases(); c.RefreshMode();
 
-                Require(c.Rewards.Length == 4 && c.Rewards.All(r => r.Button && r.Icon && r.Bounce)
-                    && c.Rewards.Count(r => r.ChapterId == "forest") == 2 && c.Rewards.Count(r => r.ChapterId == "ice") == 2,
-                    "Forest and ice gems and chests are bound");
+                Require(c.Rewards.Length == 6 && c.Rewards.All(r => r.Button && r.Icon && r.Bounce)
+                    && new[] { "forest", "ice", "lava" }.All(id => c.Rewards.Count(r => r.ChapterId == id) == 2),
+                    "Every island's gems and chest are bound");
                 var gems = c.Rewards.Single(r => r.ChapterId == "forest" && r.Kind == BossMapController.RewardKind.Gems);
                 var chest = c.Rewards.Single(r => r.ChapterId == "forest" && r.Kind == BossMapController.RewardKind.Chest);
                 var iceGems = c.Rewards.Single(r => r.ChapterId == "ice" && r.Kind == BossMapController.RewardKind.Gems);
@@ -157,6 +163,14 @@ namespace PushStars.Editor
                     "Ice has five live golem nodes with portraits");
                 Require(Y(c.Nodes[7].Button) < Y(iceGems.Button) && Y(iceGems.Button) < Y(c.Nodes[8].Button), "Ice gems sit between golems 3 and 4");
                 Require(Y(c.Nodes[9].Button) < Y(iceChest.Button) && iceGems.PlatformArt != null, "Ice chest sits above the glacier king");
+                var lavaRoot = c.MapContent.Find("LavaChapter");
+                var lavaGems = c.Rewards.Single(r => r.ChapterId == "lava" && r.Kind == BossMapController.RewardKind.Gems);
+                var lavaChest = c.Rewards.Single(r => r.ChapterId == "lava" && r.Kind == BossMapController.RewardKind.Chest);
+                Require(Enumerable.Range(1, 6).All(i => c.Nodes[9 + i].Button == lavaRoot.Find("LavaBoss" + i).GetComponent<Button>() && c.Nodes[9 + i].FaceArt != null),
+                    "Lava has six live golem nodes with portraits");
+                Require(Y(c.Nodes[12].Button) < Y(lavaGems.Button) && Y(lavaGems.Button) < Y(c.Nodes[13].Button), "Lava gems sit between golems 3 and 4");
+                Require(Y(c.Nodes[15].Button) < Y(lavaChest.Button) && Y(iceChest.Button) < Y(c.Nodes[10].Button), "Lava sits above ice, its chest above the volcano king");
+                Require(c.ExtraPlates.Length == 1 && c.ExtraPlates[0].Plate && c.ExtraPlates[0].Face, "Sixth home plate for the lava island");
 
                 // Collected states depend on the player's wallet; this render shows whatever it holds.
                 SetMap(c, true);

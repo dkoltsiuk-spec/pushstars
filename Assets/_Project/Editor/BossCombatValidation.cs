@@ -178,7 +178,7 @@ namespace PushStars.Editor
                 {
                     var health = (BossCombatState)typeof(BossCombatScreen).GetField("_health",Private).GetValue(c);
                     health.PlayerRep(100); health.BossAttack(); c.Refresh(1);
-                    Require(Mathf.Abs(c.BossHpFill.FillAmount-(maxHp-100f)/maxHp)<.001f && c.PlayerHpFill.FillAmount==.925f, "Actual HP drives fills");
+                    Require(Mathf.Abs(c.BossHpFill.FillAmount-(maxHp-100f)/maxHp)<.001f && Mathf.Abs(c.PlayerHpFill.FillAmount-(1000f-BossCatalog.Bosses[_bossIndex].AttackDamage)/1000f)<.001f, "Actual HP drives fills");
                     Require(c.DamageLabels.Count(x => x.gameObject.activeSelf)==2, "Both damage numbers shown");
                     Capture(camera,output,name+"-damage");
                     if (InForest(c) && c.Forest.Effects != null)
