@@ -56,8 +56,11 @@ namespace PushStars.Core
                 result.Moments.Add(new AuraMoment(tier.DisplayName.ToUpperInvariant() + " LEAGUE", amount));
             }
 
+            int tierBefore = AuraTiers.ForPeak(CaseRewards.AuraPeak).Index;
             var applied = CaseRewards.ApplyAura(grants);
             result.Change = applied.Change;
+            var tierAfter = AuraTiers.ForPeak(CaseRewards.AuraPeak);
+            if (tierAfter.Index > tierBefore) result.Moments.Add(new AuraMoment(tierAfter.Name + " AURA!", 0));
             foreach (string id in applied.Unlocked)
             {
                 result.Unlocked.Add(id);

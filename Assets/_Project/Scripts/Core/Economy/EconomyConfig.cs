@@ -120,5 +120,11 @@ namespace PushStars.Core
         // Streak milestone rewards (daily streak system not wired yet).
         public const int AuraStreakMilestoneA = 10000;  // 7-day
         public const int AuraStreakMilestoneB = 50000;  // 30-day
+
+        // Visible aura around the hero: peak Aura at which each glow tier switches on (AuraTiers).
+        public const long AuraTierGlow = 10000;
+        public const long AuraTierBlueFlame = 50000;
+        public const long AuraTierVioletStorm = 250000;
+        public const long AuraTierInfinite = 1000000;
     }
 }

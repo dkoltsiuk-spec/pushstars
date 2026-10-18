@@ -270,6 +270,7 @@ namespace PushStars.Fight
                 var portrait = CharacterRoster.SavedGender == CharacterGender.Female ?
                     _summaryUi.FemalePortrait : _summaryUi.MalePortrait;
                 if (portrait != null) _summaryUi.Portrait.texture = portrait;
+                HeroAura.Attach(_summaryUi.Portrait);
             }
             if (_summaryUi.Avatar != null)
             {

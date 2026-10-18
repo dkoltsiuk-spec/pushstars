@@ -97,7 +97,11 @@ namespace PushStars.UI
 
         // Start, not Awake: CharacterStage builds its render texture in Awake, and the character
         // has to land on a stage that is already wired to the UI surface showing it.
-        private void Start() => Apply(Gender);
+        private void Start()
+        {
+            Apply(Gender);
+            if (_stage != null && Application.isPlaying) HeroAura.Attach(_stage.TargetImage);
+        }
 
         private void OnDestroy()
         {
