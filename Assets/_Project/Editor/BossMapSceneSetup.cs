@@ -115,7 +115,6 @@ namespace PushStars.Editor
             var map = Rect(panel, "BossMap", 0, 0, 0, 0); Stretch(map); c.Map = map.gameObject;
             c.MapGroup = map.gameObject.AddComponent<CanvasGroup>();
             var viewport = Rect(map, "MapViewport", 0, 0, 0, 0); Stretch(viewport);
-            viewport.offsetMin = new Vector2(0, 84); viewport.offsetMax = new Vector2(0, -65);
             var hit = viewport.gameObject.AddComponent<Image>(); hit.color = Color.clear;
             viewport.gameObject.AddComponent<RectMask2D>();
             c.Scroll = viewport.gameObject.AddComponent<ScrollRect>();

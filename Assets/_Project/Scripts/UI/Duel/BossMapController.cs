@@ -59,6 +59,8 @@ namespace PushStars.UI
         public RectTransform HomeComposition, MapContent;
         public RectTransform[] ResponsiveControls;
         public ScrollRect Scroll;
+        [Tooltip("Empty map below the first chapter (under OK) and above the last (under the HUD). The viewport is full screen, so islands and fog run under both.")]
+        public float MapBottomPadding = 84, MapTopPadding = 65;
         public CanvasGroup MapGroup;
         public Node[] Nodes;
         public RewardNode[] Rewards = new RewardNode[0];
@@ -442,14 +444,14 @@ namespace PushStars.UI
             HomeComposition.anchoredPosition = new Vector2(0, 225 + 202.5f * scale);
             float mapScale = Scroll.viewport.rect.width / 390f;
             // The content rect stays in viewport units; its authored chapters scale inside it.
-            float height = 0;
+            float height = MapBottomPadding;
             foreach (RectTransform chapter in MapContent)
             {
                 chapter.localScale = Vector3.one * mapScale;
                 chapter.anchoredPosition = new Vector2(0, height);
                 height += chapter.rect.height * mapScale;
             }
-            MapContent.sizeDelta = new Vector2(0, Mathf.Max(height, Scroll.viewport.rect.height));
+            MapContent.sizeDelta = new Vector2(0, Mathf.Max(height + MapTopPadding, Scroll.viewport.rect.height));
         }
 
         private static bool[] Capture(GameObject[] objects)

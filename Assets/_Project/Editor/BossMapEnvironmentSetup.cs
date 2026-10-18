@@ -29,6 +29,24 @@ namespace PushStars.Editor
             finally { if (opened) EditorSceneManager.CloseScene(scene, true); }
         }
 
+        [MenuItem("Tools/Push Stars/Main/Install Boss Map Fog")]
+        public static void RunFog()
+        {
+            if (EditorApplication.isPlayingOrWillChangePlaymode) throw new InvalidOperationException("Exit Play mode first.");
+            var scene = UnityEngine.SceneManagement.SceneManager.GetSceneByPath(AuthoredScenes.MainPath);
+            bool opened = !scene.IsValid() || !scene.isLoaded;
+            if (opened) scene = EditorSceneManager.OpenScene(AuthoredScenes.MainPath, OpenSceneMode.Additive);
+            try
+            {
+                var controller = scene.GetRootGameObjects().SelectMany(r => r.GetComponentsInChildren<BossMapController>(true)).Single();
+                var backdrop = controller.Background.GetComponentInChildren<BossMapBackdrop>(true);
+                InstallFog(controller, backdrop);
+                EditorSceneManager.MarkSceneDirty(scene);
+                EditorSceneManager.SaveScene(scene);
+            }
+            finally { if (opened) EditorSceneManager.CloseScene(scene, true); }
+        }
+
         public static void Install(BossMapController c)
         {
             var forest = (RectTransform)c.MapContent.Find("ForestChapter");
@@ -84,6 +102,28 @@ namespace PushStars.Editor
             backdrop.Owner = c; backdrop.raycastTarget = false;
             backdrop.Biomes = c.MapContent.Cast<Transform>().Select(t => t.GetComponent<BossMapBiome>()).Where(b => b != null).ToArray();
             EditorUtility.SetDirty(forestBiome); EditorUtility.SetDirty(iceBiome); EditorUtility.SetDirty(backdrop);
+            InstallFog(c, backdrop);
+        }
+
+        /// <summary>Fog over unreached islands: above the chapters, inside the viewport mask, never hit-tested.</summary>
+        public static BossMapFog InstallFog(BossMapController c, BossMapBackdrop backdrop)
+        {
+            var viewport = c.Scroll.viewport;
+            // Full-screen map: islands and fog run under the HUD and the OK button instead of stopping
+            // at flat bands; BossMapController pads the content so the first island clears OK.
+            viewport.offsetMin = viewport.offsetMax = Vector2.zero;
+            EditorUtility.SetDirty(viewport);
+            var rect = viewport.Find("Fog") as RectTransform;
+            if (rect == null) rect = Rect(viewport, "Fog", Vector2.zero, Vector2.zero);
+            rect.anchorMin = Vector2.zero; rect.anchorMax = Vector2.one;
+            rect.offsetMin = rect.offsetMax = Vector2.zero;
+            rect.SetAsLastSibling();
+            var fog = rect.GetComponent<BossMapFog>();
+            if (fog == null) fog = rect.gameObject.AddComponent<BossMapFog>();
+            fog.Owner = c; fog.Backdrop = backdrop; fog.raycastTarget = false;
+            fog.Shader = AssetDatabase.LoadAssetAtPath<Shader>("Assets/_Project/Art/Shaders/BossMapFog.shader");
+            EditorUtility.SetDirty(fog);
+            return fog;
         }
 
         public static void InstallAndValidate()

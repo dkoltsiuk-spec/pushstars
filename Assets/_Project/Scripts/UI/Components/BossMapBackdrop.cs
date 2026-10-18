@@ -28,10 +28,14 @@ namespace PushStars.UI
             }
         }
 
-        public Color Sample(Vector2 mapPoint, float horizontal)
+        /// <summary>The biome palette at a map height, blended across chapter boundaries.</summary>
+        public void SampleBiome(Vector2 mapPoint, out Color background, out Color mist, out Color light)
         {
-            if (Biomes == null || Biomes.Length == 0) return new Color(.065f, .105f, .045f);
-            Color background = Biomes[0].Background, mist = Biomes[0].Mist;
+            var first = Biomes != null && Biomes.Length > 0 ? Biomes[0] : null;
+            background = first != null ? first.Background : new Color(.065f, .105f, .045f);
+            mist = first != null ? first.Mist : new Color(.20f, .27f, .085f);
+            light = first != null ? first.Light : new Color(.62f, .58f, .12f);
+            if (first == null) return;
             for (int i = 1; i < Biomes.Length; i++)
             {
                 var biome = Biomes[i];
@@ -41,7 +45,14 @@ namespace PushStars.UI
                 float blend = Mathf.SmoothStep(0, 1, Mathf.InverseLerp(boundary - span * .5f, boundary + span * .5f, mapPoint.y));
                 background = Color.Lerp(background, biome.Background, blend);
                 mist = Color.Lerp(mist, biome.Mist, blend);
+                light = Color.Lerp(light, biome.Light, blend);
             }
+        }
+
+        public Color Sample(Vector2 mapPoint, float horizontal)
+        {
+            if (Biomes == null || Biomes.Length == 0) return new Color(.065f, .105f, .045f);
+            SampleBiome(mapPoint, out var background, out var mist, out _);
             float widthScale = Mathf.Max(.01f, Owner.MapContent.rect.width / 390f);
             var p = mapPoint / widthScale;
             float clouds = Mathf.PerlinNoise(p.x * .007f + 31, p.y * .004f + 17);
