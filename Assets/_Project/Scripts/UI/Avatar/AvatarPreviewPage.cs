@@ -14,11 +14,33 @@ namespace PushStars.UI
         public GameObject[] Prefabs;
         public AvatarUnlockView UnlockView;
         private int _index;
+        private bool _styled;
 
         private void Awake()
         {
             Home.onClick.AddListener(Collection.Hide);
             Action.onClick.AddListener(Activate);
+            Style();
+        }
+
+        /// <summary>Runs once, from whichever comes first: Awake, or Present on the still-inactive page.</summary>
+        private void Style()
+        {
+            if (_styled) return;
+            _styled = true;
+            // The title already names the hero; the icon + name + "skin" row under it read as a toggle.
+            var icon = transform.Find("SkinIcon");
+            if (icon != null) icon.gameObject.SetActive(false);
+            Name.gameObject.SetActive(false);
+            if (Collection.InfoBody != null && Collection.InfoBody.transform.IsChildOf(transform)) Collection.InfoBody.gameObject.SetActive(false);
+            // The wide CTA art, sliced at its slanted ends, so the button stretches instead of flattening.
+            var art = Resources.Load<Sprite>("AvatarCollection/ActionActive");
+            if (art != null && art.border.x > 0)
+            {
+                Action.image.sprite = art;
+                Action.image.type = Image.Type.Sliced;
+                Action.image.preserveAspect = false;
+            }
         }
 
         private void Activate()
@@ -50,6 +72,7 @@ namespace PushStars.UI
 
         private void Refresh()
         {
+            Style();
             bool available = !Collection.IsLocked(_index);
             bool selected = Collection.IsSelected(_index);
             var offer = AvatarCatalog.At(_index);
@@ -57,6 +80,9 @@ namespace PushStars.UI
             Action.interactable = !selected && (available || offer.Kind == AvatarPurchaseKind.Gems);
             ActionText.text = available ? (selected ? "SELECTED" : "SELECT")
                 : byAura ? AvatarCollectionScreen.PriceLabel(_index) : "BUY · " + AvatarCollectionScreen.PriceLabel(_index);
+            // SELECT fits a compact button; prices and "to go" labels get the wide one.
+            if (Action.image.type == Image.Type.Sliced)
+                ((RectTransform)Action.transform).sizeDelta = new Vector2(available ? 170 : 250, 64);
             Status.text = available ? "IN YOUR COLLECTION" : byAura
                 ? $"UNLOCKS AT {AuraFormat.Short(offer.AuraGoal)} <sprite name=\"aura\"> · WIN FIGHTS TO FILL THE BAR" +
                   (offer.UsesCards ? $"\nEVERY {offer.Name} CARD FROM CASES ADDS {AuraFormat.Short(offer.CardAura)}" : "")
@@ -71,6 +97,12 @@ namespace PushStars.UI
             var art = (RectTransform)transform.parent;
             float height = ((RectTransform)art.parent).rect.height / Mathf.Max(.001f, art.localScale.y);
             var rect = (RectTransform)Action.transform;
+            // Slanted ends scale with the height, like the middle, so the corners keep their shape.
+            if (Action.image.type == Image.Type.Sliced && Action.image.sprite != null && rect.sizeDelta.y > 0)
+            {
+                float multiplier = Action.image.sprite.rect.height / (rect.sizeDelta.y * Mathf.Max(.001f, Action.image.pixelsPerUnit));
+                if (!Mathf.Approximately(Action.image.pixelsPerUnitMultiplier, multiplier)) Action.image.pixelsPerUnitMultiplier = multiplier;
+            }
             rect.anchoredPosition = new Vector2((390 - rect.sizeDelta.x) * .5f, -(height - rect.sizeDelta.y - 24));
             Status.rectTransform.anchoredPosition = new Vector2(25, -(height - rect.sizeDelta.y - 73));
             if (UnlockView != null) ((RectTransform)UnlockView.ProgressRoot.transform).anchoredPosition = new Vector2(45, -(height - rect.sizeDelta.y - 113));

@@ -17,6 +17,10 @@ namespace PushStars.Fight
         private static BotLabScreen _instance;
         /// <summary>The panel is up — other lab entries stay out from under it.</summary>
         public static bool IsOpen => _instance != null && _instance._panel != null && _instance._panel.activeSelf;
+        private static Func<bool>[] _homeOverlays = Array.Empty<Func<bool>>();
+        /// <summary>A full-screen home overlay (heroes, shop, duel setup) is up — lab entries hide so
+        /// they don't sit on top of its back button.</summary>
+        public static bool HomeCovered => _homeOverlays.Any(open => open());
         private GameObject _entry, _panel;
         private RectTransform _safe;
         private RectTransform _content;
@@ -61,6 +65,7 @@ namespace PushStars.Fight
             Button("CLOSE", _content, new Vector2(195, -649), new Vector2(330, 42), () => _panel.SetActive(false));
             _entry.SetActive(false); _panel.SetActive(false);
             SceneManager.sceneLoaded += OnSceneLoaded;
+            if (SceneManager.GetActiveScene().name == FightConfig.MainSceneName) _homeOverlays = FindHomeOverlays();
         }
         private void Update()
         {
@@ -69,7 +74,7 @@ namespace PushStars.Fight
             _safe.anchorMax = new Vector2(safe.xMax / Screen.width, safe.yMax / Screen.height);
             _content.localScale = Vector3.one * Mathf.Min(1, _safe.rect.width / 390, _safe.rect.height / 710);
             bool main = SceneManager.GetActiveScene().name == FightConfig.MainSceneName;
-            _entry.SetActive(main && LabAccess.Visible(_allowed));
+            _entry.SetActive(main && !HomeCovered && LabAccess.Visible(_allowed));
             if (!main) { _panel.SetActive(false); return; }
             if (_uid != LeagueClient.Uid)
             {
@@ -96,6 +101,7 @@ namespace PushStars.Fight
         }
         private void OnSceneLoaded(Scene scene, LoadSceneMode mode)
         {
+            if (scene.name == FightConfig.MainSceneName) _homeOverlays = FindHomeOverlays();
             if (scene.name == FightConfig.MainSceneName && FightRequest.IsBotTest)
             {
                 FightRequest.Clear(); BotRecorderFlow.Motion = new GhostMotionClip();
@@ -200,6 +206,17 @@ namespace PushStars.Fight
             label.rectTransform.offsetMin = new Vector2(8, 0); label.rectTransform.offsetMax = new Vector2(-8, 0);
             label.alignment = TextAlignmentOptions.Center;
             return button;
+        }
+        private static Func<bool>[] FindHomeOverlays()
+        {
+            T[] All<T>() where T : UnityEngine.Object => FindObjectsByType<T>(FindObjectsInactive.Include, FindObjectsSortMode.None);
+            return All<PushStars.UI.AvatarCollectionScreen>().Select(s => (Func<bool>)(() => s != null && s.IsOpen))
+                .Concat(All<PushStars.UI.ShopScreen>().Select(s => (Func<bool>)(() => s != null && s.IsOpen)))
+                .Concat(All<PushStars.UI.FriendDuelController>().Select(s => (Func<bool>)(() => s != null && s.IsOpen)))
+                .Concat(All<PushStars.UI.ModeSelectionController>().Select(s => (Func<bool>)(() => s != null && s.IsOpen)))
+                .Concat(All<PushStars.UI.BattleSettingsController>().Select(s => (Func<bool>)(() => s != null && s.IsOpen)))
+                .Concat(All<PushStars.UI.TrainingSettingsController>().Select(s => (Func<bool>)(() => s != null && s.IsOpen)))
+                .ToArray();
         }
         private void OnDestroy() { SceneManager.sceneLoaded -= OnSceneLoaded; if (_instance == this) _instance = null; }
     }

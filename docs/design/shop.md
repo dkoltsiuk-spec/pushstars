@@ -18,7 +18,7 @@ changing player notice saves or the wallet.
   avatar-collection.md. The original offer below is retired.
 - One special offer: Sonic, $5.99. The shared AvatarCatalog marks Sonic as Dollars;
   the collection, premium filter, home roster and fight selection respect ownership.
-  Madam Engry and Fighter remain included.
+  Queen Push and Fighter remain included.
 - Offer and info taps open the existing animated avatar preview. Back returns to
   Shop, Home closes to the lobby. Opening the collection directly retains its
   original navigation.

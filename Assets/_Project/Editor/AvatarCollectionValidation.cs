@@ -156,7 +156,7 @@ namespace PushStars.Editor
                     Capture(screen, 750, 1334, "preview-robot.png");
                     screen.InfoClose.onClick.Invoke();
                     screen.InfoButtons[1].onClick.Invoke();
-                    Check(screen.InfoTitle.text == "MADAM ENGRY", "Info button must navigate to the correct preview.");
+                    Check(screen.InfoTitle.text == "QUEEN PUSH", "Info button must navigate to the correct preview.");
                     screen.PreviewPage.Action.onClick.Invoke();
                     Check(screen.Roster.Gender == CharacterGender.Female && screen.PreviewPage.ActionText.text == "SELECTED", "Preview selection failed.");
                     screen.PreviewPage.Home.onClick.Invoke();

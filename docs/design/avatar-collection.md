@@ -50,7 +50,7 @@ Gems heroes still use their price; `TryBuyAvatar` only spends gems.
 
 ## Hero cards and unlock prices (September 2026)
 
-The saved Main scene has five avatars. Sonic, Madam Engry and Fighter remain
+The saved Main scene has five avatars. Sonic, Queen Push and Fighter remain
 included. Robot costs 300 Aura or 60 hero cards; Gladiator costs 600 Aura or
 120 cards. These starting values are editable in
 `Assets/_Project/Resources/AvatarCatalog.asset`. Stable IDs, rather than translated
@@ -104,7 +104,7 @@ Unity; the installer preserves an existing collection rather than rebuilding it.
 
 The screen uses the profile blue (#1A47D3), faint lightning, and the supplied
 card, footer, and information-button PNGs. Four slots are shown: Sonic preview,
-Madam Engry, Fighter, and Robot preview. Opened filters to the two
+Queen Push, Fighter, and Robot preview. Opened filters to the two
 currently selectable bodies. Premium has an honest coming-soon state; no prices,
 purchases, or new unlock conditions have been introduced.
 

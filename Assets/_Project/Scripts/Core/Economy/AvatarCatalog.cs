@@ -57,7 +57,7 @@ namespace PushStars.Core
 
         public static AvatarOffer[] Defaults() => new[] {
             new AvatarOffer { Id = RetiredId, Name = "RETIRED", Kind = AvatarPurchaseKind.Dollars, Price = 599 },
-            new AvatarOffer { Id = "madam-engry", Name = "MADAM ENGRY", Kind = AvatarPurchaseKind.Included },
+            new AvatarOffer { Id = "madam-engry", Name = "QUEEN PUSH", Kind = AvatarPurchaseKind.Included },
             new AvatarOffer { Id = "fighter", Name = "FIGHTER", Kind = AvatarPurchaseKind.Included },
             new AvatarOffer { Id = "robot", Name = "ROBOT", Kind = AvatarPurchaseKind.Aura, Price = 50000, RequiredCards = 50, HeadIcon = "AvatarCollection/RobotHead" },
             new AvatarOffer { Id = "gladiator", Name = "GLADIATOR", Kind = AvatarPurchaseKind.Aura, Price = 250000, RequiredCards = 250, HeadIcon = "AvatarCollection/GladiatorHead" },

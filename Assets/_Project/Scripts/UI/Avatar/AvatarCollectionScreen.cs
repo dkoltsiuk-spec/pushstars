@@ -31,6 +31,7 @@ namespace PushStars.UI
         private bool _arenas;
         private string _emptyHeroes;
         private readonly ArenaRoundedGraphic[] _modeFills = new ArenaRoundedGraphic[2];
+        private GameObject _modeSwitch;
         private readonly TextMeshProUGUI[] _modeLabels = new TextMeshProUGUI[2];
         private readonly List<ArenaCard> _arenaCards = new List<ArenaCard>();
         private sealed class ArenaCard
@@ -77,6 +78,12 @@ namespace PushStars.UI
         private void AddCatalogCards()
         {
             int authored = Cards.Length, total = AvatarCatalog.All.Length;
+            // Authored cards carry a name baked into the scene; the catalog owns the names.
+            for (int i = 0; i < authored; i++)
+            {
+                var label = Cards[i].transform.Find("Name")?.GetComponent<TextMeshProUGUI>();
+                if (label != null) label.text = AvatarName(i);
+            }
             if (authored == 0 || total <= authored) return;
             var template = Cards[authored - 1];
             System.Array.Resize(ref Cards, total);
@@ -174,6 +181,7 @@ namespace PushStars.UI
             var root = ArenaUi.Rect(Art, "ModeSwitch", new Vector2(200, 38), Vector2.zero);
             root.anchorMin = root.anchorMax = root.pivot = new Vector2(0, 1);
             root.anchoredPosition = new Vector2(95, -52);
+            _modeSwitch = root.gameObject;
             if (title != null)
             {
                 root.SetSiblingIndex(title.transform.GetSiblingIndex());
@@ -312,6 +320,9 @@ namespace PushStars.UI
 
         private void SetCollectionVisible(bool visible)
         {
+            // The heroes/arenas switch is built at runtime, so it is not in CollectionContent;
+            // left on, it shows through behind the hero name on the preview page.
+            if (_modeSwitch != null) _modeSwitch.SetActive(visible);
             if (CollectionContent == null) return;
             foreach (var item in CollectionContent) if (item != null) item.SetActive(visible);
         }

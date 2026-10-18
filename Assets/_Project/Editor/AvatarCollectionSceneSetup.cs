@@ -87,7 +87,7 @@ namespace PushStars.Editor
             layout.constraint = GridLayoutGroup.Constraint.FixedColumnCount; layout.constraintCount = 2;
             screen.Cards = new Button[4]; screen.InfoButtons = new Button[4];
             screen.Plates = new Image[4]; screen.Footers = new Image[4]; screen.Actions = new TextMeshProUGUI[4];
-            string[] names = { "SONIC", "MADAM ENGRY", "FIGHTER", "ROBOT" };
+            string[] names = { "SONIC", "QUEEN PUSH", "FIGHTER", "ROBOT" };
             string[] portraits = { "Sonic", "MainWoman", "MainMan", "Robot" };
             for (int i = 0; i < 4; i++)
             {
