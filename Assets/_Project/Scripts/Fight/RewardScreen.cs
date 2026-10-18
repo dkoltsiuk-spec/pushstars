@@ -88,6 +88,7 @@ namespace PushStars.Fight
         private readonly Dictionary<RectTransform, Pose> _poses = new Dictionary<RectTransform, Pose>();
         private static readonly string[] CaseNames = { "COMMON", "RARE", "EPIC", "LEGENDARY" };
         private static readonly Color Gold = new Color32(255, 214, 17, 255);
+        private static readonly Color LevelCaption = new Color32(185, 201, 247, 255); // the profile's muted caption
         private string _caseId;
         private CaseRarity _rarity;
         private int _tapsUsed, _gems;
@@ -504,18 +505,25 @@ namespace PushStars.Fight
         {
             var ui = _summaryUi;
             int level = LevelCalculator.LevelFromXp(xp);
-            Set(ui.Level, level.ToString());
+            // The profile's level block: "LVL" over the number on the tag, the count across the bar.
+            Set(ui.Level, "<size=8>LVL</size>\n" + level);
             if (ui.LevelFill != null)
             {
+                // Rounded bar: the capsule grows instead of being cut, never narrower than it is tall.
+                float progress = Mathf.Clamp01(LevelCalculator.LevelProgress(xp));
+                var area = ((RectTransform)ui.LevelFill.parent).rect;
+                float least = area.width > 0 ? area.height / area.width : 0;
                 var max = ui.LevelFill.anchorMax;
-                max.x = Mathf.Clamp01(LevelCalculator.LevelProgress(xp));
+                max.x = Mathf.Max(least, progress);
                 ui.LevelFill.anchorMax = max;
+                var fill = ui.LevelFill.GetComponent<Graphic>();
+                if (fill != null) fill.enabled = progress > 0;
             }
-            if (ui.LevelProgress != null) ui.LevelProgress.color = Color.white;
-            Set(ui.LevelUp, levelledUp ? "LEVEL UP!" : "");
+            Set(ui.LevelUp, levelledUp ? "LEVEL UP!" : "LEVEL PROGRESS");
+            if (ui.LevelUp != null) ui.LevelUp.color = levelledUp ? Gold : LevelCaption;
             long floor = LevelCalculator.TotalXpForLevel(level);
-            Set(ui.LevelProgress, level >= EconomyConfig.MaxLevel ? "MAX LEVEL"
-                : $"{xp - floor} / {LevelCalculator.XpForLevelUp(level)}");
+            Set(ui.LevelProgress, level >= EconomyConfig.MaxLevel ? "MAX"
+                : $"{xp - floor}/{LevelCalculator.XpForLevelUp(level)}");
         }
 
         private IEnumerator FillLevel(long before, long after)

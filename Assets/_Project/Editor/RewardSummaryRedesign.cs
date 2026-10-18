@@ -169,36 +169,7 @@ namespace PushStars.Editor
             ui.TechniqueStars = new RewardStarGraphic[0];
             ui.RepsPanel = score;
 
-            // ── XP: level badge, bar, +570 XP ──
-            var xp = Group(composition, "result-xp", 195, 732, 342, 48);
-            var levelBadge = Child(xp, "LevelBadge", 19, 24, 38, 50);
-            var oldBadge = levelBadge.GetComponent<RewardPlateGraphic>();
-            if (oldBadge != null) Object.DestroyImmediate(oldBadge);
-            var badgeImage = Ensure<Image>(levelBadge.gameObject);
-            badgeImage.sprite = AssetDatabase.LoadAssetAtPath<Sprite>("Assets/_Project/UI/Sprites/ProfileSettings/Group 532.png");
-            badgeImage.preserveAspect = true; badgeImage.raycastTarget = false;
-            Style(Child(levelBadge, "Label", 21, 11, 30, 12), 10, new Color32(255, 216, 140, 255), FightTypography.Role.Label).text = "LVL";
-            ui.Level = Style(Child(levelBadge, "Value", 21, 28, 30, 27), 23, Color.white, FightTypography.Role.Value);
-            ui.Level.text = "4";
-            var xpTrack = Child(xp, "Track", 142, 20, 260, 27);
-            Plate(xpTrack.gameObject, new Color32(25, 46, 107, 255), 13);
-            var trackPlate = xpTrack.GetComponent<RewardPlateGraphic>();
-            trackPlate.BorderWidth = 1; trackPlate.Border = new Color32(50, 42, 30, 255);
-            ui.LevelFill = Fill(xpTrack, .62f);
-            ui.LevelFill.offsetMin = new Vector2(1, 1); ui.LevelFill.offsetMax = new Vector2(-1, -1);
-            var fillPlate = ui.LevelFill.GetComponent<RewardPlateGraphic>();
-            fillPlate.Top = new Color32(255, 159, 0, 255); fillPlate.Bottom = new Color32(255, 218, 100, 255);
-            fillPlate.Radius = 11;
-            var xpValue = Child(xp, "AnimatedValue", 311, 20, 64, 24);
-            ui.EnergyXp = Style(Child(xpValue, "Value", 32, 12, 64, 24), 16, Color.white, FightTypography.Role.Value, TextAlignmentOptions.Right);
-            ui.EnergyXp.text = "+570 XP";
-            ui.XpContent = xpValue;
-            ui.LevelProgress = Style(Child(xp, "Progress", 152, 20, 218, 25), 17, Color.white, FightTypography.Role.Value);
-            ui.LevelProgress.text = "620/1000";
-            ui.LevelUp = Style(Child(xp, "LevelUp", 158, 42, 220, 14), 10, Gold, FightTypography.Role.Label);
-            ui.LevelUp.text = "";
-            levelBadge.SetAsLastSibling();
-            ui.LevelGroup = xp; ui.LevelBadge = levelBadge;
+            var xp = BuildLevelBlock(screen);
 
             // ── Home action, centred along the bottom ──
             ConfigureHomeButton(screen);
@@ -243,6 +214,88 @@ namespace PushStars.Editor
             if (button.GetComponent<CanvasGroup>() == null) button.gameObject.AddComponent<CanvasGroup>();
             ui.Continue = button;
 
+        }
+
+        /// <summary>The profile's level block (<see cref="ProfileVisualUpgrade"/>), same art at 0.88×
+        /// so it fits between the score and the button: the white clipboard tag with the level biting
+        /// into a black-rimmed slate bar, two-tone fill, the outlined count across it; above the bar
+        /// LEVEL PROGRESS / LEVEL UP! on the left and the XP gained on the right.</summary>
+        public static RectTransform BuildLevelBlock(RewardScreen screen)
+        {
+            var ui = screen.SummaryUi;
+            var xp = Group(Find(screen, "Composition"), "result-xp", 195, 743, 342, 58);
+            var caption = AssetDatabase.LoadAssetAtPath<Material>(ProfileArt + "Caption.mat");
+
+            var track = Child(xp, "Track", 187, 33, 310, 30);
+            ProfileBar(track, "level-track");
+            var area = Child(xp, "FillArea", 192.5f, 33, 293, 24);
+            var fill = track.Find("Fill") as RectTransform;
+            if (fill == null) fill = area.Find("Fill") as RectTransform;
+            if (fill == null) fill = new GameObject("Fill", typeof(RectTransform)).GetComponent<RectTransform>();
+            fill.SetParent(area, false);
+            fill.anchorMin = Vector2.zero; fill.anchorMax = new Vector2(.62f, 1);
+            fill.pivot = new Vector2(0, .5f); fill.localScale = Vector3.one; fill.localRotation = Quaternion.identity;
+            fill.offsetMin = fill.offsetMax = Vector2.zero;
+            ProfileBar(fill, "level-fill");
+            ui.LevelFill = fill;
+
+            ui.LevelProgress = Style(Child(xp, "Progress", 192.5f, 32, 293, 32), 18, Color.white, FightTypography.Role.Value);
+            ProfileFont(ui.LevelProgress, AssetDatabase.LoadAssetAtPath<Material>(ProfileArt + "LevelValue.mat"));
+            ui.LevelProgress.enableAutoSizing = false; ui.LevelProgress.characterSpacing = -1;
+            ui.LevelProgress.text = "620/1000";
+
+            ui.LevelUp = Style(Child(xp, "LevelUp", 138, 8, 160, 16), 10, new Color32(185, 201, 247, 255),
+                FightTypography.Role.Label, TextAlignmentOptions.Left);
+            ProfileFont(ui.LevelUp, caption);
+            ui.LevelUp.text = "LEVEL PROGRESS";
+            var xpValue = Child(xp, "AnimatedValue", 296, 8, 92, 18);
+            ui.EnergyXp = Style(Child(xpValue, "Value", 46, 9, 92, 18), 13, Gold, FightTypography.Role.Value, TextAlignmentOptions.Right);
+            ProfileFont(ui.EnergyXp, caption);
+            ui.EnergyXp.text = "+570 XP";
+            ui.XpContent = xpValue;
+
+            // The owner's tag art comes already tilted; the level sits on its card below the clip,
+            // turned to the same angle.
+            var levelBadge = Child(xp, "LevelBadge", 26.5f, 21.5f, 45, 59);
+            var oldBadge = levelBadge.GetComponent<RewardPlateGraphic>();
+            if (oldBadge != null) Object.DestroyImmediate(oldBadge);
+            var badgeImage = Ensure<Image>(levelBadge.gameObject);
+            badgeImage.sprite = AssetDatabase.LoadAssetAtPath<Sprite>(ProfileArt + "lvl-icon.png");
+            badgeImage.color = Color.white; badgeImage.preserveAspect = true; badgeImage.raycastTarget = false;
+            var label = levelBadge.Find("Label");
+            if (label != null) label.gameObject.SetActive(false);
+            ui.Level = Style(Child(levelBadge, "Value", 23.8f, 39.6f, 30, 28), 19, new Color32(20, 20, 28, 255), FightTypography.Role.Value);
+            ProfileFont(ui.Level, caption);
+            ui.Level.enableAutoSizing = false; ui.Level.lineSpacing = -30; // pulls the small "LVL" down onto the number
+            ui.Level.rectTransform.localRotation = Quaternion.Euler(0, 0, 10);
+            ui.Level.text = "<size=8>LVL</size>\n4";
+
+            int order = 0;
+            foreach (var part in new Transform[] { track, area, ui.LevelProgress.transform, ui.LevelUp.transform, xpValue, levelBadge })
+                part.SetSiblingIndex(order++);
+            ui.LevelGroup = xp; ui.LevelBadge = levelBadge;
+            return xp;
+        }
+
+        private const string ProfileArt = "Assets/_Project/UI/Sprites/ProfileBrawl/";
+
+        /// <summary>A profile level-bar sprite, sliced at the 4× scale it was drawn at.</summary>
+        private static void ProfileBar(RectTransform rt, string sprite)
+        {
+            var plate = rt.GetComponent<RewardPlateGraphic>();
+            if (plate != null) Object.DestroyImmediate(plate);
+            var image = Graphic<Image>(rt);
+            image.sprite = AssetDatabase.LoadAssetAtPath<Sprite>(ProfileArt + sprite + ".png");
+            image.color = Color.white; image.preserveAspect = false;
+            image.type = Image.Type.Sliced; image.fillCenter = true; image.pixelsPerUnitMultiplier = 4;
+        }
+
+        private static void ProfileFont(TextMeshProUGUI text, Material material)
+        {
+            text.font = AssetDatabase.LoadAssetAtPath<TMP_FontAsset>("Assets/_Project/UI/Fonts/Rubik Black TMP.asset");
+            text.fontSharedMaterial = material;
+            text.fontStyle = FontStyles.Normal; text.characterSpacing = 0;
+            text.UpdateMeshPadding();
         }
 
         /// <summary>Updates only the trophy row, preserving the rest of the authored composition.</summary>
@@ -350,17 +403,6 @@ namespace PushStars.Editor
             var text = Style(Child(row, name, 0, 0, 0, 18), 13, tint, FightTypography.Role.Label, TextAlignmentOptions.Left);
             text.text = sample; text.enableAutoSizing = false; text.transform.SetSiblingIndex(index);
             return text;
-        }
-
-        private static RectTransform Fill(RectTransform track, float progress)
-        {
-            var fill = track.Find("Fill") as RectTransform;
-            if (fill == null) { fill = new GameObject("Fill", typeof(RectTransform)).GetComponent<RectTransform>(); fill.SetParent(track, false); }
-            fill.anchorMin = Vector2.zero; fill.anchorMax = new Vector2(progress, 1);
-            fill.pivot = new Vector2(0, .5f); fill.localScale = Vector3.one; fill.localRotation = Quaternion.identity;
-            fill.offsetMin = fill.offsetMax = Vector2.zero;
-            Plate(fill.gameObject, Gold, 5);
-            return fill;
         }
 
         private static void Row(GameObject go, TextAnchor anchor, float spacing)
