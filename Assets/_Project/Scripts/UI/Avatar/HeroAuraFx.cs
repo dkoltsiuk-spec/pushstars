@@ -26,9 +26,20 @@ namespace PushStars.UI
             /// <summary>Average seconds between spawns; 0 turns that kind off.</summary>
             public float OrbitEvery = 1.4f, LimbEvery = 2.3f, StreakEvery = 2.4f, BoltEvery = 2.8f;
             public float SparklesPerSecond = 6f;
+            /// <summary>Sparkle size multiplier.</summary>
+            public float SparkleScale = 1f;
             /// <summary>Faceted blade-like arcs and streaks instead of smooth crescents.</summary>
             public bool Sharp;
         }
+
+        /// <summary>10K: sparkles only — a few white stars drifting up off the body.</summary>
+        public static readonly Style White = new Style
+        {
+            Edge = new Color(.82f, .9f, 1f),
+            Glow = new Color(.7f, .85f, 1f),
+            OrbitEvery = 0f, LimbEvery = 0f, StreakEvery = 0f, BoltEvery = 0f,
+            SparklesPerSecond = 5f, SparkleScale = 1.4f,
+        };
 
         /// <summary>50K: the gentle first step — an occasional smooth swoosh and a few sparkles,
         /// no streaks or lightning (those arrive at 250K).</summary>
@@ -318,7 +329,7 @@ namespace PushStars.UI
                 {
                     Pos = _p[bone] + Random.insideUnitCircle * _scale * .35f,
                     Vel = new Vector2(Random.Range(-.35f, .35f), Random.Range(.45f, 1f)) * _scale,
-                    Life = Random.Range(.5f, .9f), Size = _scale * Random.Range(.05f, .09f),
+                    Life = Random.Range(.5f, .9f), Size = _scale * Random.Range(.05f, .09f) * _style.SparkleScale,
                     Spin = Random.Range(-3f, 3f), Front = Random.value < .65f,
                 });
             }

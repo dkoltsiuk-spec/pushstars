@@ -33,15 +33,16 @@ namespace PushStars.UI
         }
 
         // Index = AuraTier.Index. Radius/Reach are in units of the visible portrait height.
-        // Tiers differ by glow colour and width; from BLUE FLAME up the hero also gets energy
-        // marks (Fx), denser at every step. The shader can also draw flames (Intensity), embers (Sparks) and a
+        // Tiers differ by glow colour and width, and every tier has energy marks (Fx) that get
+        // denser at each step: sparkles only at GLOW, swooshes from BLUE FLAME, lightning from
+        // VIOLET STORM. The shader can also draw flames (Intensity), embers (Sparks) and a
         // contrasting edge; those stay off.
         private static readonly Look[] Looks =
         {
             default,
-            // GLOW: white.
+            // GLOW: white, with a few sparkles.
             new Look { Core = Color.white, Flame = new Color(.75f, .88f, 1f), Edge = Color.white, Spark = Color.white,
-                Glow = .9f, Radius = .01f, Reach = .03f, Darken = .1f, Pulse = .18f },
+                Glow = .9f, Radius = .01f, Reach = .03f, Darken = .1f, Pulse = .18f, Fx = HeroAuraFx.White },
             // BLUE FLAME: blue, a little wider, with the first gentle swooshes and sparkles.
             new Look { Core = new Color(.5f, .85f, 1f), Flame = new Color(.1f, .5f, 1f), Edge = Color.white, Spark = Color.white,
                 Glow = 1.1f, Radius = .011f, Reach = .045f, Darken = .14f, Pulse = .16f, Fx = HeroAuraFx.Blue },
