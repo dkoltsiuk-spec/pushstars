@@ -35,36 +35,55 @@ if (problems.length) {
 }
 
 const b64url = (b) => Buffer.from(b).toString('base64url');
-const now = Math.floor(Date.now() / 1000);
-const header = b64url(JSON.stringify({ alg: 'ES256', kid: keyId, typ: 'JWT' }));
-const payload = b64url(JSON.stringify({ iss: issuer, iat: now, exp: now + 600, aud: 'appstoreconnect-v1' }));
-let signature;
+let privateKey;
 try {
-  signature = sign('sha256', Buffer.from(`${header}.${payload}`), { key: createPrivateKey(pem), dsaEncoding: 'ieee-p1363' });
+  privateKey = createPrivateKey(pem);
 } catch (e) {
   console.log('✗ could not read the private key: ' + e.message);
   process.exit(1);
 }
-const token = `${header}.${payload}.${b64url(signature)}`;
+// Team keys carry "iss" = Issuer ID; Individual keys carry "sub": "user" and no issuer.
+const tokenFor = (claims) => {
+  const now = Math.floor(Date.now() / 1000);
+  const header = b64url(JSON.stringify({ alg: 'ES256', kid: keyId, typ: 'JWT' }));
+  const payload = b64url(JSON.stringify({ ...claims, iat: now, exp: now + 600, aud: 'appstoreconnect-v1' }));
+  const signature = sign('sha256', Buffer.from(`${header}.${payload}`), { key: privateKey, dsaEncoding: 'ieee-p1363' });
+  return `${header}.${payload}.${b64url(signature)}`;
+};
 
 const url = `https://api.appstoreconnect.apple.com/v1/apps?filter[bundleId]=${encodeURIComponent(bundleId)}&fields[apps]=name,bundleId`;
-const res = await fetch(url, { headers: { Authorization: `Bearer ${token}` } });
-const body = await res.json().catch(() => ({}));
+const call = (token) => fetch(url, { headers: { Authorization: `Bearer ${token}` } });
+// process.exit() while fetch's sockets are still closing trips a libuv assertion on Windows,
+// so the outcome goes out through process.exitCode.
+async function check() {
+  const res = await call(tokenFor({ iss: issuer }));
+  const body = await res.json().catch(() => ({}));
 
-if (res.status === 401) {
-  console.log(`✗ 401: Apple rejected key ${keyId} with issuer ${issuer}.`);
-  console.log('  The key ID, the issuer and the .p8 file do not belong together, or the key was revoked,');
-  console.log('  or it is an Individual key (UBA needs a Team key: Users and Access › Integrations › Team Keys).');
-  process.exit(1);
+  if (res.status === 401) {
+    console.log(`✗ 401: Apple rejected key ${keyId} with issuer ${issuer}.`);
+    const individual = await call(tokenFor({ sub: 'user' }));
+    if (individual.status !== 401) {
+      console.log('  But the same .p8 works as an INDIVIDUAL key (it was made under your profile, not under Team Keys).');
+      console.log('  altool in UBA needs a TEAM key: Users and Access › Integrations › App Store Connect API › Team Keys ›');
+      console.log('  generate one (role App Manager), download its .p8 and use its Key ID with the Issuer ID shown there.');
+    } else {
+      console.log('  The key ID, the issuer and the .p8 file do not belong together, or the key was revoked.');
+      console.log('  Open Users and Access › Integrations › App Store Connect API › Team Keys: is the Key ID in the list');
+      console.log('  (and Active)? Copy the Issuer ID from the top of that page. If the key is not there, generate a new one.');
+    }
+    return 1;
+  }
+  if (!res.ok) {
+    console.log(`✗ HTTP ${res.status}: ${JSON.stringify(body.errors ?? body)}`);
+    return 1;
+  }
+  console.log(`✓ key ${keyId} works (issuer ${issuer}).`);
+  const app = body.data?.[0];
+  if (!app) {
+    console.log(`✗ but there is no app with bundle ID ${bundleId} in App Store Connect — create it (Apps › + › New App) before uploading.`);
+    return 1;
+  }
+  console.log(`✓ app "${app.attributes.name}" (${app.attributes.bundleId}) — put ASC_APP_ID=${app.id} into the UBA target.`);
+  return 0;
 }
-if (!res.ok) {
-  console.log(`✗ HTTP ${res.status}: ${JSON.stringify(body.errors ?? body)}`);
-  process.exit(1);
-}
-console.log(`✓ key ${keyId} works (issuer ${issuer}).`);
-const app = body.data?.[0];
-if (!app) {
-  console.log(`✗ but there is no app with bundle ID ${bundleId} in App Store Connect — create it (Apps › + › New App) before uploading.`);
-  process.exit(1);
-}
-console.log(`✓ app "${app.attributes.name}" (${app.attributes.bundleId}) — put ASC_APP_ID=${app.id} into the UBA target.`);
+process.exitCode = await check();
