@@ -61,6 +61,8 @@ namespace PushStars.Editor
 
         /// <summary>Forest layers and petals belong to the first island's battle only.</summary>
         private static bool InForest(BossCombatScreen c) => c.Forest != null && IslandArena() == "jungle";
+        /// <summary>Split-arena layers belong to their own island's battle only: ice temple with snow, lava forge with embers.</summary>
+        private static ArenaIslandSetup.Island OnIsland(BossCombatScreen c) => ArenaIslandValidation.Current(c);
 
         private static void CheckHealth()
         {
@@ -120,6 +122,10 @@ namespace PushStars.Editor
                     stage.Render();
                 }
                 c.Configure(true); Canvas.ForceUpdateCanvases(); c.Refresh(1);
+                Require((c.Forest != null && c.Forest.Background.activeSelf) == (!c.Preparation && InForest(c)) &&
+                    ArenaIslandSetup.Islands.All(i => ArenaIslandSetup.Presentation(c, i) == null ||
+                        ArenaIslandSetup.Presentation(c, i).Background.activeSelf == (!c.Preparation && OnIsland(c) == i)),
+                    "Only the current island's battle layers shown");
                 if (c.Preparation)
                 {
                     var backdrop = c.Root.GetComponentInChildren<PreparationArenaBackdrop>(true);
@@ -174,6 +180,9 @@ namespace PushStars.Editor
                     correction.Apply(0f); c.PlayerStage.StageCamera.Render();
                 }
                 if (!c.Preparation && InForest(c)) GoblinForestValidation.Check(c,camera,output,Capture);
+                var island = c.Preparation ? null : OnIsland(c);
+                if (island != null) ArenaIslandValidation.Check(c,island,camera,output,Capture);
+                string burst = island == ArenaIslandSetup.Ice ? "-ice-chips" : island == ArenaIslandSetup.Lava ? "-basalt-chips" : "-petals";
                 if (!c.Preparation)
                 {
                     var health = (BossCombatState)typeof(BossCombatScreen).GetField("_health",Private).GetValue(c);
@@ -181,13 +190,13 @@ namespace PushStars.Editor
                     Require(Mathf.Abs(c.BossHpFill.FillAmount-(maxHp-100f)/maxHp)<.001f && Mathf.Abs(c.PlayerHpFill.FillAmount-(1000f-BossCatalog.Bosses[_bossIndex].AttackDamage)/1000f)<.001f, "Actual HP drives fills");
                     Require(c.DamageLabels.Count(x => x.gameObject.activeSelf)==2, "Both damage numbers shown");
                     Capture(camera,output,name+"-damage");
-                    if (InForest(c) && c.Forest.Effects != null)
+                    if (c.IslandEffects != null)
                     {
-                        var fx = c.Forest.Effects;
+                        var fx = c.IslandEffects;
                         Require(fx.HitBursts == 1, "Only boss damage triggers petals; player damage does not");
                         for (int frame = 0; frame < 6; frame++) fx.Advance(.05f);
                         Require(fx.ActivePetals == 11, "Hit emits eleven petals");
-                        Capture(camera,output,name+"-petals-hit");
+                        Capture(camera,output,name+burst+"-hit");
                     }
                 }
                 var sizes = c.Preparation ? new[] {new Vector2Int(320,568)} :
@@ -198,13 +207,14 @@ namespace PushStars.Editor
                     var resized = new RenderTexture(size.x * 2, size.y * 2, 24); textures.Add(resized); camera.targetTexture = resized;
                     Canvas.ForceUpdateCanvases(); c.Refresh(0);
                     if (!c.Preparation && InForest(c)) GoblinForestValidation.CheckLayout(c);
+                    if (island != null) ArenaIslandValidation.CheckLayout(c, island);
                     Capture(camera, resized, name + (size.x == 320 ? "-small" : "-" + size.x + "x" + size.y));
                 }
-                if (!c.Preparation && InForest(c) && c.Forest.Effects != null)
+                if (!c.Preparation && c.IslandEffects != null)
                 {
                     rect.sizeDelta = new Vector2(390,844); camera.orthographicSize = 422; camera.targetTexture = output;
                     Canvas.ForceUpdateCanvases(); c.Refresh(0);
-                    var fx = c.Forest.Effects;
+                    var fx = c.IslandEffects;
                     var health = (BossCombatState)typeof(BossCombatScreen).GetField("_health",Private).GetValue(c);
                     while (!health.Knockout) health.PlayerRep(100);
                     int hits = fx.HitBursts; health.PlayerRep(100);
@@ -218,11 +228,12 @@ namespace PushStars.Editor
                     typeof(FightAvatar).GetMethod("FrameCharacter", Private).Invoke(c.BossStage, null);
                     c.BossStage.StageCamera.Render(); c.Refresh(1);
                     foreach (var label in c.DamageLabels) label.gameObject.SetActive(false);
-                    Capture(camera,output,name+"-petals-fall");
+                    Capture(camera,output,name+burst+"-fall");
                     for (int frame = 0; frame < 60; frame++) fx.Advance(.05f);
                     Require(fx.ActivePetals == 0 && fx.FallBursts == 1, "Petals expire and fall does not repeat");
                     Require(fx.transform.childCount == ForestParticleEffects.Capacity, "Particle pool remains bounded");
-                    File.WriteAllText("output/goblin-forest/particles-validation.txt", "PASS: ambient leaves; real boss hit produces 11 petals; player damage ignored; knockout produces one 28-petal ground burst; no repeated KO burst; particles expire; fixed 64-slot pool; source textures wired.\n");
+                    if (island != null) File.WriteAllText(ArenaIslandValidation.Output(island) + "particles-validation.txt", "PASS: calm ambient " + string.Join("/", island.Ambient.Distinct()) + "; real boss hit produces 11 " + island.Chapter + " chips; player damage ignored; knockout produces one 28-chip ground burst; no repeated KO burst; particles expire; fixed 64-slot pool; source textures wired.\n");
+                    else File.WriteAllText("output/goblin-forest/particles-validation.txt", "PASS: ambient leaves; real boss hit produces 11 petals; player damage ignored; knockout produces one 28-petal ground burst; no repeated KO burst; particles expire; fixed 64-slot pool; source textures wired.\n");
                 }
                 c.Configure(false); Require(!c.Root.activeSelf, "Boss layer disabled outside boss mode");
             }

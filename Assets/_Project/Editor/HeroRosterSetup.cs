@@ -25,6 +25,9 @@ namespace PushStars.Editor
         private static readonly (string hero, float degrees)[] ArmSpread =
             { ("Chubby", 12f), ("Viking", 11f), ("Skinny", 8f), ("Tigress", 8f) };
 
+        /// <summary>Heroes that keep the relaxed idle: the power stance does not suit their build.</summary>
+        private static readonly string[] RelaxedIdle = { "Skinny" };
+
         [MenuItem("Tools/Push Stars/Character/Import Catalog Heroes")]
         public static void Run()
         {
@@ -50,6 +53,7 @@ namespace PushStars.Editor
                 BodyFbx = $"{dir}/{name.ToLowerInvariant()}.fbx",
                 PrefabPath = $"Assets/_Project/Resources/{offer.Prefab}.prefab",
                 ControllerPath = $"{dir}/{name}.controller",
+                RelaxedIdle = RelaxedIdle.Contains(name),
             };
         }
 
@@ -93,7 +97,8 @@ namespace PushStars.Editor
         /// Resources/AvatarCollection/&lt;Name&gt;Head.png.</summary>
         public static void RenderHeads(string outputDir)
         {
-            foreach (var offer in AvatarCatalog.Defaults().Where(o => !string.IsNullOrEmpty(o.Prefab) && !string.IsNullOrEmpty(o.HeadIcon)))
+            // An island hero's icon is its island's boss badge, not a render of its own head.
+            foreach (var offer in AvatarCatalog.Defaults().Where(o => !string.IsNullOrEmpty(o.Prefab) && !string.IsNullOrEmpty(o.HeadIcon) && !o.UnlocksByIsland))
             {
                 var prefab = AssetDatabase.LoadAssetAtPath<GameObject>(Definition(offer).PrefabPath);
                 if (prefab == null) continue;

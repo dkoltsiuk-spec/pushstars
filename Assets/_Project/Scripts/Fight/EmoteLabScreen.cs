@@ -141,7 +141,7 @@ namespace PushStars.Fight
             try
             {
                 var access = await BotRecordingClient.GetAccess();
-                if (requestedUid == LeagueClient.Uid) _allowed = access.enabled;
+                if (requestedUid == LeagueClient.Uid) LabAccess.Allowlisted = _allowed = access.enabled;
             }
             catch (Exception) { _nextCheck = Time.unscaledTime + 30; _accessChecked = false; }
         }

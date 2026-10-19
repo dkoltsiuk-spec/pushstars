@@ -94,6 +94,7 @@ namespace PushStars.UI
             SearchScreenAppearance.Ensure(_overlay);
             _overlay.SetActive(true);
             _ring?.SetVisible(true);
+            _overlay.GetComponentInChildren<SearchOrbit>(true)?.Play();
 
             if (_juicy != null) _juicy.PlayIn();
             RecedeMain(true);
@@ -162,6 +163,7 @@ namespace PushStars.UI
             if (_title == null) return;
 
             _title.text = "OPPONENT FOUND";
+            _overlay.GetComponentInChildren<SearchOrbit>(true)?.Found();
 
             // The boss name is a runtime clone of the title label (inherits the Rubik font and
             // styling), parked under the VS ring.

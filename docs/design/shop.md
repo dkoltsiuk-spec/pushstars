@@ -22,10 +22,14 @@ changing player notice saves or the wallet.
 - Offer and info taps open the existing animated avatar preview. Back returns to
   Shop, Home closes to the lobby. Opening the collection directly retains its
   original navigation.
-- Three gem packs follow the supplied mockup: 30 / $1.99, 120 / $5.99,
-  360 / $5.99. Pack details show the artwork, amount, price and availability.
-- Dollar purchases are unavailable until store integration exists. There is no
-  simulated payment, currency grant or client-side dollar unlock.
+- Three gem packs: 30 / $1.99, 120 / $5.99, 360 / $14.99 (the mockup's 360 / $5.99
+  repeated the middle price). Pack details show the artwork, amount, price and availability.
+- Gem packs and Dollars heroes are shown while in-app purchases are being wired in
+  (`StoreAccess.RealMoney` is on; turning it off drops the packs and their header from the
+  shop). Both must be sellable before a store release. There is no simulated payment,
+  currency grant or client-side dollar unlock.
+- The inline price gem (`<sprite name="gem">`, GemSprites) sits with its centre on the
+  digits' centre: glyph bearing Y = .73 of its height (AvatarUnlockSetup).
 - Content scrolls on shorter phones; Back, Home and OK stay outside the scroll area.
   Assets were copied from the user's supplied Downloads exports to UI/Sprites/Shop.
 

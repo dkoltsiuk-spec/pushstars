@@ -149,3 +149,7 @@ layout_dump.txt
 # Bot Lab takes pulled for cleaning (originals are the backup of the cloud drafts)
 /tools/BotRecordings/originals/
 /tools/BotRecordings/cleaned/
+
+# PostHog project key for retention analytics (phase 11.5) — local only, like the Firebase configs.
+Assets/_Project/Resources/PostHogConfig.json
+Assets/_Project/Resources/PostHogConfig.json.meta

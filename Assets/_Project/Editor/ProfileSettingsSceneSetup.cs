@@ -73,6 +73,7 @@ namespace PushStars.Editor
             oldOverlay.SetActive(false);
             var overlay = Full(oldOverlay.transform.parent, "SettingsOverlay");
             Background(overlay);
+            BackgroundDriftSetup.InstallSettings(overlay);
             var actions = overlay.gameObject.AddComponent<ProfileSettingsActions>();
             actions.Screen = settings;
             actions.Shell = shell;
@@ -210,7 +211,7 @@ namespace PushStars.Editor
         private static void BuildSettings(RectTransform overlay, SettingsScreen settings, ProfileSettingsActions actions, Button gear)
         {
             var safe = Full(overlay, "SafeArea"); safe.gameObject.AddComponent<SafeAreaFitter>();
-            var art = Scroll(safe, "SettingsScroll", 82, 635);
+            var art = Scroll(safe, "SettingsScroll", 82, 635 + 2 * RowStep);
             var back = Button(art, "Back", S("Group 549"), "", 20, 24, 57, 44);
             var title = Text(art, "Title", "SETTINGS", 100, 27, 190, 39, 26); title.alignment = TextAlignmentOptions.Center;
             actions.Home = Button(art, "Home", S("Group 550"), "", 314, 24, 57, 44);
@@ -227,19 +228,23 @@ namespace PushStars.Editor
             var sound = Switch(art, "Sound", "MUSIC EFFECTS", "", "Group 538", 235, out var soundThumb);
             var music = Switch(art, "ExternalMusic", "KEEP MY MUSIC", "Game soundtrack off", "Group 539", 291, out var musicThumb);
             var notifications = Switch(art, "Notifications", "NOTIFICATIONS", "", "Group 540", 347, out var notificationThumb);
+            var heroAura = HeroAuraSwitch(art, out var heroAuraThumb);
+            var analytics = AnalyticsSwitch(art, out var analyticsThumb);
             actions.ExternalMusic = music;
-            actions.Switches = new[] { sound, music, notifications };
-            actions.SwitchThumbs = new[] { soundThumb, musicThumb, notificationThumb };
+            actions.Switches = new[] { sound, music, notifications, heroAura, analytics };
+            actions.SwitchThumbs = new[] { soundThumb, musicThumb, notificationThumb, heroAuraThumb, analyticsThumb };
             actions.OnSprite = S("Group 544"); actions.OffSprite = S("Group 545");
-            Pic(art, "LanguageIcon", S("Group 541"), 24, 410, 35, 39);
-            Text(art, "LanguageTitle", "LANGUAGE", 72, 418, 165, 28, 16);
-            actions.Language = Button(art, "Language", S("Group 543"), "ENGLISH", 270, 413, 100, 40, 13);
+            const float below = 2 * RowStep; // everything under the Aura and analytics rows
+            Pic(art, "LanguageIcon", S("Group 541"), 24, 410 + below, 35, 39).preserveAspect = true;
+            Text(art, "LanguageTitle", "LANGUAGE", 72, 418 + below, 165, 28, 16);
+            actions.Language = Button(art, "Language", S("Group 543"), "ENGLISH", 270, 413 + below, 100, 40, 13);
             actions.LanguageLabel = actions.Language.GetComponentInChildren<TextMeshProUGUI>();
-            actions.Privacy = Button(art, "Privacy", S("Group 542"), "Privacy\nPolicy", 24, 477, 105, 56, 15);
-            actions.Support = Button(art, "Support", S("Group 542"), "Support", 147, 477, 105, 56, 15);
-            var delete = Button(art, "DeleteAccount", null, "<u>Delete account</u>", 24, 551, 147, 29, 15);
+            ProfileSettingsActions.FitSlantPlate(actions.Language.image, 40);
+            actions.Privacy = Button(art, "Privacy", S("Group 542"), "Privacy\nPolicy", 24, 477 + below, 105, 56, 15);
+            actions.Support = Button(art, "Support", S("Group 542"), "Support", 147, 477 + below, 105, 56, 15);
+            var delete = Button(art, "DeleteAccount", null, "<u>Delete account</u>", 24, 551 + below, 147, 29, 15);
             delete.image.color = Color.clear;
-            var version = Text(art, "Version", "v" + Application.version, 24, 604, 180, 20, 11, false, Muted);
+            var version = Text(art, "Version", "v" + Application.version, 24, 604 + below, 180, 20, 11, false, Muted);
             var noticePanel = Panel(safe, "Notice", new Color32(12,26,65,250), 0, 0, 330, 66);
             actions.Notice = Text(noticePanel.transform, "Message", "", 10, 6, 310, 54, 14, false);
             var noticeRt = noticePanel.rectTransform;
@@ -260,6 +265,7 @@ namespace PushStars.Editor
             var warning = Text(dialog, "Warning", "Your account and online progress will be deleted. This cannot be undone.", 25, 70, 280, 64, 16, false);
             warning.alignment = TextAlignmentOptions.Center;
             var no = Button(dialog, "Cancel", S("Group 543"), "CANCEL", 25, 160, 130, 48, 17);
+            ProfileSettingsActions.FitSlantPlate(no.image, 48);
             var yes = Button(dialog, "Confirm", Theme().PlateBattle, "DELETE", 176, 160, 130, 48, 17);
             confirm.gameObject.SetActive(false);
             var so = new SerializedObject(settings);
@@ -268,6 +274,7 @@ namespace PushStars.Editor
             Set(so, "_mainContent", null); Set(so, "_mainGroup", null);
             Set(so, "_gearButton", gear); Set(so, "_backButton", back);
             Set(so, "_soundToggle", sound); Set(so, "_vibrationToggle", null); Set(so, "_notificationsToggle", notifications);
+            Set(so, "_heroAuraToggle", heroAura); Set(so, "_analyticsToggle", analytics);
             Set(so, "_langRuButton", null); Set(so, "_langEnButton", null); Set(so, "_langRuLabel", null); Set(so, "_langEnLabel", null);
             Set(so, "_privacyButton", null); Set(so, "_termsButton", null); Set(so, "_versionText", version);
             Set(so, "_deleteButton", delete); Set(so, "_confirmDialog", confirm.gameObject);
@@ -275,9 +282,82 @@ namespace PushStars.Editor
             so.ApplyModifiedProperties();
         }
 
-        private static Toggle Switch(Transform art, string name, string label, string detail, string icon, float y, out Image thumb)
+        // Rows added 2026-10-18 under Notifications: Aura effect, then the analytics opt-out.
+        // The rows below them moved down one step each.
+        private const float HeroAuraRowY = 403, AnalyticsRowY = 459, RowStep = 56;
+
+        private static Toggle HeroAuraSwitch(Transform art, out Image thumb) =>
+            Switch(art, "HeroAura", "AURA EFFECT", "Glow around your hero",
+                AssetDatabase.LoadAssetAtPath<Sprite>("Assets/_Project/UI/Sprites/aura.png"), HeroAuraRowY, out thumb);
+
+        private static Toggle AnalyticsSwitch(Transform art, out Image thumb) =>
+            Switch(art, "Analytics", "ANONYMOUS STATISTICS", "No name, no camera data", S("Stats"), AnalyticsRowY, out thumb);
+
+        /// <summary>Adds the switches the authored Main scene is missing (Aura effect, anonymous
+        /// statistics) at their design rows; the full builder refuses to run twice. Idempotent;
+        /// marks the scene dirty and leaves saving to the caller.</summary>
+        [MenuItem("Push Stars/UI/Add Missing Settings Switches")]
+        public static void AddMissingSwitches()
         {
-            Pic(art, name + "Icon", S(icon), 23, y, 37, 40);
+            if (EditorApplication.isPlaying) throw new InvalidOperationException("Exit Play Mode first.");
+            var scene = SceneManager.GetActiveScene();
+            if (scene.path != "Assets/_Project/Scenes/Main.unity") throw new InvalidOperationException("Open the Main scene first.");
+            var settings = Find<SettingsScreen>(scene);
+            var actions = Find<ProfileSettingsActions>(scene);
+            if (settings == null || actions == null || actions.Switches == null || actions.Switches.Length == 0)
+                throw new InvalidOperationException("Settings are not authored yet. Run Build Profile and Settings.");
+            _bold = AssetDatabase.LoadAssetAtPath<TMP_FontAsset>("Assets/_Project/UI/Fonts/Rubik Bold TMP.asset");
+            _regular = AssetDatabase.LoadAssetAtPath<TMP_FontAsset>("Assets/_Project/UI/Fonts/Rubik TMP.asset");
+            _round = AssetDatabase.LoadAssetAtPath<Sprite>("Assets/_Project/UI/Sprites/pill_12.png");
+            _outline = AssetDatabase.LoadAssetAtPath<Material>(ArtPath + "ProfileOutline.mat");
+            Undo.IncrementCurrentGroup();
+            Undo.SetCurrentGroupName("Add settings switches");
+            int added = InsertSwitch(settings, actions, "_heroAuraToggle", HeroAuraRowY, HeroAuraSwitch)
+                      + InsertSwitch(settings, actions, "_analyticsToggle", AnalyticsRowY, AnalyticsSwitch);
+            if (added == 0) { Debug.Log("[ProfileSettings] Settings switches are already there."); return; }
+            EditorSceneManager.MarkSceneDirty(scene);
+            Debug.Log($"[ProfileSettings] Added {added} settings switch(es). Save the Main scene to keep them.");
+        }
+
+        private delegate Toggle SwitchBuilder(Transform art, out Image thumb);
+
+        private static int InsertSwitch(SettingsScreen settings, ProfileSettingsActions actions, string field, float y, SwitchBuilder build)
+        {
+            var so = new SerializedObject(settings);
+            if (so.FindProperty(field).objectReferenceValue != null) return 0;
+            var art = (RectTransform)actions.Switches[0].transform.parent;
+            int firstMoved = art.childCount;
+            foreach (RectTransform child in art)
+            {
+                if (-child.anchoredPosition.y < y) continue;
+                Undo.RecordObject(child, "Move settings rows down");
+                child.anchoredPosition += new Vector2(0, -RowStep);
+                firstMoved = Mathf.Min(firstMoved, child.GetSiblingIndex());
+            }
+            Undo.RecordObject(art, "Grow settings scroll");
+            art.sizeDelta += new Vector2(0, RowStep);
+            var fit = art.parent.GetComponent<DashboardWidthFit>();
+            if (fit != null) { Undo.RecordObject(fit, "Grow settings scroll"); fit.DesignHeight += RowStep; }
+            int first = art.childCount;
+            var toggle = build(art, out var thumb);
+            // Keep the hierarchy in reading order: the new row goes before the rows it pushed down.
+            var created = Enumerable.Range(first, art.childCount - first).Select(art.GetChild).ToArray();
+            for (int i = 0; i < created.Length; i++) created[i].SetSiblingIndex(firstMoved + i);
+            Undo.RecordObject(actions, "Add settings switch");
+            actions.Switches = actions.Switches.Append(toggle).ToArray();
+            actions.SwitchThumbs = actions.SwitchThumbs.Append(thumb).ToArray();
+            EditorUtility.SetDirty(actions);
+            so.FindProperty(field).objectReferenceValue = toggle;
+            so.ApplyModifiedProperties();
+            return 1;
+        }
+
+        private static Toggle Switch(Transform art, string name, string label, string detail, string icon, float y, out Image thumb) =>
+            Switch(art, name, label, detail, S(icon), y, out thumb);
+
+        private static Toggle Switch(Transform art, string name, string label, string detail, Sprite icon, float y, out Image thumb)
+        {
+            Pic(art, name + "Icon", icon, 23, y, 37, 40).preserveAspect = true;
             Text(art, name + "Label", label, 72, y + 4, 205, 27, 15);
             if (detail != "") Text(art, name + "Detail", detail, 72, y + 28, 210, 19, 12, false, Muted);
             var image = Pic(art, name, S("Group 546"), 299, y + 4.5f, 72, 30);

@@ -3,13 +3,15 @@ using UnityEngine;
 
 namespace PushStars.Core
 {
-    public enum AvatarPurchaseKind { Included, Aura, Gems, Dollars }
+    public enum AvatarPurchaseKind { Included, Aura, Gems, Dollars, Island }
 
     /// <summary>
     /// A collection hero. <see cref="AvatarPurchaseKind.Aura"/> heroes are never bought: they unlock
     /// when the player's unlock progress reaches <see cref="Price"/> (the Aura goal). Progress is the
-    /// peak Aura ever reached plus every collected card at <see cref="CardAura"/> each, so the one bar
-    /// only ever fills. Gems and Dollars heroes use <see cref="Price"/> as a price.
+    /// peak Aura ever reached, so the one bar only ever fills. Hero cards from cases are retired:
+    /// every <see cref="RequiredCards"/> is 0, which also stops cases handing them out. Gems and Dollars heroes use <see cref="Price"/> as a price.
+    /// <see cref="AvatarPurchaseKind.Island"/> heroes are free: clearing the boss island named by
+    /// <see cref="Island"/> (beating its king) hands them over.
     /// </summary>
     [Serializable]
     public sealed class AvatarOffer
@@ -23,7 +25,10 @@ namespace PushStars.Core
         [Tooltip("Aura heroes: cards that alone fill the bar; each card is worth Price / RequiredCards Aura.")]
         [Min(0)] public int RequiredCards;
         public string StoreProductId;
+        [Tooltip("Island heroes: the BossChapter ID whose last boss unlocks the hero.")]
+        public string Island;
         public bool UnlocksByAura => Kind == AvatarPurchaseKind.Aura;
+        public bool UnlocksByIsland => Kind == AvatarPurchaseKind.Island;
         public bool UsesCards => UnlocksByAura && RequiredCards > 0;
         public long AuraGoal => UnlocksByAura ? Price : 0;
         public long CardAura => UsesCards ? Price / RequiredCards : 0;
@@ -59,15 +64,18 @@ namespace PushStars.Core
             new AvatarOffer { Id = RetiredId, Name = "RETIRED", Kind = AvatarPurchaseKind.Dollars, Price = 599 },
             new AvatarOffer { Id = "madam-engry", Name = "QUEEN PUSH", Kind = AvatarPurchaseKind.Included },
             new AvatarOffer { Id = "fighter", Name = "FIGHTER", Kind = AvatarPurchaseKind.Included },
-            new AvatarOffer { Id = "robot", Name = "ROBOT", Kind = AvatarPurchaseKind.Aura, Price = 50000, RequiredCards = 50, HeadIcon = "AvatarCollection/RobotHead" },
-            new AvatarOffer { Id = "gladiator", Name = "GLADIATOR", Kind = AvatarPurchaseKind.Aura, Price = 250000, RequiredCards = 250, HeadIcon = "AvatarCollection/GladiatorHead" },
-            new AvatarOffer { Id = "bogatyr", Name = "BOGATYR", Kind = AvatarPurchaseKind.Aura, Price = 100000, RequiredCards = 100, HeadIcon = "AvatarCollection/BogatyrHead", Prefab = "Heroes/Bogatyr" },
-            new AvatarOffer { Id = "viking", Name = "VIKING", Kind = AvatarPurchaseKind.Aura, Price = 500000, RequiredCards = 500, HeadIcon = "AvatarCollection/VikingHead", Prefab = "Heroes/Viking" },
+            new AvatarOffer { Id = "robot", Name = "ROBOT", Kind = AvatarPurchaseKind.Aura, Price = 50000, HeadIcon = "AvatarCollection/RobotHead" },
+            new AvatarOffer { Id = "gladiator", Name = "GLADIATOR", Kind = AvatarPurchaseKind.Aura, Price = 250000, HeadIcon = "AvatarCollection/GladiatorHead" },
+            new AvatarOffer { Id = "bogatyr", Name = "BOGATYR", Kind = AvatarPurchaseKind.Aura, Price = 100000, HeadIcon = "AvatarCollection/BogatyrHead", Prefab = "Heroes/Bogatyr" },
+            new AvatarOffer { Id = "viking", Name = "VIKING", Kind = AvatarPurchaseKind.Aura, Price = 500000, HeadIcon = "AvatarCollection/VikingHead", Prefab = "Heroes/Viking" },
             new AvatarOffer { Id = "zombie", Name = "ZOMBIE", Kind = AvatarPurchaseKind.Gems, Price = 500, Prefab = "Heroes/Zombie" },
             new AvatarOffer { Id = "tigress", Name = "TIGRESS", Kind = AvatarPurchaseKind.Gems, Price = 800, Prefab = "Heroes/Tigress" },
             new AvatarOffer { Id = "skinny", Name = "SKINNY", Kind = AvatarPurchaseKind.Dollars, Price = 699, StoreProductId = "hero_skinny", Prefab = "Heroes/Skinny" },
             new AvatarOffer { Id = "chubby", Name = "CHUBBY", Kind = AvatarPurchaseKind.Dollars, Price = 699, StoreProductId = "hero_chubby", Prefab = "Heroes/Chubby" },
-            new AvatarOffer { Id = "skeleton", Name = "SKELETON", Kind = AvatarPurchaseKind.Dollars, Price = 999, StoreProductId = "hero_skeleton", Prefab = "Heroes/Skeleton" }
+            new AvatarOffer { Id = "skeleton", Name = "SKELETON", Kind = AvatarPurchaseKind.Dollars, Price = 999, StoreProductId = "hero_skeleton", Prefab = "Heroes/Skeleton" },
+            new AvatarOffer { Id = "goblin", Name = "GOBLIN", Kind = AvatarPurchaseKind.Island, Island = "forest", HeadIcon = "AvatarCollection/ForestIslandBadge", Prefab = "Heroes/Goblin" },
+            new AvatarOffer { Id = "frost", Name = "FROST", Kind = AvatarPurchaseKind.Island, Island = "ice", HeadIcon = "AvatarCollection/IceIslandBadge", Prefab = "Heroes/Frost" },
+            new AvatarOffer { Id = "magma", Name = "MAGMA", Kind = AvatarPurchaseKind.Island, Island = "lava", HeadIcon = "AvatarCollection/LavaIslandBadge", Prefab = "Heroes/Magma" }
         };
     }
 }

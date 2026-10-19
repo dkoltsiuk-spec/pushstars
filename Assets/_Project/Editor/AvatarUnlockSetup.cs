@@ -1,4 +1,5 @@
 using System;
+using System.Collections.Generic;
 using System.IO;
 using System.Linq;
 using PushStars.Core;
@@ -117,12 +118,61 @@ namespace PushStars.Editor
                 new GlyphRect((int)rect.x, (int)rect.y, (int)rect.width, (int)rect.height), 1, 0, sprite);
             asset.spriteGlyphTable.Clear(); asset.spriteCharacterTable.Clear();
             asset.spriteGlyphTable.Add(glyph);
-            asset.spriteCharacterTable.Add(new TMP_SpriteCharacter(0xFFFE, asset, glyph) { name = "aura", scale = 1.6f });
+            asset.spriteCharacterTable.Add(new TMP_SpriteCharacter(0xFFFE, asset, glyph) { name = "aura", scale = 2.0f });
             if (create) AssetDatabase.CreateAsset(asset, path);
             var material = AssetDatabase.LoadAllAssetsAtPath(path).OfType<Material>().FirstOrDefault();
             if (material == null)
             {
                 material = new Material(Shader.Find("TextMeshPro/Sprite")) { name = "CurrencySprites Material" };
+                AssetDatabase.AddObjectToAsset(material, asset);
+            }
+            asset.material = material;
+            asset.material.mainTexture = sprite.texture;
+            // One sprite sheet per TMP asset, so the gem lives in its own asset behind this one.
+            var gems = GemSprites();
+            if (asset.fallbackSpriteAssets == null) asset.fallbackSpriteAssets = new List<TMP_SpriteAsset>();
+            if (!asset.fallbackSpriteAssets.Contains(gems)) asset.fallbackSpriteAssets.Add(gems);
+            asset.UpdateLookupTables();
+            EditorUtility.SetDirty(material);
+            EditorUtility.SetDirty(asset);
+            return asset;
+        }
+
+        [MenuItem("Push Stars/UI/Rebuild Currency Sprites")]
+        public static void RebuildCurrencySprites()
+        {
+            CurrencySprites();
+            AssetDatabase.SaveAssets();
+        }
+
+        /// <summary>Inline gem for prices: <c>&lt;sprite name="gem"&gt;</c>, reached through
+        /// CurrencySprites' fallback list.</summary>
+        private static TMP_SpriteAsset GemSprites()
+        {
+            const string path = "Assets/_Project/Resources/AvatarCollection/GemSprites.asset";
+            var asset = AssetDatabase.LoadAssetAtPath<TMP_SpriteAsset>(path);
+            var sprite = Resources.Load<PushStarsTheme>("PushStarsTheme").IconGem;
+            bool create = asset == null;
+            if (create) asset = ScriptableObject.CreateInstance<TMP_SpriteAsset>();
+            asset.name = "GemSprites";
+            var serialized = new SerializedObject(asset);
+            serialized.FindProperty("m_Version").stringValue = "1.1.0";
+            serialized.ApplyModifiedPropertiesWithoutUndo();
+            asset.spriteSheet = sprite.texture;
+            var rect = sprite.textureRect;
+            // .73 puts the 1.6x gem's centre on the digits' centre (measured on "500 gem" in Rubik
+            // BoldItalic); the .88 the Aura skull uses left the gem standing well above the price.
+            var glyph = new TMP_SpriteGlyph(0,
+                new GlyphMetrics(rect.width, rect.height, 0, rect.height * .73f, rect.width),
+                new GlyphRect((int)rect.x, (int)rect.y, (int)rect.width, (int)rect.height), 1, 0, sprite);
+            asset.spriteGlyphTable.Clear(); asset.spriteCharacterTable.Clear();
+            asset.spriteGlyphTable.Add(glyph);
+            asset.spriteCharacterTable.Add(new TMP_SpriteCharacter(0xFFFE, asset, glyph) { name = "gem", scale = 1.6f });
+            if (create) AssetDatabase.CreateAsset(asset, path);
+            var material = AssetDatabase.LoadAllAssetsAtPath(path).OfType<Material>().FirstOrDefault();
+            if (material == null)
+            {
+                material = new Material(Shader.Find("TextMeshPro/Sprite")) { name = "GemSprites Material" };
                 AssetDatabase.AddObjectToAsset(material, asset);
             }
             asset.material = material;

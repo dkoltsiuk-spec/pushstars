@@ -74,6 +74,7 @@ namespace PushStars.Fight
             _repTimes.Add(at);
             _hud.SetPlayerReps(_repTimes.Count);
             _hud.PunchPlayerReps();
+            ShowRepXp(_clapRepForm, clap: true);
             if (_mode == FightMode.Training && !_paused && !_layoutPaused) ShowRepMilestone(_repTimes.Count);
         }
 

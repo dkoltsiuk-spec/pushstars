@@ -99,23 +99,24 @@ Material:
     - _GlossMapScale: 0
     - _Glossiness: 0.1
     - _GlossyReflections: 0
-    - _LightInfluence: 0.415
+    - _Glow: 0
+    - _LightInfluence: 0.451
     - _Metallic: 0
     - _Mode: 0
     - _OcclusionStrength: 1
-    - _OutlineWidth: 0.0032724198
+    - _OutlineWidth: 0.0032724205
     - _Parallax: 0.005
     - _QueueOffset: 0
     - _ReceiveShadows: 1
-    - _RimPower: 12
-    - _RimStrength: 0
-    - _ShadeSoftness: 0.297
-    - _ShadeStrength: 0.878
-    - _ShadeThreshold: 0.54
-    - _Smoothness: 0.405
+    - _RimPower: 4.5
+    - _RimStrength: 0.8
+    - _ShadeSoftness: 0.404
+    - _ShadeStrength: 0.991
+    - _ShadeThreshold: 0.56
+    - _Smoothness: 0.543
     - _SmoothnessTextureChannel: 0
     - _SpecularHighlights: 1
-    - _SpecularStrength: 0.199
+    - _SpecularStrength: 0.117
     - _SrcBlend: 1
     - _SrcBlendAlpha: 1
     - _Surface: 0
@@ -127,8 +128,8 @@ Material:
     - _Color: {r: 1, g: 1, b: 1, a: 1}
     - _EmissionColor: {r: 0, g: 0, b: 0, a: 1}
     - _OutlineColor: {r: 0, g: 0, b: 0, a: 1}
-    - _RimColor: {r: 0.1764706, g: 0.1764706, b: 0.1764706, a: 1}
-    - _RimLightDirection: {r: 0, g: 0, b: 0, a: 0}
+    - _RimColor: {r: 0.62, g: 0.86, b: 1, a: 1}
+    - _RimLightDirection: {r: 0, g: 1, b: 0, a: 0.5}
     - _ShadeColor: {r: 0.37013957, g: 0.375974, b: 0.59748423, a: 1}
     - _SpecColor: {r: 0.19999996, g: 0.19999996, b: 0.19999996, a: 1}
   m_BuildTextureStacks: []

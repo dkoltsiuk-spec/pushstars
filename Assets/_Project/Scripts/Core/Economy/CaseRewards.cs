@@ -64,6 +64,10 @@ namespace PushStars.Core
                 PlayerPrefs.Save();
             }));
 
+        /// <summary>Drops the cached ledger so the next read loads the save again. Editor QA calls
+        /// this after putting a player's real wallet back over a test one.</summary>
+        public static void ReloadFromSave() => _ledger = null;
+
         public static PendingCase Pending => Ledger.Pending;
         public static int PendingCount => Ledger.PendingCount;
         public static bool HasPendingCase => PendingCount > 0;
@@ -79,6 +83,8 @@ namespace PushStars.Core
         public static bool TryBuyAvatar(string id) => Ledger.TryBuyAvatar(id);
         public static bool OwnsEmote(string id) => Ledger.OwnsEmote(id);
         public static bool TryBuyEmote(string id, int price) => Ledger.TryBuyEmote(id, price);
+        public static bool OwnsArena(string id) => Ledger.OwnsArena(id);
+        public static bool TryBuyArena(string id, int price) => Ledger.TryBuyArena(id, price);
         public static bool TryCreditAura(string receipt, int amount) => Ledger.TryCreditAura(receipt, amount);
         /// <summary>Applies several receipted Aura changes (plus or minus) in one save.
         /// See <see cref="CaseRewardLedger.ApplyAura"/>.</summary>
@@ -273,6 +279,8 @@ namespace PushStars.Core
             public List<AvatarProgress> avatars = new List<AvatarProgress>();
             /// <summary>Bought emote ids. Added within v6; older saves load it as null.</summary>
             public List<string> emotes = new List<string>();
+            /// <summary>Bought arena (home background) ids. Added within v6; older saves load it as null.</summary>
+            public List<string> arenas = new List<string>();
             public List<string> awardedWorkouts = new List<string>();
             public List<Entry> cases = new List<Entry>();
             public List<string> processedWorkoutIds = new List<string>();
@@ -284,7 +292,7 @@ namespace PushStars.Core
                 var copy = new SaveData
                 {
                     version = version, gems = gems, aura = aura, peakAura = peakAura, auraReceipts = new List<string>(auraReceipts),
-                    gemReceipts = new List<string>(gemReceipts), emotes = new List<string>(emotes), awardedWorkouts = new List<string>(awardedWorkouts),
+                    gemReceipts = new List<string>(gemReceipts), emotes = new List<string>(emotes), arenas = new List<string>(arenas), awardedWorkouts = new List<string>(awardedWorkouts),
                     processedWorkoutIds = new List<string>(processedWorkoutIds),
                     dailyWorkoutUtcDay = dailyWorkoutUtcDay, dailyWorkoutCount = dailyWorkoutCount
                 };
@@ -327,6 +335,7 @@ namespace PushStars.Core
             if (_state.version < 5) MigrateSealedAura(_state);
             if (_state.gemReceipts == null) _state.gemReceipts = new List<string>();
             if (_state.emotes == null) _state.emotes = new List<string>();
+            if (_state.arenas == null) _state.arenas = new List<string>();
             if (_state.version < 6) MigrateMemeAura(_state);
             _awardedWorkouts = new HashSet<string>(_state.awardedWorkouts, StringComparer.Ordinal);
             _state.version = 6;
@@ -377,7 +386,10 @@ namespace PushStars.Core
             if (offer == null) return false;
             var progress = state.avatars.Find(a => a.id == offer.Id);
             return offer.Kind == AvatarPurchaseKind.Included || (progress != null && progress.owned) ||
-                offer.Unlocked(state.peakAura, progress?.cards ?? 0);
+                offer.Unlocked(state.peakAura, progress?.cards ?? 0) ||
+                // Follows the boss ladder itself, so a player who cleared the island before the hero
+                // existed gets it too.
+                offer.UnlocksByIsland && BossCatalog.IsChapterCleared(BossCatalog.FindChapter(offer.Island));
         }
 
         /// <summary>Filled part of an Aura hero's bar (peak Aura + cards), 0..goal.</summary>
@@ -475,6 +487,20 @@ namespace PushStars.Core
             var next = _state.Copy();
             next.gems -= price;
             next.emotes.Add(id);
+            Commit(next);
+            return true;
+        }
+
+        public bool OwnsArena(string id) => !string.IsNullOrWhiteSpace(id) && _state.arenas.Contains(id);
+
+        /// <summary>Spends <paramref name="price"/> gems on an arena. Like emotes, the price comes
+        /// from the arena catalog outside the ledger; ownership and the spend share one save.</summary>
+        public bool TryBuyArena(string id, int price)
+        {
+            if (string.IsNullOrWhiteSpace(id) || OwnsArena(id) || price < 0 || _state.gems < price) return false;
+            var next = _state.Copy();
+            next.gems -= price;
+            next.arenas.Add(id);
             Commit(next);
             return true;
         }

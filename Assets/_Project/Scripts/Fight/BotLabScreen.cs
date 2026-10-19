@@ -78,7 +78,7 @@ namespace PushStars.Fight
             if (!main) { _panel.SetActive(false); return; }
             if (_uid != LeagueClient.Uid)
             {
-                _uid = LeagueClient.Uid; _allowed = false; _accessChecked = false;
+                _uid = LeagueClient.Uid; _allowed = LabAccess.Allowlisted = false; _accessChecked = false;
                 if (!LabAccess.Visible(false)) _panel.SetActive(false);
             }
             if (!_accessChecked && Time.unscaledTime >= _nextCheck && !string.IsNullOrEmpty(_uid)) CheckAccess();
@@ -95,9 +95,9 @@ namespace PushStars.Fight
             try
             {
                 var access = await BotRecordingClient.GetAccess();
-                if (requestedUid == LeagueClient.Uid) _allowed = access.enabled;
+                if (requestedUid == LeagueClient.Uid) LabAccess.Allowlisted = _allowed = access.enabled;
             }
-            catch { _nextCheck = Time.unscaledTime + 30; _accessChecked = false; }
+            catch {_nextCheck = Time.unscaledTime + 30; _accessChecked = false; }
         }
         private void OnSceneLoaded(Scene scene, LoadSceneMode mode)
         {

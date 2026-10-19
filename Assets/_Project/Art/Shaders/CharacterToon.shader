@@ -52,6 +52,14 @@ Shader "Push Stars/Character Toon"
         _RimStrength ("Rim strength", Range(0, 1))  = 0.15
         [HideInInspector] _RimLightDirection ("Rim light direction", Vector) = (0, 0, 0, 0)
 
+        [Header(Glow)]
+        [Space(4)]
+        // Self-lit parts such as a magma golem's cracks: a greyscale mask in the albedo's UVs,
+        // tinted by the colour and added after shading so the shade band never darkens them.
+        [Toggle(_EMISSION)] _Glow ("Glow", Float) = 0
+        [NoScaleOffset] _EmissionMap ("Glow mask", 2D) = "black" {}
+        [HDR] _EmissionColor ("Glow colour", Color) = (0, 0, 0, 1)
+
         [Header(Outline)]
         [Space(4)]
         _OutlineColor ("Outline colour", Color)             = (0, 0, 0, 1)
@@ -90,6 +98,7 @@ Shader "Push Stars/Character Toon"
             CGPROGRAM
             #pragma vertex vert
             #pragma fragment frag
+            #pragma shader_feature_local _EMISSION
             #include "UnityCG.cginc"
             #include "Lighting.cginc"
 
@@ -108,6 +117,8 @@ Shader "Push Stars/Character Toon"
             half      _RimPower;
             half      _RimStrength;
             float4    _RimLightDirection;
+            sampler2D _EmissionMap;
+            half4     _EmissionColor;
 
             struct appdata
             {
@@ -174,6 +185,10 @@ Shader "Push Stars/Character Toon"
                 half sideMask = lerp(1, saturate(dot(n, rimDir)), saturate(_RimLightDirection.w));
                 half rim = pow(saturate(1 - saturate(dot(n, viewDir))), _RimPower) * sideMask;
                 col += _RimColor.rgb * rim * _RimStrength;
+
+            #ifdef _EMISSION
+                col += tex2D(_EmissionMap, i.uv).rgb * _EmissionColor.rgb;
+            #endif
 
                 return fixed4(col, albedo.a);
             }

@@ -48,6 +48,7 @@ namespace PushStars.UI
             if (dashes != null) dashes.gameObject.SetActive(false);
             var badge = content.Find("RingWrap/LoadingVsRing/VsBadge") as RectTransform;
             if (badge != null) badge.sizeDelta = new Vector2(88, 88);
+            if (_ring != null) SearchOrbit.Ensure(_ring, badge);
 
             if (_halo == null) _halo = transform.Find("SearchWarmHalo") as RectTransform;
             if (_halo == null)

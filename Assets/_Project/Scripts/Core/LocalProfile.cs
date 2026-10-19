@@ -22,8 +22,11 @@ namespace PushStars.Core
         public static int Wins => Ledger.Snapshot.Wins;
         public static int Losses => Ledger.Snapshot.Losses;
         public static int WinStreak => Ledger.Snapshot.WinStreak;
-        public static int DailyStreak => DateTime.UtcNow.Date.Ticks - Ledger.Snapshot.LastActiveDayTicks <= TimeSpan.TicksPerDay
+        /// <summary>Days in a row with push-ups, alive while the last active local day is today or yesterday.</summary>
+        public static int DailyStreak => DateTime.Now.Date.Ticks - Ledger.Snapshot.LastActiveDayTicks <= TimeSpan.TicksPerDay
             ? Ledger.Snapshot.DailyStreak : 0;
+        /// <summary>Today's daily goal (target, progress), derived from the history on each read.</summary>
+        public static DailyGoalStatus TodayGoal => DailyGoal.Evaluate(History, DateTime.Now);
         public static LocalWorkout FindWorkout(string id) => Ledger.FindWorkout(id);
         public static long Xp => Ledger.Snapshot.Xp;
         public static int Games => Wins + Losses;

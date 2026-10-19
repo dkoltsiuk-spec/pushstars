@@ -27,7 +27,7 @@ namespace PushStars.UI
         private readonly Dictionary<Image, Material> _originalGlowMaterials = new Dictionary<Image, Material>();
         private AvatarCardPreview[] _previews;
         private readonly Vector3[] _corners = new Vector3[4];
-        // HEROES | ARENAS: arenas (home backgrounds) are bought in the shop and kept here.
+        // HEROES | ARENAS: arenas (home backgrounds) are bought in the shop, earned by Aura or boss islands, and kept here.
         private bool _arenas;
         private string _emptyHeroes;
         private readonly ArenaRoundedGraphic[] _modeFills = new ArenaRoundedGraphic[2];
@@ -42,6 +42,7 @@ namespace PushStars.UI
             public TextMeshProUGUI Action;
             public AvatarCardSurface[] Surfaces;
             public GameObject Lock;
+            public AvatarUnlockView Unlock;
         }
         public bool IsOpen => Overlay != null && Overlay.activeSelf;
         public bool ShowingArenas => _arenas;
@@ -106,6 +107,14 @@ namespace PushStars.UI
                 Footers[i] = card.transform.Find("Footer").GetComponent<Image>();
                 Actions[i] = card.transform.Find("Action").GetComponent<TextMeshProUGUI>();
             }
+            // Slots stay put (saves use them); only the grid order changes: island heroes
+            // come straight after the Aura ones instead of after the paid ones.
+            int after = -1;
+            for (int i = 0; i < total; i++)
+                if (AvatarCatalog.At(i).UnlocksByAura) after = Mathf.Max(after, Cards[i].transform.GetSiblingIndex());
+            if (after < 0) return;
+            for (int i = 0; i < total; i++)
+                if (AvatarCatalog.At(i).UnlocksByIsland) Cards[i].transform.SetSiblingIndex(++after);
         }
 
         /// <summary>One card per arena, copied from a hero card so both tabs share the card look.
@@ -121,12 +130,9 @@ namespace PushStars.UI
             {
                 var root = Instantiate(template, template.transform.parent);
                 root.name = arena.Id;
+                // The hero's unlock bar stays: Aura and island arenas fill it the same way.
                 var unlock = root.GetComponent<AvatarUnlockView>();
-                if (unlock != null)
-                {
-                    if (unlock.ProgressRoot != null) unlock.ProgressRoot.SetActive(false);
-                    DestroyImmediate(unlock);
-                }
+                if (unlock != null && unlock.ProgressRoot != null) unlock.ProgressRoot.SetActive(false);
                 foreach (string part in new[] { "LivePortrait", "Portrait", "Glow", "Info", "Unknown" })
                 {
                     var child = root.transform.Find(part);
@@ -153,6 +159,7 @@ namespace PushStars.UI
                     Action = root.transform.Find("Action").GetComponent<TextMeshProUGUI>(),
                     Surfaces = root.GetComponentsInChildren<AvatarCardSurface>(true),
                     Lock = root.transform.Find("LockIcon")?.gameObject,
+                    Unlock = unlock,
                 });
             }
             template.SetActive(wasActive);
@@ -160,7 +167,7 @@ namespace PushStars.UI
 
         /// <summary>Crops the tall home art to the card, centred a little above the middle where
         /// every arena puts its landmark (arch, window, throne).</summary>
-        private static void FrameArena(RawImage image, Sprite sprite, Vector2 size)
+        internal static void FrameArena(RawImage image, Sprite sprite, Vector2 size)
         {
             if (sprite == null) return;
             image.texture = sprite.texture;
@@ -243,7 +250,7 @@ namespace PushStars.UI
         private void SelectArena(string id)
         {
             if (ArenaProfile.Owns(id)) ArenaProfile.Select(id);
-            else
+            else if (ArenaCatalog.Get(id)?.Access == ArenaAccess.Purchase)
             {
                 var shop = FindFirstObjectByType<ShopScreen>(FindObjectsInactive.Include);
                 if (shop != null) shop.Show();
@@ -359,7 +366,7 @@ namespace PushStars.UI
             {
                 var arena = ArenaCatalog.Get(card.Id);
                 bool visible = _arenas && (_filter == 0 || (_filter == 1 && ArenaProfile.Owns(card.Id)) ||
-                    (_filter == 2 && arena != null && arena.Access != ArenaAccess.Free));
+                    (_filter == 2 && arena != null && arena.Access == ArenaAccess.Purchase));
                 card.Root.SetActive(visible);
             }
             bool any = false;
@@ -387,11 +394,10 @@ namespace PushStars.UI
                 scroll.StopMovement();
                 scroll.verticalNormalizedPosition = 1;
             }
+            // Reveal in grid order, which is not slot order (see AddCatalogCards).
             int order = 0;
-            foreach (var card in Cards)
-                if (card.gameObject.activeInHierarchy) card.GetComponent<UiTactile>()?.Reveal(.05f + order++ * .065f);
-            foreach (var card in _arenaCards)
-                if (card.Root.activeInHierarchy) card.Root.GetComponent<UiTactile>()?.Reveal(.05f + order++ * .065f);
+            foreach (Transform card in Grid)
+                if (card.gameObject.activeInHierarchy && card.TryGetComponent<UiTactile>(out var tactile)) tactile.Reveal(.05f + order++ * .065f);
         }
 
         public void Select(int index)
@@ -444,7 +450,8 @@ namespace PushStars.UI
                 foreach (var surface in card.Surfaces) { surface.SetSelected(selected); surface.SetLocked(locked); }
                 if (card.Lock != null) card.Lock.SetActive(locked);
                 card.Art.color = locked ? new Color(.55f, .55f, .55f, 1) : Color.white;
-                card.Action.text = selected ? "SELECTED" : locked ? "IN SHOP" : "SELECT";
+                card.Action.text = selected ? "SELECTED" : locked ? ArenaProfile.LockedLabel(ArenaCatalog.Get(card.Id)) : "SELECT";
+                if (card.Unlock != null && card.Unlock.ProgressRoot != null) card.Unlock.Refresh(ArenaCatalog.Get(card.Id));
             }
         }
 
@@ -468,7 +475,9 @@ namespace PushStars.UI
             if (offer.Kind == AvatarPurchaseKind.Dollars) return "$" + (offer.Price / 100m).ToString("0.00", System.Globalization.CultureInfo.InvariantCulture);
             // Aura heroes are never bought: the label is how much Aura is still missing.
             if (offer.UnlocksByAura) return $"{AuraFormat.Short(CaseRewards.AvatarPrice(offer.Id))} <sprite name=\"aura\"> TO GO";
-            return $"{CaseRewards.AvatarPrice(offer.Id):N0} GEMS";
+            // Free, but only for clearing the island: the label names where to go.
+            if (offer.UnlocksByIsland) return BossCatalog.FindChapter(offer.Island)?.Title ?? "BOSS ISLAND";
+            return $"{CaseRewards.AvatarPrice(offer.Id):N0} <sprite name=\"gem\">";
         }
 
         public void ShowInfo(int index)

@@ -24,7 +24,8 @@ namespace PushStars.UI
         private Dictionary<TabId, GameObject> _panels;
         private TabId _currentTab = TabId.Duel;
         private readonly List<TextMeshProUGUI> _balances = new List<TextMeshProUGUI>();
-        private float _nextBalanceRefresh;
+        private float _nextBalanceRefresh, _nextStreakRefresh;
+        private int _streakDays;
         private HudCurrencyHints _currencyHints;
 
         private void Awake()
@@ -42,7 +43,8 @@ namespace PushStars.UI
             // The HUD pills live beside the shell under the same canvas, not inside it.
             foreach (var label in transform.root.GetComponentsInChildren<TextMeshProUGUI>(true))
                 if (label.name == "Number" && (label.transform.parent.name == "TrophyPill" ||
-                    label.transform.parent.name == "GemPill" || label.transform.parent.name == "AuraPill"))
+                    label.transform.parent.name == "GemPill" || label.transform.parent.name == "AuraPill" ||
+                    label.transform.parent.name == "StreakPill"))
                     _balances.Add(label);
             RefreshBalances();
         }
@@ -52,13 +54,27 @@ namespace PushStars.UI
             if (Time.unscaledTime < _nextBalanceRefresh) return;
             _nextBalanceRefresh = Time.unscaledTime + .25f;
             RefreshBalances();
+            RefreshTrophyNews();
         }
 
         private void RefreshBalances()
         {
+            // Days in a row with push-ups: the ledger's count, the one that pays the streak bonus
+            // trophies and milestone Aura. Polled slower than the balances.
+            if (Time.unscaledTime >= _nextStreakRefresh)
+            {
+                _nextStreakRefresh = Time.unscaledTime + 2f;
+                _streakDays = LocalProfile.DailyStreak;
+            }
             foreach (var label in _balances)
             {
                 string pill = label.transform.parent.name;
+                if (pill == "StreakPill")
+                {
+                    string days = _streakDays.ToString();
+                    if (label.text != days) label.text = days;
+                    continue;
+                }
                 // A reward flight may hold the old value while its icons are still in the air.
                 if (!HudBalanceHold.TryGet(pill, out long value))
                     value = pill == "TrophyPill" ? LocalProfile.Trophies
@@ -74,6 +90,7 @@ namespace PushStars.UI
             if (_duelPanel != null)
             {
                 _currencyHints = HudCurrencyHints.Install((RectTransform)_duelPanel.transform);
+                DailyGoalRing.Install((RectTransform)_duelPanel.transform);
                 var trophy = _duelPanel.transform.Find("TrophyPill");
                 if (trophy != null)
                 {
@@ -85,6 +102,8 @@ namespace PushStars.UI
                     button.onClick.RemoveListener(OpenLeagues);
                     button.onClick.AddListener(OpenLeagues);
                     if (_currencyHints != null) _currencyHints.TrophyButton = button;
+                    _trophyBadge = trophy.GetComponentInChildren<TrophyBadgeGraphic>(true);
+                    RefreshTrophyNews();
                 }
             }
 
@@ -108,6 +127,29 @@ namespace PushStars.UI
         }
 
         private void OpenLeagues() => SwitchTab(TabId.League);
+
+        // The trophy tag's red "i" means "something new in the leagues": a league the player reached
+        // but has not looked at yet. The first time this runs the current league counts as seen.
+        private const string SeenLeagueKey = "league.seen";
+        private TrophyBadgeGraphic _trophyBadge;
+
+        private static int LeagueIndex(long trophies)
+            => System.Array.IndexOf(Leagues.All, Leagues.ForTrophies(trophies));
+
+        private void RefreshTrophyNews()
+        {
+            if (_trophyBadge == null) return;
+            int current = LeagueIndex(LocalProfile.Trophies);
+            if (!PlayerPrefs.HasKey(SeenLeagueKey) || _currentTab == TabId.League) MarkLeagueSeen(current);
+            _trophyBadge.ShowInfo = current > PlayerPrefs.GetInt(SeenLeagueKey, current);
+        }
+
+        private static void MarkLeagueSeen(int league)
+        {
+            if (PlayerPrefs.GetInt(SeenLeagueKey, -1) == league) return;
+            PlayerPrefs.SetInt(SeenLeagueKey, league);
+            PlayerPrefs.Save();
+        }
 
         public void SwitchTab(TabId tabId)
         {

@@ -53,6 +53,7 @@ namespace PushStars.Editor
             cover.aspectRatio=pattern.sprite.rect.width/pattern.sprite.rect.height;
             var wash=Flat(bg,"PatternWash",0,0,0,0,new Color32(24,57,211,45));
             wash.rectTransform.anchorMin=Vector2.zero;wash.rectTransform.anchorMax=Vector2.one;wash.rectTransform.offsetMin=wash.rectTransform.offsetMax=Vector2.zero;
+            BackgroundDriftSetup.InstallProfile((RectTransform)bg);
 
             var page=Rect(art,"AthleteDashboard",0,0,390,1044);page.SetAsFirstSibling();
             // Open name treatment; keep space for its inline edit gear and the settings button.
@@ -72,12 +73,7 @@ namespace PushStars.Editor
             identity.FollowNameEnd=true;
             SettingsGear(gear);
             d.PlayerId=Text(page,"PlayerId","LOCAL PROFILE",13,97,91,17,10,true,Muted);d.PlayerId.alignment=TextAlignmentOptions.Center;
-            Text(page,"XpCaption","LEVEL PROGRESS",106,111,137,16,10,true,Muted);
-            d.Xp=Text(page,"Xp","",241,110,85,18,10,true,Gold);d.Xp.alignment=TextAlignmentOptions.Right;
-            Rail(page,"XpTrack",105,133,221,12,new Color32(3,16,62,255));
-            d.XpFill=Rail(page,"XpFill",107,135,217,8,Gold,true);
-            Pic(page,"LevelBadge",S("ProfileSettings/Group 532"),339,109,34,44);
-            d.Level=Text(page,"Level","",340,111,31,39,20,true);d.Level.alignment=TextAlignmentOptions.Center;
+            BuildLevelBlock(page,d);
 
             identity.ShowcasePortrait=null;identity.ShowcaseSprites=Array.Empty<Sprite>();
             d.ProfileEmblem=null;d.RankBadges=Array.Empty<Sprite>();
@@ -130,6 +126,7 @@ namespace PushStars.Editor
             d.RowTemplate=row.gameObject;row.gameObject.SetActive(false);
             d.Empty=Text(d.History,"Empty","",8,4,342,78,16,true,Muted);d.Empty.alignment=TextAlignmentOptions.Center;d.Empty.textWrappingMode=TextWrappingModes.Normal;
             d.MoreHistory=Button(d.History,"MoreHistory","SHOW MORE",0,92,358,44);
+            MakeRoomForLevelRow(page,d);
             d.TrainingIcon=Icon("dumbbell");d.AssessmentIcon=Icon("shield");d.WinIcon=Icon("trophy");d.LossIcon=Icon("bronze");
             d.SelectedPlate=Plate("selected");d.IdlePlate=Plate("idle");
             d.PreviewNote=null;d.AthleteDesign=true;

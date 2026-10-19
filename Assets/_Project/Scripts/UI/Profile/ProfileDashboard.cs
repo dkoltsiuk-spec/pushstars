@@ -10,7 +10,7 @@ namespace PushStars.UI
 {
     public sealed class ProfileDashboard : MonoBehaviour
     {
-        public TextMeshProUGUI PlayerName, PlayerId, Level, Xp, Wins, WinRate, Reps, Activity, ActivityNote, Empty;
+        public TextMeshProUGUI PlayerName, PlayerId, Level, Xp, XpNext, Wins, WinRate, Reps, Activity, ActivityNote, Empty;
         public Image XpFill;
         public RectTransform[] Bars;
         public RectTransform History;
@@ -42,6 +42,7 @@ namespace PushStars.UI
         private readonly List<MatchRecord> _matches = new List<MatchRecord>();
         private string _mode = "";
         private RectTransform _background, _canvasRect;
+        private Material _idleFilterMaterial, _activeFilterMaterial;
 
         // Keep the background owned by this tab so it hides with it, but cover the
         // entire canvas, including the space outside the content's safe area.
@@ -151,9 +152,19 @@ namespace PushStars.UI
             if (ServiceLocator.TryGet<FirebaseAuthService>(out var auth) && !string.IsNullOrEmpty(auth.Uid))
                 PlayerId.text = "#" + auth.Uid.Substring(0, Math.Min(8, auth.Uid.Length)).ToUpperInvariant();
             Level.text = "<size=9>LVL</size>\n" + p.Level;
-            long needed = LevelCalculator.XpForLevelUp(p.Level);
-            Xp.text = (needed - LevelCalculator.XpRemainingToNext(p.Xp)) + "/" + needed;
+            long needed = LevelCalculator.XpForLevelUp(p.Level), remaining = LevelCalculator.XpRemainingToNext(p.Xp);
+            bool max = p.Level >= EconomyConfig.MaxLevel;
+            Xp.text = max ? "MAX" : (needed - remaining) + "/" + needed;
+            if (XpNext != null) XpNext.text = max ? "MAX LEVEL" : remaining + " XP TO LEVEL " + (p.Level + 1);
             XpFill.fillAmount = p.LevelProgress;
+            if (XpFill.type == Image.Type.Sliced)
+            {
+                // Rounded bar: the capsule grows instead of being cut, never narrower than it is tall.
+                var area = ((RectTransform)XpFill.rectTransform.parent).rect;
+                float least = area.width > 0 ? area.height / area.width : 0;
+                XpFill.enabled = p.LevelProgress > 0;
+                XpFill.rectTransform.anchorMax = new Vector2(Mathf.Max(least, p.LevelProgress), 1);
+            }
             if (Wins != null) Wins.text = p.TotalWins.ToString("N0");
             WinRate.text = AthleteDesign && p.Games == 0 ? "—" : p.WinRatePercent + "%";
             Reps.text = p.TotalReps.ToString("N0");
@@ -170,10 +181,39 @@ namespace PushStars.UI
                 else
                 {
                     Filters[i].image.sprite = i == index ? SelectedPlate : IdlePlate;
-                    Filters[i].GetComponentInChildren<TextMeshProUGUI>().color = i == index ? new Color32(18,30,68,255) : Color.white;
+                    var label = Filters[i].GetComponentInChildren<TextMeshProUGUI>();
+                    if (_idleFilterMaterial == null) _idleFilterMaterial = label.fontSharedMaterial;
+                    label.color = Color.white;
+                    // Editor previews keep the saved caption material; the runtime clone is never serialized.
+                    label.fontSharedMaterial = i == index && Application.isPlaying ? ActiveFilterMaterial() : _idleFilterMaterial;
+                    label.UpdateMeshPadding();
                 }
             }
             RenderHistory();
+        }
+
+        // Active tab: the same outlined caption plus a hard drop shadow under the white face.
+        private Material ActiveFilterMaterial()
+        {
+            if (_activeFilterMaterial != null) return _activeFilterMaterial;
+            _activeFilterMaterial = new Material(_idleFilterMaterial) { name = "Profile Filter Active", hideFlags = HideFlags.HideAndDontSave };
+            _activeFilterMaterial.SetColor("_FaceColor", Color.white);
+            _activeFilterMaterial.SetColor("_OutlineColor", Color.black);
+            _activeFilterMaterial.SetColor("_UnderlayColor", Color.black);
+            _activeFilterMaterial.SetFloat("_UnderlayOffsetX", 0f);
+            _activeFilterMaterial.SetFloat("_UnderlayOffsetY", -0.6f);
+            _activeFilterMaterial.SetFloat("_UnderlayDilate", _idleFilterMaterial.GetFloat("_OutlineWidth"));
+            _activeFilterMaterial.SetFloat("_UnderlaySoftness", 0f);
+            _activeFilterMaterial.DisableKeyword("UNDERLAY_INNER");
+            _activeFilterMaterial.EnableKeyword("UNDERLAY_ON");
+            ShaderUtilities.UpdateShaderRatios(_activeFilterMaterial);
+            return _activeFilterMaterial;
+        }
+
+        private void OnDestroy()
+        {
+            if (_activeFilterMaterial == null) return;
+            if (Application.isPlaying) Destroy(_activeFilterMaterial); else DestroyImmediate(_activeFilterMaterial);
         }
 
         private void DrawActivity(DateTime today)

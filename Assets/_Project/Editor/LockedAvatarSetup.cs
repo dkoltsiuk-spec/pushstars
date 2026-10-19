@@ -49,7 +49,8 @@ namespace PushStars.Editor
             lockImage.sprite = AssetDatabase.LoadAssetAtPath<Sprite>(LockPath);
             lockImage.preserveAspect = true;
             lockImage.raycastTarget = false;
-            Place(lockImage.rectTransform, -7, -5, 43, 43);
+            lockImage.color = new Color(.66f, .68f, .74f, 1f); // grey, so it reads as "not yet" rather than a white badge
+            Place(lockImage.rectTransform, -4, -3, 34, 34);
             lockImage.rectTransform.SetAsLastSibling();
             screen.Actions[3].text = "BLOCK";
             var infoSprite = AssetDatabase.LoadAssetAtPath<Sprite>(InfoPath);

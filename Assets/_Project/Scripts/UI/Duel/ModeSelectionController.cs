@@ -73,11 +73,11 @@ namespace PushStars.UI
             switch (mode)
             {
                 case GameMode.Boss:
-                    return "Defeat the boss in 60 seconds!\n\nDo push-ups with good form and complete more reps than your opponent. The camera counts your reps automatically.\n\nEach victory unlocks the next boss. Every new challenge gets tougher.";
+                    return "Beat the boss in 60 seconds.\nEach win opens the next boss, and each one is tougher.";
                 case GameMode.Training:
-                    return "Train without an opponent. Choose sets and rest time in the settings to the right of START.\n\nEach set lasts 60 seconds. Position your phone so the camera sees your whole body to count push-ups and check your form.\n\nRest for 30, 60, or 90 seconds, or until you tap CONTINUE. Your best set is saved for future duels.";
+                    return "Train without a rival.\nPick sets and rest in the settings next to START.";
                 default:
-                    return "A 60-second duel: complete more proper push-ups than your opponent.\n\nThe camera counts reps automatically. The higher score wins.\n\nYou can currently duel a recording of your best set. Complete an assessment first if you don't have one. Live PvP is coming later.\n\nThe green counter shows players active in the last 75 seconds. A dash means the server is unavailable.";
+                    return "A 60-second duel.\nDo more clean push-ups than your rival. The camera counts for you.";
             }
         }
 

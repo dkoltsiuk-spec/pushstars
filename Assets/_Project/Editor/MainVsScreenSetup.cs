@@ -603,7 +603,7 @@ namespace PushStars.Editor
             rt.sizeDelta        = new Vector2(168f, 40f);
         }
 
-        // SHOP tile and the spare slot beneath it, hugging the right edge under the currency tags.
+        // SHOP tile, hugging the right edge under the currency tags.
         static void BuildSideTiles(RectTransform panel)
         {
             // SHOP — yellow plate, icon crowning it, label along the bottom, "i" in the corner.
@@ -635,15 +635,6 @@ namespace PushStars.Editor
                 irt.anchoredPosition = new Vector2(0f, 6f);
             }
             ShopScreen.EnsureEntryBadge(shop.GetComponent<Button>());
-
-            // Spare slot — empty in the mock-up, so it is drawn but left unwired.
-            var slot = MakeImage(panel, "SpareSlot", new Color32(38, 40, 58, 255), ProcSprite("pill_16"));
-            slot.type          = Image.Type.Sliced;
-            slot.raycastTarget = false;
-            var srt = slot.rectTransform;
-            Anchor(srt, new Vector2(1f, 1f), new Vector2(1f, 1f), new Vector2(1f, 1f));
-            srt.anchoredPosition = new Vector2(-18f, -139f);
-            srt.sizeDelta        = new Vector2(72f, 38f);
         }
 
         // Transient hint banner above the plates. Toast.Show(...) fades it in/out.
@@ -1864,7 +1855,7 @@ namespace PushStars.Editor
         static void BuildStreakAura(RectTransform parent)
         {
             var streakIcon = _theme.IconStreak != null ? _theme.IconStreak : _theme.IconLightning;
-            BuildHudPill(parent, "StreakPill", streakIcon,      "12",  _theme.AccentYellow);
+            BuildHudPill(parent, "StreakPill", streakIcon,      "0",   _theme.AccentYellow);
             BuildHudPill(parent, "GemPill",    _theme.IconGem,  "0", _theme.GemGreen);
             BuildHudPill(parent, "AuraPill",   _theme.IconAura, "0", _theme.AuraViolet);
         }

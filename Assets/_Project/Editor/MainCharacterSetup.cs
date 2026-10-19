@@ -68,6 +68,8 @@ namespace PushStars.Editor
             public string BodyFbx;
             public string PrefabPath;
             public string ControllerPath;
+            /// <summary>Rests in <see cref="RelaxedIdlePath"/> instead of the power stance.</summary>
+            public bool RelaxedIdle;
             public string MatDir  => Dir + "/Materials";
             public string MatPath => $"{MatDir}/{Name}.mat";
             /// <summary>Where <see cref="ExtractEmbeddedTextures"/> unpacks the maps the FBX
@@ -120,6 +122,8 @@ namespace PushStars.Editor
         public static string IdleFbxPath => $"{AnimDir}/{Clips.First(c => c.state == IdleState).file}";
         /// <summary>The idle as the game plays it. See <see cref="BuildOpenHandIdle"/>.</summary>
         public const string OpenHandIdlePath = AnimDir + "/Idle.anim";
+        /// <summary>The same idle without <see cref="PowerStance"/>, for bodies it does not suit.</summary>
+        public const string RelaxedIdlePath = AnimDir + "/IdleRelaxed.anim";
         public static string VictoryFbxPath => $"{AnimDir}/{Clips.First(c => c.state == "Victory").file}";
 
         /// <summary>The stylised character shader (flat shading + inverted-hull outline), at
@@ -824,7 +828,9 @@ namespace PushStars.Editor
             var motions = new List<(string state, AnimationClip clip)>();
             foreach (var (file, state, _) in Clips)
             {
-                var clip = LoadClip($"{AnimDir}/{file}");
+                var clip = state == IdleState && def.RelaxedIdle
+                    ? AssetDatabase.LoadAssetAtPath<AnimationClip>(RelaxedIdlePath) ?? LoadClip($"{AnimDir}/{file}")
+                    : LoadClip($"{AnimDir}/{file}");
                 if (clip == null)
                 {
                     Debug.LogWarning($"[MainCharacter] No AnimationClip inside {file} after reimport.");
@@ -1853,6 +1859,17 @@ namespace PushStars.Editor
                 AnimationUtility.SetEditorCurve(clip, binding, curve);
                 fingers++;
             }
+            // Keep the open-hand take as it was before the stance, for the bodies that opt out.
+            var relaxed = AssetDatabase.LoadAssetAtPath<AnimationClip>(RelaxedIdlePath);
+            if (relaxed == null)
+            {
+                relaxed = Object.Instantiate(clip);
+                AssetDatabase.CreateAsset(relaxed, RelaxedIdlePath);
+            }
+            else EditorUtility.CopySerialized(clip, relaxed);
+            relaxed.name = "IdleRelaxed";
+            EditorUtility.SetDirty(relaxed);
+            ApplyPowerStance(source, clip);
             EditorUtility.SetDirty(clip);
 
             int states = 0;
@@ -1873,6 +1890,68 @@ namespace PushStars.Editor
             AssetDatabase.SaveAssets();
             Debug.Log($"[MainCharacter] Idle with the fist opened: {fingers} finger curve(s) mirrored " +
                       $"from the left hand, {states} controller state(s) repointed.");
+        }
+
+        /// <summary>Muscle offsets that turn the relaxed briefcase idle into a stronger stance:
+        /// arms held off the sides as if by a wide back, elbows a little bent, feet a bit wider.
+        /// Muscles retarget, so every body gets the same angles.</summary>
+        private static readonly (string muscle, float offset)[] PowerStance =
+        {
+            ("Arm Down-Up", .17f),
+            ("Forearm Stretch", -.2f),
+            ("Upper Leg In-Out", .07f),
+        };
+
+        /// <summary>How far each finger joint goes from the open hand towards the take's fist
+        /// (0 open, 1 fist): a loose half-curl instead of flat hanging fingers.</summary>
+        private const float FingerCurl = .08f;
+
+        /// <summary>Points a built controller's idle state at <see cref="RelaxedIdlePath"/> without
+        /// re-importing the body.</summary>
+        public static bool UseRelaxedIdle(string controllerPath)
+        {
+            var controller = AssetDatabase.LoadAssetAtPath<AnimatorController>(controllerPath);
+            var relaxed = AssetDatabase.LoadAssetAtPath<AnimationClip>(RelaxedIdlePath);
+            if (controller == null || relaxed == null) return false;
+            foreach (var child in controller.layers[0].stateMachine.states)
+            {
+                if (child.state.name != IdleState) continue;
+                child.state.motion = relaxed;
+                EditorUtility.SetDirty(child.state);
+                EditorUtility.SetDirty(controller);
+                AssetDatabase.SaveAssets();
+                return true;
+            }
+            return false;
+        }
+
+        private static void ApplyPowerStance(AnimationClip source, AnimationClip clip)
+        {
+            foreach (var binding in AnimationUtility.GetCurveBindings(clip))
+            {
+                string name = binding.propertyName;
+                var curve = AnimationUtility.GetEditorCurve(clip, binding);
+                if (curve == null) continue;
+                var keys = curve.keys;
+                if (name.Contains("Hand.") && name.EndsWith(" Stretched") && !name.Contains(".Thumb."))
+                {
+                    // The take's right hand is the fist; finger muscles mean the same on both sides.
+                    var fistBinding = binding;
+                    fistBinding.propertyName = "RightHand." + name.Substring(name.IndexOf('.') + 1);
+                    var fist = AnimationUtility.GetEditorCurve(source, fistBinding);
+                    if (fist == null) continue;
+                    for (int i = 0; i < keys.Length; i++)
+                        keys[i].value = Mathf.Lerp(keys[i].value, fist.Evaluate(keys[i].time), FingerCurl);
+                }
+                else
+                {
+                    int row = System.Array.FindIndex(PowerStance, s => name == "Left " + s.muscle || name == "Right " + s.muscle);
+                    if (row < 0) continue;
+                    for (int i = 0; i < keys.Length; i++) keys[i].value += PowerStance[row].offset;
+                }
+                curve.keys = keys;
+                AnimationUtility.SetEditorCurve(clip, binding, curve);
+            }
         }
 
         private static Bounds InstanceBounds(GameObject go)

@@ -148,7 +148,14 @@ namespace PushStars.Fight
             // Preparation has its own scene. Loading Fight starts only the exercise HUD.
             _phase = Phase.WaitPlank;
             if (_mode == FightMode.Training) InitializeTrainingScreen();
-            if (_debugButton != null) _debugButton.onClick.AddListener(ToggleDebugHud);
+            // Diagnostics and the five-tap progress wipe are tester tools: a player never gets the
+            // invisible corner button.
+            if (_debugButton != null)
+            {
+                bool tester = LabAccess.Visible(LabAccess.Allowlisted);
+                _debugButton.gameObject.SetActive(tester);
+                if (tester) _debugButton.onClick.AddListener(ToggleDebugHud);
+            }
             SetDebugPanels(false);
         }
 
@@ -275,6 +282,7 @@ namespace PushStars.Fight
             _repTimes.Add(repTime);
             _lastRepSession = totalReps;
             _hud.SetPlayerReps(_repTimes.Count);
+            ShowRepXp(_session.Form);
             if (_mode == FightMode.Training && !_paused && !_layoutPaused)
                 ShowRepMilestone(_repTimes.Count);
             if (BossHealth != null) { BossHealth.PlayerRep(_session.Form); CheckBossKnockout(); }
@@ -353,6 +361,7 @@ namespace PushStars.Fight
             if (_paused || _phase == Phase.Finished || _phase == Phase.Rest) return;
             _paused = true;
             _repMilestone?.Cancel();
+            _repXp?.Clear();
             _pausedAt = Time.time;
             if (_session != null) _session.enabled = false;
             _hud.SetPaused(true);
@@ -535,6 +544,7 @@ namespace PushStars.Fight
             if (_phase == Phase.Finished || _screenPreview) return;
             _phase = Phase.Finished;
             _repMilestone?.Cancel();
+            _repXp?.Clear();
             _hud.HideBanner();
             _hud.HideCountdown();
             _hud.SetScoresVisible(false);
@@ -659,6 +669,7 @@ namespace PushStars.Fight
             else if (data.Mode == FightMode.Ghost || data.Mode == FightMode.LevelTest)
                 data.LeagueStatus = "LOCAL RESULT · PLAY FROM LEAGUE TO RANK";
             // Eligibility is settled once here. Presentation never rolls or grants another case.
+            Analytics.FightFinished(data.Mode, data.Win, data.Draw, data.MyReps, data.OppReps, _ranked != null);
             PendingCase awarded = null;
             long aura = 0;
             var auraLines = new List<AuraMoment>();
@@ -688,7 +699,8 @@ namespace PushStars.Fight
                 try
                 {
                     // Fight moments, then any level/league Aura not yet paid, in one save.
-                    var settled = AuraSettlement.Settle(_rewardSessionId, _auraMoments, LocalProfile.Xp, LocalProfile.Trophies);
+                    var settled = AuraSettlement.Settle(_rewardSessionId, _auraMoments, LocalProfile.Xp, LocalProfile.Trophies,
+                        LocalProfile.TodayGoal, LocalProfile.DailyStreak);
                     aura += settled.Change;
                     auraLines.AddRange(settled.Moments);
                 }

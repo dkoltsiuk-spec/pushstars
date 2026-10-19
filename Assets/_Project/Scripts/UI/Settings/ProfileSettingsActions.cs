@@ -128,6 +128,7 @@ namespace PushStars.UI
                 buttonRect.anchorMin = buttonRect.anchorMax = new Vector2(.5f, .5f);
                 buttonRect.pivot = new Vector2(.5f, .5f);
                 buttonRect.sizeDelta = new Vector2(260, 46);
+                FitSlantPlate(button.image, 46);
                 buttonRect.anchoredPosition = new Vector2(0, 54 - i * 60);
                 var label = button.GetComponentInChildren<TMP_Text>();
                 label.name = "NativeLanguageName"; label.text = Localization.NativeName(language);
@@ -138,6 +139,15 @@ namespace PushStars.UI
                 button.onClick.RemoveAllListeners();
                 button.onClick.AddListener(() => SelectLanguage(language));
             }
+        }
+
+        /// <summary>The slanted blue plate is sliced on its slanted ends (sprite border), scaled to
+        /// the button height so the slant keeps its angle and only the straight middle stretches.</summary>
+        public static void FitSlantPlate(Image plate, float height)
+        {
+            if (plate == null || plate.sprite == null) return;
+            plate.type = Image.Type.Sliced; plate.preserveAspect = false; plate.fillCenter = true;
+            plate.pixelsPerUnitMultiplier = plate.sprite.rect.height / plate.sprite.pixelsPerUnit * 100f / height;
         }
 
         private void DrawSwitch(int i)

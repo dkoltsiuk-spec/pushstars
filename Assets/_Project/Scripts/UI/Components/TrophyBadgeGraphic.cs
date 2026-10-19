@@ -14,6 +14,7 @@ namespace PushStars.UI
     {
         [SerializeField, Range(0f, 1f)] private float _progress = 0.79f;
         [SerializeField] private bool _infoOnly;
+        [SerializeField] private bool _showInfo = true;
         private readonly List<Vector2> _path = new List<Vector2>(160);
 
         /// <summary>Draw the same red/gold info tab on other home controls.</summary>
@@ -21,6 +22,13 @@ namespace PushStars.UI
         {
             get => _infoOnly;
             set { _infoOnly = value; SetVerticesDirty(); }
+        }
+
+        /// <summary>The trophy tag's red "i" tab; the home screen shows it only when there is news.</summary>
+        public bool ShowInfo
+        {
+            get => _showInfo;
+            set { if (_showInfo == value) return; _showInfo = value; SetVerticesDirty(); }
         }
 
         public float Progress
@@ -49,6 +57,7 @@ namespace PushStars.UI
                 }
             }
 
+            if (!_infoOnly && !_showInfo) return;
             // Asymmetric red info tab, including the outlined, leaning gold glyph.
             Begin(648, 103); Line(753, 90);
             Curve(772, 87, 784, 100, 783, 119); Line(780, 185);

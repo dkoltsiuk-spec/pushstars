@@ -390,6 +390,13 @@ namespace PushStars.Editor
                 if (FailWrites) throw new IOException("Simulated save failure");
                 _saved = json;
                 Writes++;
+            }, CardOffers);
+
+            // The catalog retired hero cards; the draw counts below still include the card roll.
+            private static readonly AvatarOffer[] CardOffers = Array.ConvertAll(AvatarCatalog.Defaults(), offer =>
+            {
+                if (offer.Id == "robot") offer.RequiredCards = 50;
+                return offer;
             });
 
             public void UpgradeAll(string id)

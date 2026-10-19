@@ -21,6 +21,7 @@ MonoBehaviour:
     Price: 599
     RequiredCards: 0
     StoreProductId: 
+    Island: 
   - Id: madam-engry
     Name: QUEEN PUSH
     HeadIcon: 
@@ -29,6 +30,7 @@ MonoBehaviour:
     Price: 0
     RequiredCards: 0
     StoreProductId: 
+    Island: 
   - Id: fighter
     Name: FIGHTER
     HeadIcon: 
@@ -37,38 +39,43 @@ MonoBehaviour:
     Price: 0
     RequiredCards: 0
     StoreProductId: 
+    Island: 
   - Id: robot
     Name: ROBOT
     HeadIcon: AvatarCollection/RobotHead
     Prefab: 
     Kind: 1
     Price: 50000
-    RequiredCards: 50
+    RequiredCards: 0
     StoreProductId: 
+    Island: 
   - Id: gladiator
     Name: GLADIATOR
     HeadIcon: AvatarCollection/GladiatorHead
     Prefab: 
     Kind: 1
     Price: 250000
-    RequiredCards: 250
+    RequiredCards: 0
     StoreProductId: 
+    Island: 
   - Id: bogatyr
     Name: BOGATYR
     HeadIcon: AvatarCollection/BogatyrHead
     Prefab: Heroes/Bogatyr
     Kind: 1
     Price: 100000
-    RequiredCards: 100
+    RequiredCards: 0
     StoreProductId: 
+    Island: 
   - Id: viking
     Name: VIKING
     HeadIcon: AvatarCollection/VikingHead
     Prefab: Heroes/Viking
     Kind: 1
     Price: 500000
-    RequiredCards: 500
+    RequiredCards: 0
     StoreProductId: 
+    Island: 
   - Id: zombie
     Name: ZOMBIE
     HeadIcon: 
@@ -77,6 +84,7 @@ MonoBehaviour:
     Price: 500
     RequiredCards: 0
     StoreProductId: 
+    Island: 
   - Id: tigress
     Name: TIGRESS
     HeadIcon: 
@@ -85,6 +93,7 @@ MonoBehaviour:
     Price: 800
     RequiredCards: 0
     StoreProductId: 
+    Island: 
   - Id: skinny
     Name: SKINNY
     HeadIcon: 
@@ -93,6 +102,7 @@ MonoBehaviour:
     Price: 699
     RequiredCards: 0
     StoreProductId: hero_skinny
+    Island: 
   - Id: chubby
     Name: CHUBBY
     HeadIcon: 
@@ -101,6 +111,7 @@ MonoBehaviour:
     Price: 699
     RequiredCards: 0
     StoreProductId: hero_chubby
+    Island: 
   - Id: skeleton
     Name: SKELETON
     HeadIcon: 
@@ -109,3 +120,31 @@ MonoBehaviour:
     Price: 999
     RequiredCards: 0
     StoreProductId: hero_skeleton
+    Island: 
+  - Id: goblin
+    Name: GOBLIN
+    HeadIcon: AvatarCollection/ForestIslandBadge
+    Prefab: Heroes/Goblin
+    Kind: 4
+    Price: 0
+    RequiredCards: 0
+    StoreProductId: 
+    Island: forest
+  - Id: frost
+    Name: FROST
+    HeadIcon: AvatarCollection/IceIslandBadge
+    Prefab: Heroes/Frost
+    Kind: 4
+    Price: 0
+    RequiredCards: 0
+    StoreProductId: 
+    Island: ice
+  - Id: magma
+    Name: MAGMA
+    HeadIcon: AvatarCollection/LavaIslandBadge
+    Prefab: Heroes/Magma
+    Kind: 4
+    Price: 0
+    RequiredCards: 0
+    StoreProductId: 
+    Island: lava

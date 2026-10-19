@@ -8,6 +8,9 @@ namespace PushStars.Fight
     /// <summary>Orc presentation only. Reps, difficulty, rewards and the CV player stay unchanged.</summary>
     public sealed class BossAvatarPresentation : MonoBehaviour
     {
+        /// <summary>Preparation fits every boss crown-to-sole into its half; below 1 the body is drawn
+        /// smaller than that, feet kept on the same ground line (for stocky bodies that read too big).</summary>
+        [Range(.5f, 1f)] public float PreparationScale = 1f;
         private Animator _animator;
         private BossOpponent _boss;
         private PushupSession _player;

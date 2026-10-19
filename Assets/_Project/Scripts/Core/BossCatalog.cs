@@ -204,6 +204,10 @@ namespace PushStars.Core
         public static bool IsChapterCleared(BossChapter chapter)
             => chapter != null && chapter.Playable && ClearedCount >= LadderStart(chapter) + chapter.Bosses.Count;
 
+        /// <summary>Bosses of the chapter defeated so far, 0..its boss count.</summary>
+        public static int ClearedInChapter(BossChapter chapter)
+            => chapter == null || !chapter.Playable ? 0 : Mathf.Clamp(ClearedCount - LadderStart(chapter), 0, chapter.Bosses.Count);
+
         /// <summary>The boss before a chapter's gem islet has been defeated.</summary>
         public static bool IsGemIsletReached(BossChapter chapter)
             => chapter != null && chapter.Playable && ClearedCount > LadderStart(chapter) + chapter.GemsAfterBoss;

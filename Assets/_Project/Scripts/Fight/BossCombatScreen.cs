@@ -28,6 +28,7 @@ namespace PushStars.Fight
         public TMP_Text Countdown;
         public TMP_Text[] DamageLabels;
         public GoblinForestPresentation Forest;
+        public ArenaIslandPresentation Ice, Lava;
         private FightController _fight;
         private BossCombatState _health;
         private bool _configured;
@@ -78,7 +79,14 @@ namespace PushStars.Fight
             var bossIcon = Content.Find("BossIcon")?.GetComponent<Image>();
             var portrait = Resources.Load<Sprite>("Bosses/" + (BossCatalog.Find(id)?.PrefabId ?? id) + "-portrait");
             if (bossIcon != null && portrait != null) bossIcon.sprite = portrait;
-            if (Forest != null) Forest.Configure(!Preparation && BossCatalog.ChapterOf(id)?.Id == "forest");
+            // Island layers share the original decor: switch the unused one off before the active one hides it.
+            string island = Preparation ? null : BossCatalog.ChapterOf(id)?.Id;
+            if (Forest != null && island != "forest") Forest.Configure(false);
+            if (Ice != null && island != "ice") Ice.Configure(false);
+            if (Lava != null && island != "lava") Lava.Configure(false);
+            if (Forest != null && island == "forest") Forest.Configure(true);
+            if (Ice != null && island == "ice") Ice.Configure(true);
+            if (Lava != null && island == "lava") Lava.Configure(true);
             _health = !Preparation && _fight != null ? _fight.BossHealth : null;
             _health ??= new BossCombatState(id);
             _health.Damaged += OnDamage;
@@ -141,6 +149,8 @@ namespace PushStars.Fight
             var area = (Preparation && PreparationSafeBounds != null ? PreparationSafeBounds : (RectTransform)Root.transform).rect;
             Content.localScale = Vector3.one * Mathf.Min(area.width / 390, area.height / 844);
             if (Forest != null && Content.localScale.x > 0) Forest.ApplyLayout(area.size / Content.localScale.x);
+            if (Ice != null && Content.localScale.x > 0) Ice.ApplyLayout(area.size / Content.localScale.x);
+            if (Lava != null && Content.localScale.x > 0) Lava.ApplyLayout(area.size / Content.localScale.x);
             _playerFill = Mathf.MoveTowards(_playerFill, _health.PlayerHp / (float)BossCombatState.PlayerMaxHp, delta * 2.8f);
             _bossFill = Mathf.MoveTowards(_bossFill, _health.BossHp / (float)_health.BossMaxHp, delta * 2.8f);
             PlayerHpFill.FillAmount = _playerFill; BossHpFill.FillAmount = _bossFill;
@@ -287,8 +297,18 @@ namespace PushStars.Fight
             // Fit width as well as height so broad shoulders and ears stay inside the frame.
             float height = body.height * (cropPortrait ? 1f / .95f : 1.10f);
             height = Mathf.Max(height, body.width * textureAspect / aspect * 1.08f);
+            // Share of the frame left under the soles, held when a boss is drawn smaller.
+            float sole = (height - body.height) * .1f / height;
+            if (cropPortrait && avatar == BossStage && avatar.Character != null)
+            {
+                var presentation = avatar.Character.GetComponentInChildren<BossAvatarPresentation>();
+                if (presentation != null) height /= Mathf.Clamp(presentation.PreparationScale, .5f, 1f);
+            }
             float width = height * aspect / textureAspect;
-            float centerY = cropPortrait ? body.yMin - (height - body.height) * .1f + height * .5f : body.center.y;
+            // Battle keeps the soles' 5% margin when the width wins (the stocky mini golem): the
+            // spare height goes above the head, not under the feet where BossShadow stands.
+            float centerY = cropPortrait ? body.yMin - sole * height + height * .5f
+                : body.yMin - body.height * .05f + height * .5f;
             if (grounded) centerY = body.yMin + height * .45f;
             target.uvRect = new Rect(body.center.x - width * .5f, centerY - height * .5f, width, height);
             if (cropPortrait && avatar.IsPreparationFramed)
@@ -387,12 +407,19 @@ namespace PushStars.Fight
             }
         }
 
+        /// <summary>Petals in the forest, ice chips on the ice island, basalt chips on the lava island; none in PvP.</summary>
+        public ForestParticleEffects IslandEffects =>
+            Forest != null && Forest.Effects != null && Forest.Effects.isActiveAndEnabled ? Forest.Effects
+            : Ice != null && Ice.Effects != null && Ice.Effects.isActiveAndEnabled ? Ice.Effects
+            : Lava != null && Lava.Effects != null && Lava.Effects.isActiveAndEnabled ? Lava.Effects : null;
+
         private void OnDamage(bool boss, int damage)
         {
-            if (boss && Forest != null && Forest.Effects != null && Forest.Effects.isActiveAndEnabled)
+            var effects = IslandEffects;
+            if (boss && effects != null)
             {
                 var portrait = BossPortrait.rectTransform;
-                Forest.Effects.Hit(portrait.anchoredPosition + Vector2.up * (portrait.rect.height * .1f));
+                effects.Hit(portrait.anchoredPosition + Vector2.up * (portrait.rect.height * .1f));
                 if (_health.BossHp == 0)
                 {
                     var presentation = BossStage != null && BossStage.Character != null
@@ -400,7 +427,7 @@ namespace PushStars.Fight
                     float fallTime = presentation != null ? presentation.BeginDefeat() : .6f;
                     float contactTime = Mathf.Min(fallTime * .45f, 1.1f);
                     BossDefeatPresentationSeconds = Mathf.Max(.6f, contactTime + 1.3f);
-                    Forest.Effects.QueueFall(portrait.anchoredPosition + Vector2.down * (portrait.rect.height * .5f - 12), contactTime);
+                    effects.QueueFall(portrait.anchoredPosition + Vector2.down * (portrait.rect.height * .5f - 12), contactTime);
                 }
             }
             if (DamageLabels.Length == 0) return;

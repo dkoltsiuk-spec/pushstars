@@ -7,7 +7,7 @@
     },
     {
       "en": "BATTLE",
-      "ru": "БОЙ",
+      "ru": "В БОЙ",
       "ptBR": "BATALHA"
     },
     {
@@ -211,6 +211,21 @@
       "ptBR": "TODOS"
     },
     {
+      "en": "HEROES",
+      "ru": "ГЕРОИ",
+      "ptBR": "HERÓIS"
+    },
+    {
+      "en": "ARENAS",
+      "ru": "АРЕНЫ",
+      "ptBR": "ARENAS"
+    },
+    {
+      "en": "IN SHOP",
+      "ru": "В МАГАЗИНЕ",
+      "ptBR": "NA LOJA"
+    },
+    {
       "en": "BOSS",
       "ru": "БОСС",
       "ptBR": "CHEFE"
@@ -384,6 +399,26 @@
       "en": "Game soundtrack off",
       "ru": "Музыка игры выключена",
       "ptBR": "Música do jogo desligada"
+    },
+    {
+      "en": "AURA EFFECT",
+      "ru": "ЭФФЕКТ АУРЫ",
+      "ptBR": "EFEITO DE AURA"
+    },
+    {
+      "en": "Glow around your hero",
+      "ru": "Свечение вокруг героя",
+      "ptBR": "Brilho ao redor do herói"
+    },
+    {
+      "en": "ANONYMOUS STATISTICS",
+      "ru": "АНОНИМНАЯ СТАТИСТИКА",
+      "ptBR": "ESTATÍSTICAS ANÔNIMAS"
+    },
+    {
+      "en": "No name, no camera data",
+      "ru": "Без имени и данных камеры",
+      "ptBR": "Sem nome, sem dados da câmera"
     },
     {
       "en": "Support",
@@ -2431,19 +2466,89 @@
       "ptBR": "<color=#E99100>Sequência</color> conta os dias seguidos de treino. Treine todos os dias para manter sua sequência e ganhar bônus."
     },
     {
-      "en": "A 60-second duel: complete more proper push-ups than your opponent.\n\nThe camera counts reps automatically. The higher score wins.\n\nYou can currently duel a recording of your best set. Complete an assessment first if you don't have one. Live PvP is coming later.\n\nThe green counter shows players active in the last 75 seconds. A dash means the server is unavailable.",
-      "ru": "Дуэль на 60 секунд: выполни больше правильных отжиманий, чем соперник.\n\nКамера автоматически считает повторы. Побеждает тот, у кого счёт выше.\n\nСейчас можно сразиться с записью своего лучшего подхода. Если записи ещё нет, сначала пройди проверку уровня. Онлайн-PvP появится позже.\n\nЗелёный счётчик показывает игроков, активных за последние 75 секунд. Прочерк означает, что сервер недоступен.",
-      "ptBR": "Duelo de 60 segundos: faça mais flexões corretas que seu adversário.\n\nA câmera conta as repetições automaticamente. A maior pontuação vence.\n\nPor enquanto, você pode duelar com uma gravação da sua melhor série. Faça uma avaliação primeiro se ainda não tiver uma. O PvP ao vivo chegará depois.\n\nO contador verde mostra jogadores ativos nos últimos 75 segundos. Um traço indica que o servidor está indisponível."
+      "en": "Train today to start a <color=#E99100>streak</color>.",
+      "ru": "Потренируйся сегодня, чтобы начать <color=#E99100>серию</color>.",
+      "ptBR": "Treine hoje para começar uma <color=#E99100>sequência</color>."
     },
     {
-      "en": "Defeat the boss in 60 seconds!\n\nDo push-ups with good form and complete more reps than your opponent. The camera counts your reps automatically.\n\nEach victory unlocks the next boss. Every new challenge gets tougher.",
-      "ru": "Победи босса за 60 секунд!\n\nОтжимайся с правильной техникой и выполни больше повторов, чем соперник. Камера посчитает их автоматически.\n\nКаждая победа открывает следующего босса. Новые испытания становятся сложнее.",
-      "ptBR": "Derrote o chefe em 60 segundos!\n\nFaça flexões com boa técnica e complete mais repetições que seu adversário. A câmera conta automaticamente.\n\nCada vitória desbloqueia o próximo chefe. Cada novo desafio fica mais difícil."
+      "en": "<color=#E99100>Days in a row</color>: {0}. Train every day to keep the streak.",
+      "ru": "<color=#E99100>Дней подряд</color>: {0}. Тренируйся каждый день, чтобы не прервать серию.",
+      "ptBR": "<color=#E99100>Dias seguidos</color>: {0}. Treine todos os dias para manter a sequência."
     },
     {
-      "en": "Train without an opponent. Choose sets and rest time in the settings to the right of START.\n\nEach set lasts 60 seconds. Position your phone so the camera sees your whole body to count push-ups and check your form.\n\nRest for 30, 60, or 90 seconds, or until you tap CONTINUE. Your best set is saved for future duels.",
-      "ru": "Тренируйся без соперника. Выбери подходы и время отдыха в настройках справа от кнопки «СТАРТ».\n\nКаждый подход длится 60 секунд. Поставь телефон так, чтобы камера видела всё тело и могла считать отжимания и проверять технику.\n\nОтдыхай 30, 60 или 90 секунд либо до нажатия «ПРОДОЛЖИТЬ». Лучший подход сохраняется для будущих дуэлей.",
-      "ptBR": "Treine sem adversário. Escolha as séries e o tempo de descanso nas configurações à direita de COMEÇAR.\n\nCada série dura 60 segundos. Posicione o celular para que a câmera veja seu corpo inteiro, conte as flexões e confira sua técnica.\n\nDescanse por 30, 60 ou 90 segundos, ou até tocar em CONTINUAR. Sua melhor série é salva para duelos futuros."
+      "en": "<b>Daily goal</b>: {0} / {1} push-ups. Finish it for <color=#A968E8>+{2} Aura</color>.",
+      "ru": "<b>Цель дня</b>: {0} / {1} отжиманий. Выполни её и получи <color=#A968E8>+{2} ауры</color>.",
+      "ptBR": "<b>Meta do dia</b>: {0} / {1} flexões. Conclua e ganhe <color=#A968E8>+{2} de Aura</color>."
+    },
+    {
+      "en": "<b>Daily goal done!</b> <color=#A968E8>+{0} Aura</color> today. Come back tomorrow.",
+      "ru": "<b>Цель дня выполнена!</b> Сегодня <color=#A968E8>+{0} ауры</color>. Возвращайся завтра.",
+      "ptBR": "<b>Meta do dia concluída!</b> <color=#A968E8>+{0} de Aura</color> hoje. Volte amanhã."
+    },
+    {
+      "en": "Daily reminders",
+      "ru": "Ежедневные напоминания",
+      "ptBR": "Lembretes diários"
+    },
+    {
+      "en": "Your daily goal and streak.",
+      "ru": "Цель дня и серия.",
+      "ptBR": "Sua meta do dia e sequência."
+    },
+    {
+      "en": "Daily goal",
+      "ru": "Цель дня",
+      "ptBR": "Meta do dia"
+    },
+    {
+      "en": "Push-ups to today's goal: {0}. Reward: +{1} Aura.",
+      "ru": "Отжиманий до цели дня: {0}. Награда — +{1} ауры.",
+      "ptBR": "Flexões para a meta do dia: {0}. Recompensa: +{1} de Aura."
+    },
+    {
+      "en": "Push-ups left to today's goal: {0}. Reward: +{1} Aura.",
+      "ru": "До цели дня осталось отжиманий: {0}. Награда — +{1} ауры.",
+      "ptBR": "Faltam flexões para a meta do dia: {0}. Recompensa: +{1} de Aura."
+    },
+    {
+      "en": "Your streak is fading",
+      "ru": "Серия гаснет",
+      "ptBR": "Sua sequência está se apagando"
+    },
+    {
+      "en": "Days in a row: {0}. One set today keeps it going.",
+      "ru": "Дней подряд: {0}. Один подход сегодня — и серия продолжится.",
+      "ptBR": "Dias seguidos: {0}. Uma série hoje mantém a sequência."
+    },
+    {
+      "en": "DAILY GOAL {0}",
+      "ru": "ЦЕЛЬ ДНЯ {0}",
+      "ptBR": "META DO DIA {0}"
+    },
+    {
+      "en": "{0}-DAY STREAK",
+      "ru": "СЕРИЯ {0} ДНЕЙ",
+      "ptBR": "SEQUÊNCIA DE {0} DIAS"
+    },
+    {
+      "en": "{0}-DAY STREAK {1}",
+      "ru": "СЕРИЯ {0} ДНЕЙ {1}",
+      "ptBR": "SEQUÊNCIA DE {0} DIAS {1}"
+    },
+    {
+      "en": "A 60-second duel.\nDo more clean push-ups than your rival. The camera counts for you.",
+      "ru": "Дуэль на 60 секунд.\nСделай больше чистых отжиманий, чем соперник. Камера считает сама.",
+      "ptBR": "Duelo de 60 segundos.\nFaça mais flexões corretas que o rival. A câmera conta por você."
+    },
+    {
+      "en": "Beat the boss in 60 seconds.\nEach win opens the next boss, and each one is tougher.",
+      "ru": "Победи босса за 60 секунд.\nКаждая победа открывает следующего, и он сильнее.",
+      "ptBR": "Vença o chefe em 60 segundos.\nCada vitória libera o próximo, e cada um é mais forte."
+    },
+    {
+      "en": "Train without a rival.\nPick sets and rest in the settings next to START.",
+      "ru": "Тренировка без соперника.\nПодходы и отдых выбери в настройках рядом со СТАРТ.",
+      "ptBR": "Treine sem rival.\nEscolha séries e descanso nas configurações ao lado de INICIAR."
     },
     {
       "en": "1. INVITE\nCreate a code and send it to your friend.\nThe code lasts 5 minutes.\n\n2. JOIN\nYour friend taps ENTER CODE, checks\nyour name, and joins.\n\n3. BATTLE\nBoth confirm and set up their cameras.\nThen the shared countdown begins.",
@@ -2689,6 +2794,11 @@
       "en": "LEVEL PROGRESS",
       "ru": "ПРОГРЕСС УРОВНЯ",
       "ptBR": "PROGRESSO DO NÍVEL"
+    },
+    {
+      "en": "{0} XP TO LEVEL {1}",
+      "ru": "ЕЩЁ {0} XP ДО УР. {1}",
+      "ptBR": "FALTAM {0} XP PARA NÍV. {1}"
     },
     {
       "en": "MORE SPORTS SOON",
@@ -3084,6 +3194,36 @@
       "en": "NO COUNTRIES FOUND",
       "ru": "СТРАНА НЕ НАЙДЕНА",
       "ptBR": "NENHUM PAÍS ENCONTRADO"
+    },
+    {
+      "en": "FREE · ICE ISLAND",
+      "ru": "БЕСПЛАТНО · ЛЕДЯНОЙ ОСТРОВ",
+      "ptBR": "GRÁTIS · ILHA DE GELO"
+    },
+    {
+      "en": "FREE HERO · DEFEAT THE GLACIER KING ON ICE ISLAND",
+      "ru": "БЕСПЛАТНЫЙ ГЕРОЙ · ПОБЕДИ ЛЕДЯНОГО КОРОЛЯ НА ЛЕДЯНОМ ОСТРОВЕ",
+      "ptBR": "HERÓI GRÁTIS · DERROTE O REI GLACIAL NA ILHA DE GELO"
+    },
+    {
+      "en": "FREE · FOREST ISLAND",
+      "ru": "БЕСПЛАТНО · ЛЕСНОЙ ОСТРОВ",
+      "ptBR": "GRÁTIS · ILHA DA FLORESTA"
+    },
+    {
+      "en": "FREE HERO · DEFEAT THE GOBLIN KING ON FOREST ISLAND",
+      "ru": "БЕСПЛАТНЫЙ ГЕРОЙ · ПОБЕДИ КОРОЛЯ ГОБЛИНОВ НА ЛЕСНОМ ОСТРОВЕ",
+      "ptBR": "HERÓI GRÁTIS · DERROTE O REI DOS GOBLINS NA ILHA DA FLORESTA"
+    },
+    {
+      "en": "FREE · LAVA ISLAND",
+      "ru": "БЕСПЛАТНО · ЛАВОВЫЙ ОСТРОВ",
+      "ptBR": "GRÁTIS · ILHA DE LAVA"
+    },
+    {
+      "en": "FREE HERO · DEFEAT THE VOLCANO KING ON LAVA ISLAND",
+      "ru": "БЕСПЛАТНЫЙ ГЕРОЙ · ПОБЕДИ КОРОЛЯ ВУЛКАНА НА ЛАВОВОМ ОСТРОВЕ",
+      "ptBR": "HERÓI GRÁTIS · DERROTE O REI DO VULCÃO NA ILHA DE LAVA"
     }
   ]
 }

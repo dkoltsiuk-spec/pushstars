@@ -173,16 +173,28 @@ namespace PushStars.UI
                 Label(tile, "Caption", AvatarNames[i], new Vector2(0, -31), new Vector2(122, 18), 11);
             }
             _feedback = Label(panel, "Feedback", "Saved on this device", new Vector2(0, -105), new Vector2(306, 35), 13);
-            MakeButton(panel, "Cancel", "CANCEL", new Vector2(-79, -153), DarkPlate, Cancel);
-            MakeButton(panel, "Save", "SAVE", new Vector2(79, -153), YellowPlate, Save);
+            MakeButton(panel, "Cancel", "CANCEL", new Vector2(-82, -153), DarkPlate, Cancel);
+            MakeButton(panel, "Save", "SAVE", new Vector2(82, -153), YellowPlate, Save);
             _modal.SetActive(false);
         }
 
         private void MakeButton(Transform p, string name, string caption, Vector2 pos, Sprite sprite, UnityEngine.Events.UnityAction action)
         {
-            var rt = Rect(p, name, pos, new Vector2(135, 45)); var image = rt.gameObject.AddComponent<Image>(); image.sprite = sprite;
+            const float height = 50f;
+            var rt = Rect(p, name, pos, new Vector2(150, height)); var image = rt.gameObject.AddComponent<Image>();
+            // The plate art is 276x164; stretched flat it squashed the slanted corners. Sliced with the
+            // top and bottom halves as borders it scales evenly in height and only the middle widens.
+            image.sprite = SlicedPlate(sprite); image.type = Image.Type.Sliced;
+            if (sprite != null) image.pixelsPerUnitMultiplier = sprite.rect.height / height;
             var b = rt.gameObject.AddComponent<Button>(); b.targetGraphic = image; b.onClick.AddListener(action);
-            Label(rt, "Label", caption, new Vector2(0, 2), new Vector2(125, 37), 19);
+            Label(rt, "Label", caption, new Vector2(-2, 2), new Vector2(130, 40), 19);
+        }
+        private static Sprite SlicedPlate(Sprite plate)
+        {
+            if (plate == null || plate.border != Vector4.zero) return plate;
+            float half = plate.rect.height / 2f - 1f, side = Mathf.Min(90f, plate.rect.width / 2f - 1f);
+            return Sprite.Create(plate.texture, plate.rect, new Vector2(.5f, .5f), plate.pixelsPerUnit, 0, SpriteMeshType.FullRect,
+                new Vector4(side, half, side, half));
         }
         private TextMeshProUGUI Label(Transform parent, string name, string value, Vector2 pos, Vector2 size, float fontSize)
         {

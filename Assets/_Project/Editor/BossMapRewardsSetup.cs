@@ -18,7 +18,7 @@ namespace PushStars.Editor
     /// Island path layout and collectibles. Every island reads bottom to top: boss 1–3, the gem
     /// islet, the remaining bosses, then the main boss's chest. The forest's gem islet and chest are
     /// live <see cref="BossMapController.RewardNode"/>s. Playable golem islands (ice, lava) get live
-    /// nodes (forest node clones with golem portraits on island platforms) and their own gems and
+    /// nodes (forest node clones with the island face icon on island platforms) and their own gems and
     /// chest; an unplayable ice island stays a non-interactive COMING SOON preview. Idempotent:
     /// positions are absolute and objects are found by name before anything is created.
     /// </summary>
@@ -55,8 +55,13 @@ namespace PushStars.Editor
         {
             var forest = (RectTransform)c.MapContent.Find("ForestChapter");
             var slots = PathSlots(ForestFirst, BossCatalog.Chapters[0]);
+            // Every island shows one shared face icon on its bosses; the fight HUD keeps the portraits.
+            var forestFace = AssetDatabase.LoadAssetAtPath<Sprite>(BossMapSceneSetup.Art + "forest-face.png");
             for (int i = 0; i < c.Nodes.Length && i < slots.Bosses.Count; i++)
+            {
                 ((RectTransform)c.Nodes[i].Button.transform).anchoredPosition = slots.Bosses[i];
+                c.Nodes[i].FaceArt = forestFace;
+            }
 
             var gems = RewardRoot(forest, "GemIslet", slots.Gems);
             var platform = Adopt(forest, gems, "RewardPlatform", new Vector2(0, -26), new Vector2(164, 164), false);
@@ -87,10 +92,10 @@ namespace PushStars.Editor
             }
 
             var ice = BossCatalog.FindChapter("ice");
-            if (ice.Playable) BuildIsland(c, rewards, ice, (RectTransform)c.MapContent.Find("IceChapter"), "Ice");
+            if (ice.Playable) BuildIsland(c, rewards, ice, (RectTransform)c.MapContent.Find("IceChapter"), "Ice",
+                AssetDatabase.LoadAssetAtPath<Sprite>(BossMapSceneSetup.Art + "ice-face.png"));
             else BuildIcePreview(c);
             var lava = BossCatalog.FindChapter("lava");
-            // One shared lava icon on the map for now; the fight HUD still shows each body's portrait.
             if (lava.Playable) BuildIsland(c, rewards, lava, LavaChapter(c), "Lava",
                 AssetDatabase.LoadAssetAtPath<Sprite>(BossMapSceneSetup.Art + "lava-face.png"));
             c.Rewards = rewards.ToArray();

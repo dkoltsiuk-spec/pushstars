@@ -20,13 +20,15 @@ namespace PushStars.UI
         public Image PackImage;
         public Sprite[] PackSprites;
         public static readonly int[] GemAmounts = { 30, 120, 360 };
-        public static readonly string[] GemPrices = { "$1.99", "$5.99", "$5.99" };
+        // 360 gems used to repeat the 120 pack's $5.99: the bigger pack now pays out more per dollar.
+        public static readonly string[] GemPrices = { "$1.99", "$5.99", "$14.99" };
         private int _openedFrame;
         // Catalog slot behind each offer card: the authored cards first, then one per hero on sale.
         private int[] _offerSlots;
         private const float OfferColumn = 184f, OfferRowGap = 18f;
         public const int OfferPreviewSlot = 20;
         private ShopEmoteSection _emotes;
+        private ShopArenaSection _arenas;
         public const string NoticeSaveKey = "shop.seen_notices.v1";
         private ShopNoticeLedger _notices;
         private TrophyBadgeGraphic _noticeBadge;
@@ -60,7 +62,9 @@ namespace PushStars.UI
                 Packs[i].onClick.AddListener(() => ShowPack(index));
             }
             LayoutOffers();
+            _arenas = ShopArenaSection.Install(this);
             if (EmoteCatalog.Enabled) _emotes = ShopEmoteSection.Install(this);
+            HideGemPacks();
             Hide();
             RefreshNoticeBadge();
         }
@@ -97,8 +101,9 @@ namespace PushStars.UI
                 if (AvatarCatalog.IsListed(i))
                     notices.Add($"offer:{offer.Id}:{offer.Kind}:{offer.Price}:{offer.StoreProductId}");
             }
-            for (int i = 0; i < Packs.Length; i++)
+            for (int i = 0; i < (StoreAccess.RealMoney ? Packs.Length : 0); i++)
                 notices.Add($"gems:{GemAmounts[i]}:{GemPrices[i]}");
+            notices.AddRange(ShopArenaSection.Notices());
             foreach (var emote in EmoteCatalog.Enabled ? EmoteCatalog.All : System.Array.Empty<EmoteDef>())
             {
                 if (emote.Clip == null) continue;
@@ -205,6 +210,7 @@ namespace PushStars.UI
             if (Time.frameCount != _openedFrame && Input.GetKeyDown(KeyCode.Escape))
             {
                 if (PackDialog.activeSelf) ClosePack();
+                else if (_arenas != null && _arenas.DialogOpen) _arenas.CloseDialog();
                 else Hide();
             }
         }
@@ -224,12 +230,14 @@ namespace PushStars.UI
             Scroll.verticalNormalizedPosition = 1;
             for (int i = 0; i < Offers.Length; i++) Offers[i].GetComponent<UiTactile>()?.Reveal(.04f + i * .06f);
             for (int i = 0; i < Packs.Length; i++) Packs[i].GetComponent<UiTactile>()?.Reveal(.16f + i * .05f);
+            if (_arenas != null) _arenas.Reveal(.12f);
         }
 
         public void Hide()
         {
             if (IsOpen) MarkNoticesSeen();
             if (_emotes != null) _emotes.ClosePreview();
+            if (_arenas != null) _arenas.CloseDialog();
             PackDialog.SetActive(false);
             Overlay.SetActive(false);
             RefreshNoticeBadge();
@@ -246,6 +254,7 @@ namespace PushStars.UI
         {
             Balance.text = $"{CaseRewards.GemsBalance:N0}";
             if (_emotes != null) _emotes.Refresh();
+            if (_arenas != null) _arenas.Refresh();
             for (int i = 0; i < Offers.Length; i++)
             {
                 int slot = _offerSlots[i];
@@ -253,6 +262,43 @@ namespace PushStars.UI
                     OfferActions[i].text = Collection.IsLocked(slot) ? AvatarCollectionScreen.PriceLabel(slot)
                     : Collection.IsSelected(slot) ? "SELECTED" : "OWNED";
             }
+        }
+
+        /// <summary>Gem packs cost real money: with <see cref="StoreAccess.RealMoney"/> off their
+        /// header and cards come out and whatever sits below moves up into the gap.</summary>
+        private void HideGemPacks()
+        {
+            if (StoreAccess.RealMoney || Packs.Length == 0 || Packs[0].transform.parent != Content) return;
+            int headerIndex = Packs[0].transform.GetSiblingIndex() - 1;
+            var hidden = new List<RectTransform>();
+            if (headerIndex >= 0) hidden.Add((RectTransform)Content.GetChild(headerIndex));
+            foreach (var pack in Packs) hidden.Add((RectTransform)pack.transform);
+            float top = float.MaxValue, bottom = float.MinValue;
+            foreach (var item in hidden)
+            {
+                top = Mathf.Min(top, -item.anchoredPosition.y);
+                bottom = Mathf.Max(bottom, -item.anchoredPosition.y + item.rect.height);
+                item.gameObject.SetActive(false);
+            }
+
+            float above = 0, below = float.MaxValue;
+            foreach (RectTransform child in Content)
+            {
+                if (!child.gameObject.activeSelf) continue;
+                float y = -child.anchoredPosition.y;
+                if (y < top) above = Mathf.Max(above, y + child.rect.height);
+                else if (y >= bottom - .5f) below = Mathf.Min(below, y);
+            }
+            if (below < float.MaxValue)
+            {
+                // Whatever is below moves up into the header's place.
+                float lift = below - top;
+                foreach (RectTransform child in Content)
+                    if (-child.anchoredPosition.y >= bottom - .5f) child.anchoredPosition += new Vector2(0, lift);
+                Content.SetSizeWithCurrentAnchors(RectTransform.Axis.Vertical, Mathf.Max(0, Content.rect.height - lift));
+            }
+            // Nothing below: the list ends where the section above ends, keeping the bottom margin.
+            else Content.SetSizeWithCurrentAnchors(RectTransform.Axis.Vertical, above + Mathf.Max(0, Content.rect.height - bottom));
         }
 
         public void ShowPack(int index)

@@ -116,7 +116,10 @@ namespace PushStars.Editor
                 }
                 cards[i] = card.rectTransform;
                 groups[i] = card.gameObject.AddComponent<CanvasGroup>();
-                Label(card.transform, names[i] + "Label", labels[i], 32, 28, i == 0 ? 12 : 23, 245, 48);
+                var caption = Label(card.transform, names[i] + "Label", labels[i], 27, 28, i == 0 ? 12 : 23, 245, 48);
+                // Thinner outline and shadow than the shared mode material (ModeCardOutline.mat).
+                var lighter = AssetDatabase.LoadAssetAtPath<Material>(Modes + "ModeCardOutline.mat");
+                if (lighter != null) caption.fontSharedMaterial = lighter;
             }
             var so = new SerializedObject(controller);
             Set(so, "_openButton", open); Set(so, "_overlay", overlay.gameObject); Set(so, "_sheet", sheet);

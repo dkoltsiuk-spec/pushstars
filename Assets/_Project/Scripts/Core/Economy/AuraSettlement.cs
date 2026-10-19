@@ -21,7 +21,8 @@ namespace PushStars.Core
     {
         public static string FightReceipt(string fightId) => "fight:" + fightId + ":aura:v1";
 
-        public static AuraSettlementResult Settle(string fightId, IReadOnlyList<AuraMoment> fightMoments, long xp, long trophies)
+        public static AuraSettlementResult Settle(string fightId, IReadOnlyList<AuraMoment> fightMoments, long xp, long trophies,
+            DailyGoalStatus dailyGoal = default, int streakDays = 0)
         {
             var result = new AuraSettlementResult();
             var grants = new List<AuraGrant>();
@@ -55,6 +56,9 @@ namespace PushStars.Core
                 grants.Add(new AuraGrant(receipt, amount));
                 result.Moments.Add(new AuraMoment(tier.DisplayName.ToUpperInvariant() + " LEAGUE", amount));
             }
+
+            foreach (var (grant, moment) in DailyRewards.Pending(dailyGoal, streakDays))
+            { grants.Add(grant); result.Moments.Add(moment); }
 
             int tierBefore = AuraTiers.ForPeak(CaseRewards.AuraPeak).Index;
             var applied = CaseRewards.ApplyAura(grants);

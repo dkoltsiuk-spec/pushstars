@@ -49,8 +49,8 @@ namespace PushStars.UI
             if (Collection.IsLocked(_index))
             {
                 if (offer.Kind == AvatarPurchaseKind.Dollars) { Status.text = "STORE COMING SOON"; return; }
-                // Aura heroes cannot be bought: they unlock by themselves when the bar fills.
-                if (offer.UnlocksByAura) return;
+                // Aura and island heroes cannot be bought: they unlock by themselves.
+                if (offer.UnlocksByAura || offer.UnlocksByIsland) return;
                 try
                 {
                     if (!CaseRewards.TryBuyAvatar(offer.Id))
@@ -78,16 +78,28 @@ namespace PushStars.UI
             var offer = AvatarCatalog.At(_index);
             bool byAura = offer.UnlocksByAura;
             Action.interactable = !selected && (available || offer.Kind == AvatarPurchaseKind.Gems);
+            var island = offer.UnlocksByIsland ? BossCatalog.FindChapter(offer.Island) : null;
             ActionText.text = available ? (selected ? "SELECTED" : "SELECT")
-                : byAura ? AvatarCollectionScreen.PriceLabel(_index) : "BUY · " + AvatarCollectionScreen.PriceLabel(_index);
+                : byAura ? AvatarCollectionScreen.PriceLabel(_index)
+                : offer.UnlocksByIsland ? "FREE · " + AvatarCollectionScreen.PriceLabel(_index)
+                : "BUY · " + AvatarCollectionScreen.PriceLabel(_index);
             // SELECT fits a compact button; prices and "to go" labels get the wide one.
             if (Action.image.type == Image.Type.Sliced)
-                ((RectTransform)Action.transform).sizeDelta = new Vector2(available ? 170 : 250, 64);
+                ((RectTransform)Action.transform).sizeDelta = new Vector2(available ? 170 : island != null ? 310 : 250, 64);
             Status.text = available ? "IN YOUR COLLECTION" : byAura
                 ? $"UNLOCKS AT {AuraFormat.Short(offer.AuraGoal)} <sprite name=\"aura\"> · WIN FIGHTS TO FILL THE BAR" +
                   (offer.UsesCards ? $"\nEVERY {offer.Name} CARD FROM CASES ADDS {AuraFormat.Short(offer.CardAura)}" : "")
+                : island != null ? IslandGoal(island)
                 : offer.Kind == AvatarPurchaseKind.Gems ? "GEMS EXCLUSIVE" : "STORE COMING SOON";
             if (UnlockView != null) UnlockView.Refresh(offer);
+        }
+
+        /// <summary>"FREE HERO · DEFEAT THE GLACIER KING ON ICE ISLAND": the island's last boss is the gate.</summary>
+        private static string IslandGoal(BossChapter island)
+        {
+            string king = island.Bosses.Count > 0 ? island.Bosses[island.Bosses.Count - 1].DisplayName : "";
+            if (king.StartsWith("BOSS ")) king = king.Substring(5);
+            return $"FREE HERO · DEFEAT THE {king} ON {island.Title}";
         }
 
         private void LateUpdate() => Fit();

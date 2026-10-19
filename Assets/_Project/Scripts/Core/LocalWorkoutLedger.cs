@@ -32,6 +32,8 @@ namespace PushStars.Core
         [Serializable] private sealed class SaveHeader { public int Version; }
         private LocalProgress _state;
         private readonly Action<string> _save;
+        // Active days are the player's calendar days, the same days Home and the daily goal use.
+        private readonly TimeZoneInfo _zone;
         public LocalProgress Snapshot => new LocalProgress {
             Trophies = _state.Trophies, BestReps = _state.BestReps, TotalReps = _state.TotalReps,
             Wins = _state.Wins, Losses = _state.Losses, WinStreak = _state.WinStreak,
@@ -39,9 +41,10 @@ namespace PushStars.Core
             Xp = _state.Xp, Seeded = _state.Seeded
         };
 
-        public LocalWorkoutLedger(string json, Action<string> save, LocalProgress legacy = null)
+        public LocalWorkoutLedger(string json, Action<string> save, LocalProgress legacy = null, TimeZoneInfo zone = null)
         {
             _save = save ?? throw new ArgumentNullException(nameof(save));
+            _zone = zone ?? TimeZoneInfo.Local;
             if (!string.IsNullOrEmpty(json) && JsonUtility.FromJson<SaveHeader>(json)?.Version != 1)
                 throw new InvalidOperationException("Unsupported local workout save. The original save has been preserved.");
             _state = string.IsNullOrEmpty(json) ? Clone(legacy ?? new LocalProgress()) : JsonUtility.FromJson<LocalProgress>(json);
@@ -51,7 +54,7 @@ namespace PushStars.Core
             {
                 var history = new List<LocalWorkout>(_state.Workouts);
                 history.Sort((a, b) => a.UtcTicks.CompareTo(b.UtcTicks));
-                foreach (var workout in history) UpdateDailyStreak(_state, workout);
+                foreach (var workout in history) UpdateDailyStreak(_state, workout, _zone);
             }
         }
 
@@ -61,10 +64,10 @@ namespace PushStars.Core
             return workout == null ? null : JsonUtility.FromJson<LocalWorkout>(JsonUtility.ToJson(workout));
         }
 
-        private static void UpdateDailyStreak(LocalProgress state, LocalWorkout workout)
+        private static void UpdateDailyStreak(LocalProgress state, LocalWorkout workout, TimeZoneInfo zone)
         {
             if (workout.Reps <= 0) return;
-            long day = new DateTime(workout.UtcTicks, DateTimeKind.Utc).Date.Ticks;
+            long day = DailyGoal.LocalDay(new DateTime(workout.UtcTicks, DateTimeKind.Utc), zone).Ticks;
             if (day <= state.LastActiveDayTicks) return;
             state.DailyStreak = day - state.LastActiveDayTicks == TimeSpan.TicksPerDay
                 ? checked(state.DailyStreak + 1) : 1;
@@ -97,7 +100,7 @@ namespace PushStars.Core
 
             var next = Clone(_state);
             var record = JsonUtility.FromJson<LocalWorkout>(JsonUtility.ToJson(workout));
-            UpdateDailyStreak(next, record);
+            UpdateDailyStreak(next, record, _zone);
             record.StreakDays = next.DailyStreak;
             record.StreakBonusTrophies = 0;
             record.IsRecord = record.Reps > next.BestReps;

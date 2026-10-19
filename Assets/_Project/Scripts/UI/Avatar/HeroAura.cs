@@ -84,6 +84,29 @@ namespace PushStars.UI
         /// <summary>-1 follows the save; 0–4 pins a tier (validation renders, previews).</summary>
         public int ForceTier = -1;
 
+        private const string KeyEnabled = "settings.hero_aura";
+        private static int _enabled = -1; // -1 = not read from PlayerPrefs yet
+
+        /// <summary>The "Aura effect" switch in Settings. Off hides the glow and energy marks on
+        /// every hero (a pinned <see cref="ForceTier"/> still shows). On by default.</summary>
+        public static bool Enabled
+        {
+            get
+            {
+                if (_enabled < 0) _enabled = PlayerPrefs.GetInt(KeyEnabled, 1) != 0 ? 1 : 0;
+                return _enabled == 1;
+            }
+            set
+            {
+                _enabled = value ? 1 : 0;
+                PlayerPrefs.SetInt(KeyEnabled, _enabled);
+                PlayerPrefs.Save();
+            }
+        }
+
+        [RuntimeInitializeOnLoadMethod(RuntimeInitializeLoadType.SubsystemRegistration)]
+        private static void ResetEnabled() => _enabled = -1;
+
         private RawImage _target;
         private RawImage _image;
         private Material _material, _fieldMaterial;
@@ -134,7 +157,7 @@ namespace PushStars.UI
             }
 
             var source = _target.texture;
-            bool show = _tier > 0 && source != null && _target.isActiveAndEnabled && _target.color.a > .01f;
+            bool show = _tier > 0 && (Enabled || ForceTier >= 0) && source != null && _target.isActiveAndEnabled && _target.color.a > .01f;
             if (_image.enabled != show) _image.enabled = show;
             var fxStyle = show ? Looks[_tier].Fx : null;
             if (fxStyle != null && _fx == null) _fx = HeroAuraFx.Create(_target);

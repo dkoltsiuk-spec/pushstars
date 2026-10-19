@@ -27,20 +27,26 @@ Material:
         m_Texture: {fileID: 2800000, guid: 14c879a5376b18647b787bf9fd708569, type: 3}
         m_Scale: {x: 1, y: 1}
         m_Offset: {x: 0, y: 0}
+    - _EmissionMap:
+        m_Texture: {fileID: 0}
+        m_Scale: {x: 1, y: 1}
+        m_Offset: {x: 0, y: 0}
     m_Ints: []
     m_Floats:
-    - _LightInfluence: 0.35
-    - _Metallic: 0
-    - _OutlineWidth: 0.009
-    - _RimPower: 4
-    - _RimStrength: 0.15
-    - _ShadeSoftness: 0.12
-    - _ShadeStrength: 0.85
-    - _ShadeThreshold: 0.35
-    - _Smoothness: 0.3
-    - _SpecularStrength: 0.12
+    - _Glow: 0
+    - _LightInfluence: 0.396
+    - _Metallic: 1
+    - _OutlineWidth: 0.0069
+    - _RimPower: 1.06
+    - _RimStrength: 0
+    - _ShadeSoftness: 0.549
+    - _ShadeStrength: 0.952
+    - _ShadeThreshold: 0.72
+    - _Smoothness: 0.422
+    - _SpecularStrength: 0.227
     m_Colors:
     - _BaseColor: {r: 1, g: 1, b: 1, a: 1}
+    - _EmissionColor: {r: 0, g: 0, b: 0, a: 1}
     - _OutlineColor: {r: 0, g: 0, b: 0, a: 1}
     - _RimColor: {r: 1, g: 1, b: 1, a: 1}
     - _RimLightDirection: {r: 0, g: 0, b: 0, a: 0}

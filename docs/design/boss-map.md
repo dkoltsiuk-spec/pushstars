@@ -81,3 +81,19 @@ reward nodes (the forest's `BossMapRewardsSetup` layout is the template) and its
 Install/update: Tools/Push Stars/Main/Install Boss Map Rewards (also run by the map installer).
 Validate: Tools/Push Stars/Validation/Boss Map Rewards → `output/boss-map/rewards-*.png`.
 The procedural backdrop biomes are unchanged (Tools/Push Stars/Main/Install Boss Map Biomes).
+
+## Fog over unreached islands
+
+`MapViewport/Fog` (`BossMapFog`, shader `Art/Shaders/BossMapFog.shader`) draws procedural fog
+above the chapters, inside the viewport mask, never hit-tested. Its line sits just above the current
+boss: `Lead` (55%) of the way to the next node, at most `MaxLead` (120) map units, so the next boss
+shows through the torn edge and further islands are silhouettes. With every playable boss beaten the
+line moves `ClearedLead` above the last boss. Two fbm banks drift against each other in map space,
+so the fog scrolls with the islands; the biome backdrop tints it slightly (`BiomeTint`). The mesh
+only covers the fogged part of the viewport.
+
+Lifting: `boss_map_fog_seen` (PlayerPrefs) stores the progress the player last saw. When the map
+opens with more bosses beaten, the view is scrolled to the old edge, and after 0.5 s the fog rises
+to the new line over 2.2 s with a whitening pulse and the AuraWhoosh cue. The first visit only
+records progress. Story: [world.md](world.md). Install: Tools/Push Stars/Main/Install Boss Map Fog
+(also run by Install Boss Map Biomes).

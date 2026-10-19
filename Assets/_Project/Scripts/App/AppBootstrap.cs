@@ -77,6 +77,7 @@ namespace PushStars.App
                 InitServicesAsync().Forget();
 
             string next = ResolveNextScene();
+            Analytics.AppOpen(next);
             Report(0.65f, next == FightConfig.FightSceneName ? "Preparing assessment…" : "Almost ready…");
             await LoadNextSceneAsync(next);
         }

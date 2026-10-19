@@ -1,0 +1,23 @@
+{
+    "name": "PushStars.Reminders",
+    "rootNamespace": "PushStars.Reminders",
+    "references": [
+        "PushStars.Core",
+        "Unity.Notifications.Unified",
+        "Unity.Notifications.Android",
+        "Unity.Notifications.iOS"
+    ],
+    "includePlatforms": [
+        "Android",
+        "Editor",
+        "iOS"
+    ],
+    "excludePlatforms": [],
+    "allowUnsafeCode": false,
+    "overrideReferences": false,
+    "precompiledReferences": [],
+    "autoReferenced": true,
+    "defineConstraints": [],
+    "versionDefines": [],
+    "noEngineReferences": false
+}

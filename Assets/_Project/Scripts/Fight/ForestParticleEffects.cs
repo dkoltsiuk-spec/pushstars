@@ -3,12 +3,20 @@ using UnityEngine.UI;
 
 namespace PushStars.Fight
 {
-    /// <summary>Bounded UI particle pool, drawn below HUD. All positions use Content units.</summary>
+    /// <summary>Bounded UI particle pool, drawn below HUD. All positions use Content units.
+    /// Ambient particles are forest leaves, ice-island snow or rising lava embers; bursts are petals, ice or basalt chips.</summary>
     public sealed class ForestParticleEffects : MonoBehaviour
     {
         public Texture2D[] Leaves, Petals;
         public Rect[] LeafUvs, PetalUvs;
         public Material ParticleMaterial;
+        [Header("Ambient (defaults are the forest leaves)")]
+        public int AmbientMax = 10, AmbientSeed = 5;
+        public Vector2 AmbientInterval = new Vector2(2.1f, 3.3f), AmbientSize = new Vector2(13, 23), AmbientFall = new Vector2(28, 45);
+        public float AmbientSpin = 35, AmbientTint = .8f;
+        public bool AmbientTumble = true;
+        /// <summary>Ambient particles drift up from below (embers) instead of falling from above.</summary>
+        public bool AmbientRise;
         public const int Capacity = 64;
         public int ActivePetals { get; private set; }
         public int HitBursts { get; private set; }
@@ -52,8 +60,8 @@ namespace PushStars.Fight
         public void ResetSimulation()
         {
             EnsurePool(); OnDisable(); _random = new System.Random(7183);
-            HitBursts = FallBursts = 0; _nextLeaf = 1.7f;
-            for (int i = 0; i < 5; i++) SpawnLeaf(true);
+            HitBursts = FallBursts = 0; _nextLeaf = Mathf.Min(1.7f, AmbientInterval.y);
+            for (int i = 0; i < AmbientSeed; i++) SpawnLeaf(true);
         }
 
         private Particle Allocate(bool leaf)
@@ -83,15 +91,16 @@ namespace PushStars.Fight
         {
             if (Leaves == null || Leaves.Length == 0) return;
             int live = 0; foreach (var item in _pool) if (item != null && item.Active && item.Leaf) live++;
-            if (live >= 10) return;
+            if (live >= AmbientMax) return;
             var p = Allocate(true); if (p == null) return;
             Rect r = _rect.rect;
-            p.Position = new Vector2(Range(r.xMin + 14, r.xMax - 14), seed ? Range(r.yMin + 60, r.yMax - 35) : r.yMax + 22);
-            p.Velocity = new Vector2(Range(-9, 9), -Range(28, 45));
-            p.Life = (p.Position.y - r.yMin + 40) / -p.Velocity.y;
-            p.Angle = Range(-180, 180); p.Spin = Range(-35, 35); p.Phase = Range(0, 6.28f); p.Opacity = Range(.45f, .7f);
+            float entry = AmbientRise ? r.yMin - 22 : r.yMax + 22;
+            p.Position = new Vector2(Range(r.xMin + 14, r.xMax - 14), seed ? Range(r.yMin + 60, r.yMax - 35) : entry);
+            p.Velocity = new Vector2(Range(-9, 9), Range(AmbientFall.x, AmbientFall.y) * (AmbientRise ? 1 : -1));
+            p.Life = (AmbientRise ? r.yMax + 40 - p.Position.y : p.Position.y - r.yMin + 40) / Mathf.Abs(p.Velocity.y);
+            p.Angle = Range(-180, 180); p.Spin = Range(-AmbientSpin, AmbientSpin); p.Phase = Range(0, 6.28f); p.Opacity = Range(.45f, .7f);
             int index = _random.Next(Leaves.Length);
-            SetImage(p, Leaves[index], LeafUvs[index], Range(13, 23));
+            SetImage(p, Leaves[index], LeafUvs[index], Range(AmbientSize.x, AmbientSize.y));
         }
 
         public void Hit(Vector2 origin)
@@ -134,7 +143,7 @@ namespace PushStars.Fight
                 if (_fallIn <= 0) { _fallIn = -1; FallBursts++; Burst(_fallOrigin, true); }
             }
             _nextLeaf -= delta;
-            if (_nextLeaf <= 0) { SpawnLeaf(false); _nextLeaf = Range(2.1f, 3.3f); }
+            if (_nextLeaf <= 0) { SpawnLeaf(false); _nextLeaf = Range(AmbientInterval.x, AmbientInterval.y); }
             foreach (var p in _pool)
             {
                 if (!p.Active) continue;
@@ -160,9 +169,9 @@ namespace PushStars.Fight
             var rect = p.Image.rectTransform;
             rect.anchoredPosition = p.Position + Vector2.right * (flutter * (p.Leaf ? 12 : 3));
             rect.localRotation = Quaternion.Euler(0, 0, p.Angle + flutter * 12);
-            rect.localScale = new Vector3(.4f + .6f * Mathf.Abs(Mathf.Cos(p.Age * 2 + p.Phase)), 1, 1);
+            rect.localScale = p.Leaf && !AmbientTumble ? Vector3.one : new Vector3(.4f + .6f * Mathf.Abs(Mathf.Cos(p.Age * 2 + p.Phase)), 1, 1);
             float fade = Mathf.Min(Mathf.Clamp01(p.Age / .18f), Mathf.Clamp01((p.Life - p.Age) / .4f));
-            float tint = p.Leaf ? .8f : .92f;
+            float tint = p.Leaf ? AmbientTint : .92f;
             p.Image.color = new Color(tint, tint, tint, p.Opacity * fade);
         }
     }

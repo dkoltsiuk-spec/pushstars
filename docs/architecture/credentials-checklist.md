@@ -16,6 +16,7 @@
 | `.env` / `functions/.env`   | Только локально / CI                               |
 | APNs `.p8`, пароли keystore | Только локально / CI                               |
 | Photon webhook secret       | `firebase functions:config:set` или Secret Manager |
+| `Assets/_Project/Resources/PostHogConfig.json` | Локально; на CI — записать из секрета перед сборкой (см. [analytics.md](../design/analytics.md)) |
 
 
 Шаблон переменных без значений: `[functions/.env.example](../../functions/.env.example)`.

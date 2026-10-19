@@ -37,9 +37,15 @@ namespace PushStars.Editor
         {
             var cat=ArenaCatalog.Instance; Require(cat!=null && cat.Arenas.Length==10,"Ten maps");
             Require(cat.Arenas.Select(a=>a.Id).Distinct().Count()==10 && cat.Arenas.All(a=>a.Home!=null),"Unique IDs and art");
-            Require(ArenaProfile.Select("underwater") && ArenaProfile.SelectedId=="underwater","Persistent selection");
+            Require(cat.Find(ArenaCatalog.DefaultId).Access==ArenaAccess.Free,"Default arena is free");
+            Require(cat.Arenas.All(a=>a.Access!=ArenaAccess.Purchase||a.Price>0),"Arenas for sale have a gem price");
+            Require(cat.Arenas.All(a=>a.Access!=ArenaAccess.Aura||a.Price>0),"Aura arenas have an Aura goal");
+            Require(cat.Arenas.All(a=>a.Access!=ArenaAccess.Island||BossCatalog.FindChapter(a.Island)!=null),"Island arenas name a boss island");
+            Require(ArenaProfile.Select("sunset-yard") && ArenaProfile.SelectedId=="sunset-yard","Persistent selection");
             Require(!ArenaProfile.Owns("missing"),"Unknown arenas are not owned");
-            Require(!ArenaProfile.Select("missing") && ArenaProfile.SelectedId=="underwater","Reject missing selection");
+            Require(!ArenaProfile.Select("missing") && ArenaProfile.SelectedId=="sunset-yard","Reject missing selection");
+            if(!ArenaProfile.Owns("underwater"))Require(!ArenaProfile.Select("underwater") && ArenaProfile.SelectedId=="sunset-yard","Locked arena cannot be selected");
+            Ledger();
             ArenaMatch.BeginLocal("jungle","jungle");Require(ArenaMatch.IsResolved && ArenaMatch.ResolveLocal(()=>throw new Exception("Unneeded roll"))=="jungle","Identical maps skip roll");
             for(int side=0;side<2;side++)
             {
@@ -54,9 +60,20 @@ namespace PushStars.Editor
             Require(!ArenaMatch.AcceptConfirmed("match2","jungle","ice-temple","lava-forge"),"Non-candidate rejected");
             var legacy=JsonUtility.FromJson<GhostRecord>("{\"reps\":1,\"repTimes\":[1]}");
             Require(ArenaCatalog.Normalize(legacy.arenaId)=="crystal","Old ghost migration");
-            Require(GhostRecord.From(new[]{1f},90,"test").arenaId=="underwater","Record includes selected map");
+            Require(GhostRecord.From(new[]{1f},90,"test").arenaId=="sunset-yard","Record includes selected map");
             FightRequest.Training(new TrainingPlan(3,60));Require(!ArenaMatch.HasChoices,"Training clears arena duel");
             FightRequest.Clear();Require(!ArenaMatch.HasChoices,"Exit clears choices");
+        }
+        /// <summary>Arena purchases on a throwaway ledger: spend, refusal, no double charge, persistence.</summary>
+        private static void Ledger()
+        {
+            string saved="";var ledger=new CaseRewardLedger("",()=>0,json=>saved=json);
+            Require(!ledger.TryBuyArena("jungle",150) && !ledger.OwnsArena("jungle"),"Short of gems refuses");
+            Require(ledger.TryCreditGems("qa",200) && ledger.TryBuyArena("jungle",150) && ledger.GemsBalance==50 && ledger.OwnsArena("jungle"),"Buy spends and owns");
+            Require(!ledger.TryBuyArena("jungle",0) && ledger.GemsBalance==50,"No second purchase");
+            Require(new CaseRewardLedger(saved,()=>0,_=>{}).OwnsArena("jungle"),"Ownership survives reload");
+            var legacy=new CaseRewardLedger("{\"version\":6,\"gems\":7,\"auraReceipts\":[],\"avatars\":[],\"awardedWorkouts\":[],\"cases\":[],\"processedWorkoutIds\":[]}",()=>0,_=>{});
+            Require(legacy.GemsBalance==7 && !legacy.OwnsArena("jungle") && legacy.TryBuyArena("jungle",7),"Saves without arenas load");
         }
         private static void CaptureSelection()
         {

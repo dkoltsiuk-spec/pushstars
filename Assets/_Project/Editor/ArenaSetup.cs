@@ -35,7 +35,7 @@ namespace PushStars.Editor
             {
                 var existing=catalog.Find(ids[i]);
                 entries.Add(new ArenaDefinition{Id=ids[i],Title=names[i],Home=AssetDatabase.LoadAssetAtPath<Sprite>(root+ids[i]+".png"),
-                    Battle=existing?.Battle,Access=existing?.Access??ArenaAccess.Free,Price=existing?.Price??0});
+                    Battle=existing?.Battle,Access=existing?.Access??ArenaAccess.Free,Price=existing?.Price??0,Island=existing?.Island});
             }
             catalog.Arenas=entries.ToArray();catalog.SelectionPanel=AssetDatabase.LoadAssetAtPath<Sprite>(root+"selection-panel.png");
             EditorUtility.SetDirty(catalog);AssetDatabase.SaveAssets();

@@ -25,7 +25,7 @@ namespace PushStars.UI
             if (Footer)
             {
                 inner.height = 39 * scale;
-                Rounded(vh, inner, 6 * scale, true, Locked ? new Color32(72, 41, 151, 255) :
+                Rounded(vh, inner, 6 * scale, true, Locked ? new Color32(45, 91, 227, 255) :
                     Selected ? new Color32(255, 215, 0, 255) : new Color32(40, 29, 131, 255));
                 return;
             }

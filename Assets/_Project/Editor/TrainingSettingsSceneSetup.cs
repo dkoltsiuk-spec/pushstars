@@ -68,9 +68,16 @@ namespace PushStars.Editor
             var close = Plate(sheet, "TrainingClose", null, "", 0, 134, 0, 122, 37); close.GetComponent<Image>().color = Color.clear;
             var title = Label(sheet, "TrainingTitle", "TRAINING SETTINGS", 24, 16, 43, 358, 36); title.alignment = TextAlignmentOptions.Center;
             Caption(sheet, "Exercise:", 90);
-            Plate(sheet, "TrainingPushup", Sprite("selected"), "PUSHUP", 18, 15, 117, 108, 52);
-            var squats = Plate(sheet, "TrainingSquats", Sprite("disabled"), "SQUATS", 18, 141, 117, 108, 52);
-            var pullup = Plate(sheet, "TrainingPullup", Sprite("disabled"), "PULLUP", 18, 267, 117, 108, 52);
+            var pushup = Plate(sheet, "TrainingPushup", Sprite("selected"), "PUSHUP", 18, 15, 117, 116, 52);
+            var squats = Plate(sheet, "TrainingSquats", Sprite("disabled"), "SQUATS", 18, 137, 117, 116, 52);
+            var pullup = Plate(sheet, "TrainingPullup", Sprite("disabled"), "PULLUP", 18, 259, 117, 116, 52);
+            // Russian names (ПОДТЯГИВАНИЯ) are much longer than the English ones.
+            foreach (var plate in new[] { pushup, squats, pullup })
+                foreach (var label in plate.GetComponentsInChildren<TextMeshProUGUI>(true))
+                {
+                    label.enableAutoSizing = true; label.fontSizeMin = 12; label.fontSizeMax = 18;
+                    Place(label.rectTransform, 6, -2, 104, 52);
+                }
             foreach (var locked in new[] { squats, pullup })
             {
                 locked.interactable = false; var colors = locked.colors; colors.disabledColor = Color.white; locked.colors = colors;

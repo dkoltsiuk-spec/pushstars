@@ -1,4 +1,5 @@
 using System.Collections.Generic;
+using PushStars.Core;
 using TMPro;
 using UnityEngine;
 using UnityEngine.EventSystems;
@@ -108,7 +109,7 @@ namespace PushStars.UI
             if (_selected == pill && gameObject.activeSelf) { Hide(); return; }
             if (!_pills.Contains(pill)) return;
             _selected = pill;
-            _text.text = Description(pill.name);
+            _text.text = pill.name == "StreakPill" ? StreakDescription() : Description(pill.name);
             transform.SetAsLastSibling();
             gameObject.SetActive(true);
             PositionBubble();
@@ -184,6 +185,21 @@ namespace PushStars.UI
             rect.anchorMin = Vector2.zero;
             rect.anchorMax = Vector2.one;
             rect.offsetMin = rect.offsetMax = Vector2.zero;
+        }
+
+        // The streak bubble doubles as the daily goal card: days in a row, then today's goal.
+        private static string StreakDescription()
+        {
+            int days = LocalProfile.DailyStreak;
+            var goal = LocalProfile.TodayGoal;
+            string streak = days == 0 ? "Train today to start a <color=#E99100>streak</color>."
+                : "<color=#E99100>Days in a row</color>: " + days + ". Train every day to keep the streak.";
+            string today = goal.Done
+                ? "<b>Daily goal done!</b> <color=#A968E8>+" + EconomyConfig.AuraDailyGoal + " Aura</color> today. Come back tomorrow."
+                : "<b>Daily goal</b>: " + goal.Progress + " / " + goal.Target + " push-ups. Finish it for <color=#A968E8>+" +
+                  EconomyConfig.AuraDailyGoal + " Aura</color>.";
+            // Lines are translated one by one: the catalog's templates match a single line.
+            return Localization.Text(streak) + "\n\n" + Localization.Text(today);
         }
 
         private static string Description(string pill)

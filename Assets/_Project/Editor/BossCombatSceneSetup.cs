@@ -132,6 +132,7 @@ namespace PushStars.Editor
             if (prep) ApplyPreparationPolish(c, (DuelReadyPanel)host);
             if (!prep) ApplyBattlePlayerPolish(c);
             if (!prep && File.Exists(GoblinForestSetup.Folder + "background.png")) GoblinForestSetup.Apply(c);
+            if (!prep) foreach (var island in ArenaIslandSetup.Islands) if (File.Exists(island.FirstSprite)) ArenaIslandSetup.Apply(c, island);
             root.gameObject.SetActive(false); EditorUtility.SetDirty(c);
         }
 

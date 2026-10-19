@@ -23,7 +23,7 @@ namespace PushStars.Core
         public static bool IntroSeen
         {
             get => PlayerPrefs.GetInt(KeyIntroSeen, 0) != 0;
-            set { PlayerPrefs.SetInt(KeyIntroSeen, value ? 1 : 0); PlayerPrefs.Save(); }
+            set { if (value && !IntroSeen) Analytics.OnboardingStep("intro_done"); PlayerPrefs.SetInt(KeyIntroSeen, value ? 1 : 0); PlayerPrefs.Save(); }
         }
 
         /// <summary>The level test has been completed at least once.</summary>
@@ -40,7 +40,7 @@ namespace PushStars.Core
         public static bool LevelTestSkipped
         {
             get => PlayerPrefs.GetInt(KeyLevelTestSkipped, 0) != 0;
-            set { PlayerPrefs.SetInt(KeyLevelTestSkipped, value ? 1 : 0); PlayerPrefs.Save(); }
+            set { if (value && !LevelTestSkipped) Analytics.OnboardingStep("assessment_skipped"); PlayerPrefs.SetInt(KeyLevelTestSkipped, value ? 1 : 0); PlayerPrefs.Save(); }
         }
 
         /// <summary>Reps scored in the level test (0 before it is taken).</summary>
@@ -54,6 +54,8 @@ namespace PushStars.Core
         /// <summary>Records the level test result. Called once, when the test's result screen shows.</summary>
         public static void CompleteLevelTest(int reps)
         {
+            if (reps > 0) Analytics.AssessmentDone(reps, first: !LevelTestDone);
+            else if (!LevelTestDone) Analytics.OnboardingStep("assessment_skipped");
             PlayerPrefs.SetInt(KeyLevelTestDone, 1);
             PlayerPrefs.SetInt(KeyLevelTestReps, Mathf.Max(0, reps));
             // A taken test outranks a postponed one: the flag has nothing left to postpone.

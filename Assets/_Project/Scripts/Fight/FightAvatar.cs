@@ -333,6 +333,9 @@ namespace PushStars.Fight
         /// that texture — the ready card's portraits — tell which of the two stages it is looking
         /// at without a second serialized reference.</summary>
         public Camera StageCamera => _stageCamera;
+        /// <summary>Whether this body mirrors the given CV session — the player, not an opponent.</summary>
+        public bool IsDrivenBy(PushupSession session) =>
+            session != null && _driverBehaviour is PushupAvatarDriver driver && driver.Session == session;
         public bool IsPreparationFramed => _preparation && _framed;
         public bool IsMirroring => _holdFramingWhileMirroring != null && _holdFramingWhileMirroring.MirrorPhase;
         public bool IsFramingSettled => _framed && !IsMirroring && Time.time >= _settleUntil;

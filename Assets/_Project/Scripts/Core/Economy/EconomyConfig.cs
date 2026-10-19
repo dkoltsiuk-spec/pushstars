@@ -48,6 +48,32 @@ namespace PushStars.Core
         public const int StreakMilestoneA = 7;
         public const int StreakMilestoneB = 30;
 
+        // ── Daily goal: push-ups to do today, summed over every mode (DailyGoal) ──────
+        /// <summary>Target = best set before today × this, rounded up to 5, clamped to min..max.</summary>
+        public const double DailyGoalBestSetShare = 1.5;
+        public const int DailyGoalMinReps = 20;
+        /// <summary>Never above <see cref="DailyRepXpCap"/> either: the goal must not push past the anti-grind cap.</summary>
+        public const int DailyGoalMaxReps = 60;
+
+        // ── Local reminders (ReminderPlanner), minutes after local midnight ───────────
+        /// <summary>Habitual hour when there is no history yet: 19:00.</summary>
+        public const int ReminderDefaultMinute = 19 * 60;
+        /// <summary>The habitual hour is the median first-set time of this many recent active days.</summary>
+        public const int ReminderHabitDays = 7;
+        public const int ReminderEarliestMinute = 9 * 60;
+        public const int ReminderLatestMinute = 21 * 60;
+        /// <summary>"Streak is fading" comes this long after the habitual hour, kept within 20:00..21:30.</summary>
+        public const int ReminderSaverAfterMinutes = 150;
+        public const int ReminderSaverEarliestMinute = 20 * 60;
+        public const int ReminderSaverLatestMinute = 21 * 60 + 30;
+        public const int ReminderSaverMinStreak = 3;
+        /// <summary>Goal reminders for today, tomorrow and the day after; a lapsed player gets no more than that.</summary>
+        public const int ReminderDaysAhead = 3;
+        /// <summary>A reminder closer than this to now is not scheduled.</summary>
+        public const int ReminderMinLeadMinutes = 10;
+        /// <summary>Goal reminder dropped when the evening one is closer than this.</summary>
+        public const int ReminderMinGapMinutes = 90;
+
         // ── Trophies (PvP) — MVP flat values, mirror constants.md / constants.js ──────
         public const int TrophyWin = 25;
         public const int TrophyLoss = 15;   // applied as -15
@@ -117,7 +143,8 @@ namespace PushStars.Core
         public const int AuraPromoSilver = 25000;
         public const int AuraPromoGold = 50000;
         public const int AuraPromoDiamond = 100000;
-        // Streak milestone rewards (daily streak system not wired yet).
+        // Daily rhythm (DailyRewards): the goal once per local day, streak milestones once ever.
+        public const int AuraDailyGoal = 1000;
         public const int AuraStreakMilestoneA = 10000;  // 7-day
         public const int AuraStreakMilestoneB = 50000;  // 30-day
 

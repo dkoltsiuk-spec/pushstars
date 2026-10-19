@@ -22,6 +22,8 @@ namespace PushStars.Editor
             Action<string> persist = json => { if (fail) throw new IOException("Simulated write failure"); saved = json; writes++; };
             // The walk below is written for the two card heroes it names; later catalog heroes would join the drop pool.
             var offers = Array.FindAll(AvatarCatalog.Defaults(), o => string.IsNullOrEmpty(o.Prefab));
+            // The catalog retired hero cards; the dormant drop path is still walked with the old counts.
+            foreach (var offer in offers) offer.RequiredCards = offer.Id == "robot" ? 50 : offer.Id == "gladiator" ? 250 : offer.RequiredCards;
             var ledger = new CaseRewardLedger(null, () => 0, persist, offers);
             Require(ledger.OwnsAvatar("fighter") && !ledger.OwnsAvatar("robot"), "Initial ownership");
             Require(!ledger.TryBuyAvatar("robot") && ledger.AuraBalance == 0, "Aura hero bought");

@@ -14,7 +14,8 @@ namespace PushStars.UI
     /// closed by the back button — same toggled-root + main-recede choreography as
     /// <see cref="SearchOpponentController"/>.
     ///
-    /// Surfaces store-required preferences: sound, vibration, in-app notifications, language
+    /// Surfaces store-required preferences: sound, vibration, in-app notifications, the hero's Aura
+    /// effect (<see cref="HeroAura.Enabled"/>), anonymous statistics (<see cref="Analytics.Enabled"/>), language
     /// (English, Russian, Brazilian Portuguese), Privacy Policy and Terms links, app version, and account deletion (GDPR). Toggles
     /// persist through <see cref="ISettingsStore"/>; deletion goes through
     /// <see cref="FirebaseAuthService.DeleteAccountAsync"/> after an explicit confirmation, then
@@ -49,6 +50,8 @@ namespace PushStars.UI
         [SerializeField] private Toggle _soundToggle;
         [SerializeField] private Toggle _vibrationToggle;
         [SerializeField] private Toggle _notificationsToggle;
+        [SerializeField] private Toggle _heroAuraToggle;  // "Aura effect" around the hero
+        [SerializeField] private Toggle _analyticsToggle; // "Anonymous statistics" opt-out
 
         [Header("Language (RU / EN)")]
         [SerializeField] private Button          _langRuButton;
@@ -123,6 +126,10 @@ namespace PushStars.UI
                 _vibrationToggle.onValueChanged.AddListener(v => _store.VibrationEnabled = v);
             if (_notificationsToggle != null)
                 _notificationsToggle.onValueChanged.AddListener(v => _store.NotificationsEnabled = v);
+            if (_heroAuraToggle != null)
+                _heroAuraToggle.onValueChanged.AddListener(v => HeroAura.Enabled = v);
+            if (_analyticsToggle != null)
+                _analyticsToggle.onValueChanged.AddListener(v => Analytics.Enabled = v);
         }
 
         // Reflect persisted values without re-triggering the change listeners.
@@ -131,6 +138,8 @@ namespace PushStars.UI
             if (_soundToggle != null)         _soundToggle.SetIsOnWithoutNotify(_store.SoundEnabled);
             if (_vibrationToggle != null)     _vibrationToggle.SetIsOnWithoutNotify(_store.VibrationEnabled);
             if (_notificationsToggle != null) _notificationsToggle.SetIsOnWithoutNotify(_store.NotificationsEnabled);
+            if (_heroAuraToggle != null)      _heroAuraToggle.SetIsOnWithoutNotify(HeroAura.Enabled);
+            if (_analyticsToggle != null)     _analyticsToggle.SetIsOnWithoutNotify(Analytics.Enabled);
 
             RefreshLanguage();
 

@@ -147,7 +147,8 @@ namespace PushStars.Editor
                 var card = Image(sheet, names[i] + "Card", Sprite(names[i] + "-card"), Color.white);
                 Place(card.rectTransform, 14, tops[i], 362, heights[i]);
                 cards[i] = Button(card);
-                Label(card.transform, "Name", ModeSelectionController.Title((GameMode)i), i == 0 ? 44 : 30,
+                // Not "Name": InterfaceLocalization leaves labels by that name untranslated as player data.
+                Label(card.transform, "ModeName", ModeSelectionController.Title((GameMode)i), i == 0 ? 44 : 30,
                     i == 2 ? Color.white : Gold, 18, 4, i == 2 ? 260 : 210, i == 0 ? 56 : 43);
                 var icon = Image(card.transform, "Icon", icons[i], Color.white);
                 icon.preserveAspect = true;
@@ -167,24 +168,40 @@ namespace PushStars.Editor
             }
 
             // Details share the sheet's safe scale; all copy is selectable mode-specific text.
-            var infoPanel = Image(sheet, "ModeInfo", null, new Color32(27, 25, 48, 255)).rectTransform;
-            Place(infoPanel, 14, 42, 362, 447);
-            Button(infoPanel.GetComponent<Image>()); // blocks taps reaching cards below the panel
-            var infoIcon = Image(infoPanel, "Icon", icons[0], Color.white);
+            // Styled like the app's other dialogs: rounded blue panel, centred icon and title, two
+            // short lines, a yellow plate button.
+            const float infoWidth = 340f;
+            // ModeInfo is a dim shade over the whole sheet (it blocks taps reaching the cards); the
+            // dialog itself is its Card child.
+            var infoPanel = Image(sheet, "ModeInfo", null, new Color(0.02f, 0.05f, 0.16f, 0.72f)).rectTransform;
+            infoPanel.anchorMin = Vector2.zero; infoPanel.anchorMax = Vector2.one; infoPanel.offsetMin = infoPanel.offsetMax = Vector2.zero;
+            Button(infoPanel.GetComponent<Image>());
+            var infoCard = Image(infoPanel, "Card", AssetDatabase.LoadAssetAtPath<Sprite>("Assets/_Project/UI/Sprites/pill_12.png"), new Color32(26, 55, 135, 255)).rectTransform;
+            infoCard.GetComponent<Image>().type = UnityEngine.UI.Image.Type.Sliced;
+            Place(infoCard, 25, 96, infoWidth, 318);
+            var infoIcon = Image(infoCard, "Icon", icons[0], Color.white);
             infoIcon.preserveAspect = true;
-            Place(infoIcon.rectTransform, 21, 14, 54, 58);
-            var infoTitle = Label(infoPanel, "Title", "PVP", 27, Gold, 83, 26, 256, 44);
-            var infoBody = Label(infoPanel, "Description", "", 15, Color.white, 22, 86, 318, 287);
+            Place(infoIcon.rectTransform, infoWidth / 2 - 30, 18, 60, 60);
+            var cardOutline = AssetDatabase.LoadAssetAtPath<Material>("Assets/_Project/UI/Sprites/ModeSelection/ModeCardOutline.mat");
+            var infoTitle = Label(infoCard, "Title", "PVP", 28, Color.white, 16, 82, infoWidth - 32, 40);
+            infoTitle.alignment = TextAlignmentOptions.Center;
+            if (cardOutline != null) infoTitle.fontSharedMaterial = cardOutline;
+            var infoBody = Label(infoCard, "Description", "", 17, new Color32(214, 228, 255, 255), 22, 128, infoWidth - 44, 96);
             infoBody.fontSharedMaterial = _body;
-            infoBody.alignment = TextAlignmentOptions.TopLeft;
+            infoBody.alignment = TextAlignmentOptions.Center;
             infoBody.enableWordWrapping = true;
             infoBody.enableAutoSizing = true;
-            infoBody.fontSizeMin = 12;
-            infoBody.fontSizeMax = 15;
-            var back = Image(infoPanel, "BackToModes", null, new Color32(255, 179, 0, 255));
-            Place(back.rectTransform, 22, 386, 318, 44);
+            infoBody.fontSizeMin = 13;
+            infoBody.fontSizeMax = 17;
+            var back = Image(infoCard, "BackToModes", AssetDatabase.LoadAssetAtPath<Sprite>("Assets/_Project/UI/Sprites/ProfileSettings/ButtonPlateYellow.png"), Color.white);
+            back.type = UnityEngine.UI.Image.Type.Sliced;
+            back.pixelsPerUnitMultiplier = 164f / 58f;
+            Place(back.rectTransform, infoWidth / 2 - 85, 238, 170, 58);
             var infoClose = Button(back);
-            Label(back.transform, "Label", "CHOOSE MODE", 19, Color.white, 0, 0, 318, 44, true);
+            var backLabel = Label(back.transform, "Label", "GOT IT", 22, Color.white, 0, 0, 150, 50, true);
+            backLabel.rectTransform.anchorMin = backLabel.rectTransform.anchorMax = backLabel.rectTransform.pivot = new Vector2(.5f, .5f);
+            backLabel.rectTransform.anchoredPosition = new Vector2(-3, 2);
+            if (cardOutline != null) backLabel.fontSharedMaterial = cardOutline;
 
             var homeLabel = open.GetComponentInChildren<TextMeshProUGUI>(true);
             if (homeLabel == null) throw new InvalidOperationException("PvpButton requires its editable TMP label.");

@@ -37,6 +37,9 @@ namespace PushStars.UI
 
         public void Reveal(float delay = 0)
         {
+            // Nothing animates outside Play: a reveal started by an editor tool would leave the
+            // shrunken start scale in the scene, and the next run would take it as the rest scale.
+            if (!Application.isPlaying) return;
             Initialize();
             ResetVisual();
             _revealStart = Time.unscaledTime + delay;
