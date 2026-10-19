@@ -104,6 +104,16 @@
 
 ---
 
+### TestFlight через Unity Build Automation (2026-10-19)
+
+UBA сам в App Store Connect не загружает — это делает post-build скрипт `ci/uba_postbuild_testflight.sh` (`xcrun altool` + API-ключ). Номер сборки ставит `BuildScript.PrepareForUBA` (UTC `yyMMdd.HHmm`), `ITSAppUsesNonExemptEncryption = false` — `ExportComplianceSetup`.
+
+1. App Store Connect ▸ Apps ▸ **+ New App**: iOS, Bundle ID `com.pushstars.app`, имя Pushup Stars (если ещё нет).
+2. Developer ▸ Profiles ▸ **+** ▸ **App Store Connect** (Distribution) ▸ App ID `com.pushstars.app` ▸ тот же Apple Distribution сертификат, что у Ad Hoc ▸ скачать `.mobileprovision`.
+3. App Store Connect ▸ Users and Access ▸ Integrations ▸ **App Store Connect API** ▸ Team Keys ▸ **+** (роль App Manager) ▸ скачать `AuthKey_XXXX.p8` (один раз!), записать **Key ID** и **Issuer ID**.
+4. UBA: дублировать iOS-таргет (например, «iOS TestFlight»). Signing: тот же `.p12` + App Store профиль из п. 2. Pre-build/pre-export — как у Ad Hoc. **Post-build script path** `ci/uba_postbuild_testflight.sh`, включить «fail the build if the script fails». Переменные окружения: `ASC_KEY_ID`, `ASC_ISSUER_ID`, `ASC_KEY_P8_B64` (PowerShell: `[Convert]::ToBase64String([IO.File]::ReadAllBytes("AuthKey_XXXX.p8"))`), плюс `GOOGLE_SERVICE_INFO_PLIST_B64` как у Ad Hoc.
+5. После сборки: App Store Connect ▸ TestFlight — билд появляется после Processing (10–30 мин). Свои устройства — Internal Testing (тестер должен быть пользователем App Store Connect). Друг без доступа к аккаунту — External Testing: группа, email, первая сборка проходит Beta App Review (~сутки).
+
 ## Google Play Console
 
 1. Создать приложение с тем же package name, что в Firebase/Android Unity.

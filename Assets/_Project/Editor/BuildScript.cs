@@ -197,6 +197,7 @@ namespace PushStars.Editor
         {
             CopyModelToStreamingAssets();
             ConfigureIOS();
+            StampBuildNumber();
             MobileTextureCompression.Apply();
 
             // Bake all UI glyphs before building the scenes. The Rubik
@@ -299,6 +300,16 @@ namespace PushStars.Editor
             PlayerSettings.iOS.appleDeveloperTeamID = TeamId;
 
             ConfigureRuntimePerformance();
+        }
+
+        /// <summary>App Store Connect accepts each upload of a version only once, with a build
+        /// number above the last. A UTC timestamp ("261019.1455") always is, on every cloud
+        /// builder, with nothing to keep in sync; ad-hoc (Diawi) builds carry one too.</summary>
+        private static void StampBuildNumber()
+        {
+            string stamp = System.DateTime.UtcNow.ToString("yyMMdd.HHmm", System.Globalization.CultureInfo.InvariantCulture);
+            PlayerSettings.iOS.buildNumber = stamp;
+            Debug.Log($"[Build] iOS build number {stamp} (version {PlayerSettings.bundleVersion}).");
         }
 
         private const int AndroidTargetSdk = 36;
