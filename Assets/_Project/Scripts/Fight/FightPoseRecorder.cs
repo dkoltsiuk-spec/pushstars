@@ -20,9 +20,23 @@ namespace PushStars.Fight
             if (animator.avatar != null && animator.avatar.isHuman && HumanTrait.MuscleCount == GhostMotionClip.MuscleCount)
                 _handler = new HumanPoseHandler(animator.avatar, animator.transform);
         }
+        private float _lastStreamed = float.NegativeInfinity;
+        private byte _lastStreamedPhase = byte.MaxValue;
+
+        /// <summary>A live duel sends the same final pose the recording keeps, at the stream's
+        /// own rate, so the friend's phone poses this body exactly as a ghost of it would.</summary>
+        private void Stream()
+        {
+            if (_fight == null || !_fight.TryGetStreamClock(out byte phase, out float time)) return;
+            if (phase == _lastStreamedPhase && time - _lastStreamed + .0001f < LiveDuelLink.PoseIntervalSec) return;
+            _fight.StreamPose(CaptureFrame(_animator, _handler, ref _pose, phase, time));
+            _lastStreamed = time; _lastStreamedPhase = phase;
+        }
+
         private void LateUpdate()
         {
             if (_handler == null || _animator == null) return;
+            Stream();
             byte phase; float elapsed; GhostMotionClip clip;
             if (_fight != null)
             {

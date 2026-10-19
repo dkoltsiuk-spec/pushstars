@@ -9,12 +9,14 @@ namespace PushStars.Fight
         private Animator _animator;
         private HumanPoseHandler _handler;
         private HumanPose _pose;
-        private GhostOpponent _ghost;
+        private IOpponentPose _ghost;
         private GhostMotionClip _preparation;
         private float _start;
         private Transform _head, _hips;
         public bool UsesPushupFraming { get; private set; }
-        public static void Attach(Animator animator, GhostOpponent ghost)
+        /// <summary>Switches the body to another timeline — a live friend replacing the scene's ghost.</summary>
+        public void SetSource(IOpponentPose source) => _ghost = source;
+        public static void Attach(Animator animator, IOpponentPose ghost)
         {
             if (animator.GetComponent<GhostPosePlayback>() != null || animator.avatar == null || !animator.avatar.isHuman) return;
             var playback = animator.gameObject.AddComponent<GhostPosePlayback>();

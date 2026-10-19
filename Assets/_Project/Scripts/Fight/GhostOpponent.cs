@@ -16,7 +16,7 @@ namespace PushStars.Fight
     /// a compatibility approximation for old timestamp-only recordings. Those files cannot
     /// recover the original descent/ascent or resting posture.</para>
     /// </summary>
-    public sealed class GhostOpponent : MonoBehaviour, IOpponentFeed
+    public sealed class GhostOpponent : MonoBehaviour, IOpponentFeed, IOpponentPose
     {
         private GhostRecord _record;
         private int _nextRepIndex, _nextClapIndex;

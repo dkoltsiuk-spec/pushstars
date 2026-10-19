@@ -114,6 +114,13 @@ namespace PushStars.UI
             Notice = "Your friend left the room. You can invite them again.";
         }
 
+        /// <summary>The room is gone (closed by the network or the server) — say why.</summary>
+        public void Close(string notice)
+        {
+            if (!HasRoom) return;
+            State = Phase.Expired; Deadline = 0; LocalReady = FriendReady = false; Notice = notice ?? "";
+        }
+
         public void Tick(double now)
         {
             if (Deadline <= 0 || now < Deadline) return;

@@ -22,7 +22,7 @@ namespace PushStars.Fight
 
         private void TakeRankedSession()
         {
-            if (FightRequest.IsBotTest) { _ranked = null; return; }
+            if (FightRequest.IsBotTest || FightRequest.IsLiveDuel) { _ranked = null; return; }
             _ranked = LeagueClient.PreparedSession;
             LeagueClient.PreparedSession = null;
             if (_ranked != null && _ranked.uid != LeagueClient.Uid) _ranked = null;

@@ -9,7 +9,7 @@ namespace PushStars.Core
     public class MatchRecord
     {
         public string   MatchId;
-        public string   Mode;         // "pvp" | "ghost" | "boss" | "training" | "assessment"
+        public string   Mode;         // "pvp" | "friend" | "ghost" | "boss" | "training" | "assessment"
         public string   Exercise;     // "pushups"
         public string   OpponentName; // opponent name at completion; absent for solo sets
         public bool     Won;

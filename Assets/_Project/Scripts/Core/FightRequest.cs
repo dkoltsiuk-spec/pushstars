@@ -28,6 +28,11 @@ namespace PushStars.Core
         public static bool IsBotRecording { get; private set; }
         public static BotRecording TestBot { get; private set; }
         public static bool IsBotTest => IsBotRecording || TestBot != null;
+        /// <summary>A live duel against a friend's phone: the opponent is <see cref="LiveDuelLink"/>'s
+        /// peer, not a recording. Runs as a <see cref="FightMode.Ghost"/> duel so every duel screen
+        /// treats it as one.</summary>
+        public static LiveDuelLink LiveDuel { get; private set; }
+        public static bool IsLiveDuel => LiveDuel != null;
         // Snapshot the chosen boss: winning advances the ladder before the result scene opens.
         public static string BossId { get; private set; }
 
@@ -38,6 +43,7 @@ namespace PushStars.Core
             HasRequest = false;
             IsBotRecording = false;
             TestBot = null;
+            LiveDuel = null;
             BossId = null;
             Mode = FightMode.Ghost;
             ReturnScene = FightConfig.MainSceneName;
@@ -75,10 +81,32 @@ namespace PushStars.Core
             ArenaMatch.BeginLocal(ArenaProfile.SelectedId, bot.fight.arenaId);
         }
 
+        public static void Live(LiveDuelLink link)
+        {
+            if (link == null) throw new System.ArgumentNullException(nameof(link));
+            Set(FightMode.Ghost, FightConfig.MainSceneName);
+            LiveDuel = link;
+            // Both phones show the arena their own player picked; no coin flip against a ghost's.
+            ArenaMatch.BeginLocal(ArenaProfile.SelectedId, ArenaProfile.SelectedId);
+        }
+
+        /// <summary>The hero and body the opponent's stage should build, when the opponent is a
+        /// person (a test bot or a live friend) rather than the player's own shadow.</summary>
+        public static bool TryGetOpponentLook(out int hero, out int gender)
+        {
+            hero = gender = 0;
+            if (TestBot != null) { hero = TestBot.avatar; gender = TestBot.gender; return true; }
+            var peer = LiveDuel?.Peer;
+            if (peer == null) return false;
+            hero = peer.Hero; gender = peer.Gender;
+            return true;
+        }
+
         private static void Set(FightMode mode, string returnScene)
         {
             IsBotRecording = false;
             TestBot = null;
+            LiveDuel = null;
             ArenaMatch.Clear();
             if (mode == FightMode.Ghost) ArenaMatch.BeginLocal(ArenaProfile.SelectedId, GhostStore.Load()?.arenaId);
             HasRequest = true;

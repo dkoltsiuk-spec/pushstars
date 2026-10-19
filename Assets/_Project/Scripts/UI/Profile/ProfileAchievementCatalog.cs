@@ -53,7 +53,7 @@ namespace PushStars.UI
                 if(!string.IsNullOrEmpty(match.MatchId) && !receipts.Add(match.MatchId)) continue;
                 days.Add(day); historyReps+=match.MyReps; best=Math.Max(best,match.MyReps);
                 if(match.Mode=="training") modes.Add("training");
-                else if(match.Mode=="pvp" || match.Mode=="ghost") modes.Add("battle");
+                else if(match.Mode=="pvp" || match.Mode=="friend" || match.Mode=="ghost") modes.Add("battle");
                 else if(match.Mode=="boss") modes.Add("boss");
                 if((match.Mode=="pvp" || match.Mode=="ghost" || match.Mode=="boss") && match.Won && !match.Draw)
                 { wins++; if(match.Mode=="boss") bossWins++; }

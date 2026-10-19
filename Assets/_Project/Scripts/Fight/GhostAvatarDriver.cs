@@ -38,6 +38,19 @@ namespace PushStars.Fight
         [SerializeField, Range(0f, 1f)] private float _clipTimeAtBottom = 0f;
         [SerializeField, Range(0f, 1f)] private float _crossFadeSec = 0.25f;
 
+        private IOpponentPose _live;
+        /// <summary>The scene's ghost unless a live opponent took over (<see cref="Follow"/>).</summary>
+        private IOpponentPose Source => _live ?? (_ghost != null ? _ghost : null);
+
+        /// <summary>Poses this body from <paramref name="source"/> instead of the authored ghost.
+        /// Safe before or after the character is built.</summary>
+        public void Follow(IOpponentPose source)
+        {
+            _live = source;
+            if (_animator != null && _animator.GetComponent<GhostPosePlayback>() is { } playback) playback.SetSource(Source);
+            else if (_animator != null) GhostPosePlayback.Attach(_animator, Source);
+        }
+
         private int _pushupHash;
         private int _idleHash;
         private bool _working;
@@ -49,7 +62,7 @@ namespace PushStars.Fight
             ReleaseCorrection();
             _animator = animator;
             _poseCorrection = PushupPoseCorrection.Bind(animator);
-            GhostPosePlayback.Attach(animator, _ghost);
+            GhostPosePlayback.Attach(animator, Source);
             _started = false;
             RehashStates();
         }
@@ -88,17 +101,18 @@ namespace PushStars.Fight
 
         private void Update()
         {
-            if (_ghost == null || _animator == null || !_animator.isActiveAndEnabled) return;
+            var ghost = Source;
+            if (ghost == null || _animator == null || !_animator.isActiveAndEnabled) return;
             if (_poseCorrection == null) _poseCorrection = PushupPoseCorrection.Bind(_animator);
 
-            if (_ghost.HasPose)
+            if (ghost.HasPose)
             {
                 _poseCorrection?.SetDepth(0, false, 0);
                 _poseCorrection?.SetFlight(0, 0);
                 return;
             }
 
-            bool working = _ghost.IsWorking;
+            bool working = ghost.IsWorking;
             if (!_started || working != _working)
             {
                 _started = true;
@@ -115,9 +129,9 @@ namespace PushStars.Fight
             }
 
             if (_poseCorrection != null)
-                _poseCorrection.SetDepth(_ghost.Depth01, working, _crossFadeSec);
+                _poseCorrection.SetDepth(ghost.Depth01, working, _crossFadeSec);
             if (!working) return;
-            float t = Mathf.Lerp(_clipTimeAtTop, _clipTimeAtBottom, Mathf.Clamp01(_ghost.Depth01));
+            float t = Mathf.Lerp(_clipTimeAtTop, _clipTimeAtBottom, Mathf.Clamp01(ghost.Depth01));
             _animator.Play(_pushupHash, 0, t);
         }
     }

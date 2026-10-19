@@ -69,7 +69,7 @@ namespace PushStars.Fight
         {
             float at = _clapRepAt;
             _clapRepAt = -1f;
-            if (_ranked != null && _repTimes.Count >= 65) return;
+            if (ServerTimed && _repTimes.Count >= 65) return;
             _repForms.Add(_clapRepForm);
             _repTimes.Add(at);
             _hud.SetPlayerReps(_repTimes.Count);

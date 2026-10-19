@@ -241,7 +241,7 @@ namespace PushStars.UI
         private bool MatchesFilter(MatchRecord m) => !AthleteDesign
             ? _mode == "" || m.Mode == _mode || (_mode == "ghost" && m.Mode == "boss")
             : _filterIndex == 0 || (_filterIndex == 1 && m.IsSolo)
-              || (_filterIndex == 2 && (m.Mode == "pvp" || m.Mode == "ghost")) || (_filterIndex == 3 && m.Mode == "boss");
+              || (_filterIndex == 2 && (m.Mode == "pvp" || m.Mode == "friend" || m.Mode == "ghost")) || (_filterIndex == 3 && m.Mode == "boss");
 
         private void RenderHistory()
         {

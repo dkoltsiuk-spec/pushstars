@@ -1,8 +1,8 @@
 // Cloud Functions entry — phase 05 (backend core).
 //
 // Uses the v1 (Gen-1) API: Auth background triggers (onUserCreated/onUserDeleted) are
-// only available in v1. Matchmaking (matchPlayers, onMatchFinished webhook) lands in
-// phase 13; onGhostMatchFinished in phase 12.
+// only available in v1. Live duels (phases 13–14: friend-code rooms, the Photon webhook
+// onMatchFinished, photonAuth, cleanupMatchmaking) live in liveDuel.js.
 require('./admin'); // initialise the Admin SDK once, before the handlers load
 
 const { onUserCreated } = require('./onUserCreated');
@@ -29,3 +29,13 @@ exports.getBotRecorderAccess = botRecordings.getBotRecorderAccess;
 exports.saveBotRecording = botRecordings.saveBotRecording;
 exports.getBotRecording = botRecordings.getBotRecording;
 exports.saveEmoteCaptureChunk = require('./emoteCaptures').saveEmoteCaptureChunk;
+const liveDuel = require('./liveDuel');
+exports.createLiveDuel = liveDuel.createLiveDuel;
+exports.peekLiveDuel = liveDuel.peekLiveDuel;
+exports.joinLiveDuel = liveDuel.joinLiveDuel;
+exports.cancelLiveDuel = liveDuel.cancelLiveDuel;
+exports.startLiveDuel = liveDuel.startLiveDuel;
+exports.finishLiveDuel = liveDuel.finishLiveDuel;
+exports.onMatchFinished = liveDuel.onMatchFinished;
+exports.photonAuth = liveDuel.photonAuth;
+exports.cleanupMatchmaking = liveDuel.cleanupMatchmaking;

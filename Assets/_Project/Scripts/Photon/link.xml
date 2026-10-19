@@ -1,0 +1,6 @@
+<!-- IL2CPP must keep Photon's serialisation and callback code, which is reached by reflection. -->
+<linker>
+  <assembly fullname="Photon3Unity3D" preserve="all" />
+  <assembly fullname="PhotonRealtime" preserve="all" />
+  <assembly fullname="PushStars.Photon" preserve="all" />
+</linker>

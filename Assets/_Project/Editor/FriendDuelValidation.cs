@@ -17,6 +17,8 @@ namespace PushStars.Editor
         public static void Run()
         {
             if (EditorApplication.isPlayingOrWillChangePlaymode) throw new InvalidOperationException("Run the isolated preview validation outside Play Mode.");
+            // The scripted preview is what this validates, with or without Photon in the build.
+            FriendDuelController.ForcePreview = true;
             ValidateState();
             var scene = EditorSceneManager.OpenPreviewScene(AuthoredScenes.MainPath);
             RenderTexture texture = null, characterTexture = null;

@@ -166,7 +166,7 @@ namespace PushStars.Core
         {
             if (w == null || string.IsNullOrWhiteSpace(w.Id) || w.Reps < 0 || w.OpponentReps < 0 || w.Xp < 0 ||
                 w.DurationSec < 0 || w.UtcTicks <= 0 || w.UtcTicks > DateTime.MaxValue.Ticks ||
-                (w.Mode != "training" && w.Mode != "assessment" && w.Mode != "boss" && w.Mode != "ghost" && w.Mode != "pvp") ||
+                (w.Mode != "training" && w.Mode != "assessment" && w.Mode != "boss" && w.Mode != "ghost" && w.Mode != "pvp" && w.Mode != "friend") ||
                 (w.Won && w.Draw)) throw new ArgumentException("Invalid workout receipt.");
         }
     }

@@ -1,11 +1,20 @@
 using System.Collections;
+using PushStars.Core;
+using PushStars.OTA;
+using PushStars.Services;
 using TMPro;
 using UnityEngine;
 using UnityEngine.UI;
 
 namespace PushStars.UI
 {
-    /// <summary>Authored private-duel UX. The explicit Editor preview never launches a ghost match.</summary>
+    /// <summary>
+    /// Private duel by six-digit code. With a live transport in the build (Photon,
+    /// <see cref="LiveDuelService.Available"/>) the room is real: the server binds both players to
+    /// a match, both phones enter its room, and when both are ready the fight screen opens on
+    /// each with the same <see cref="LiveDuelLink"/>. Without one, the Editor keeps the scripted
+    /// preview (demo buttons) and a device says invitations are not available.
+    /// </summary>
     public sealed class FriendDuelController : MonoBehaviour
     {
         public Button Slot, ModeButton, ExerciseButton, BattleButton;
@@ -29,7 +38,14 @@ namespace PushStars.UI
         public FriendDuelSession Session { get; } = new FriendDuelSession();
         public bool HasRoom => Session.HasRoom;
         public bool IsOpen => Overlay != null && Overlay.activeSelf;
-        public bool IsPreview => Application.isEditor;
+        /// <summary>Validations pin the scripted preview even in a build that carries Photon.</summary>
+        public static bool ForcePreview;
+        public bool IsPreview => Application.isEditor && (ForcePreview || !LiveDuelService.Available);
+        private bool Online => !IsPreview && LiveDuelService.Available;
+        private LiveDuelLink _link;
+        private bool _busy;
+        private string _candidateHost = "";
+        private float _launchAt = -1f;
         private enum Page { Menu, Join, ConfirmJoin, Room, Info, Leave }
         private Page _page, _returnPage;
         private string _candidateCode = "";
@@ -190,6 +206,7 @@ namespace PushStars.UI
             if (!HasRoom) { Refresh(); return false; }
             if (Session.State == FriendDuelSession.Phase.Joined || Session.State == FriendDuelSession.Phase.ReadyCheck)
                 Session.Ready(Time.realtimeSinceStartupAsDouble);
+            _link?.SetReady(Session.LocalReady);
             Show(Page.Room);
             return true;
         }
@@ -199,11 +216,13 @@ namespace PushStars.UI
             switch (_page)
             {
                 case Page.Menu:
+                    if (Online) { HostOnline(); return; }
                     if (!RequirePreview()) return;
                     Session.Create("736482", Time.realtimeSinceStartupAsDouble); Show(Page.Room); break;
                 case Page.Join:
                     if (!FriendDuelSession.TryCode(CodeInput.text, out _candidateCode))
                     { Message.text = "Enter a 6-digit code. Check your input."; return; }
+                    if (Online) { PeekOnline(_candidateCode); return; }
                     if (!RequirePreview()) return;
                     if (_candidateCode == "000000") { Message.text = "Code expired. Ask your friend for a new one."; return; }
                     if (_candidateCode == "111111") { Message.text = "This room is already full."; return; }
@@ -211,18 +230,21 @@ namespace PushStars.UI
                     if (_candidateCode != "482731") { Message.text = "Room not found. Check the code."; return; }
                     Show(Page.ConfirmJoin); break;
                 case Page.ConfirmJoin:
+                    if (Online) { JoinOnline(_candidateCode); return; }
                     if (!RequirePreview()) return;
                     Session.Join(_candidateCode, "ALEX_M"); Show(Page.Room); break;
                 case Page.Leave:
-                    Session.Reset(); Show(Page.Menu); break;
+                    LeaveLink(); Session.Reset(); Show(Page.Menu); break;
                 case Page.Info: Back(); break;
                 case Page.Room:
                     if (Session.State == FriendDuelSession.Phase.Waiting)
                     { GUIUtility.systemCopyBuffer = Session.Code; Message.text = "Code copied. Share it with your friend."; }
                     else if (Session.State == FriendDuelSession.Phase.Expired)
-                    { Session.Reset(); Show(Page.Menu); }
+                    { LeaveLink(); Session.Reset(); Show(Page.Menu); }
                     else if (Session.State == FriendDuelSession.Phase.ReadyCheck && Session.LocalReady)
-                    { Session.CancelReady(); Refresh(); }
+                    { Session.CancelReady(); _link?.SetReady(false); Refresh(); }
+                    else if (Session.State == FriendDuelSession.Phase.Preparing && _link != null)
+                    { Message.text = "Starting the duel…"; }
                     else if (Session.State == FriendDuelSession.Phase.Preparing)
                     { Message.text = "Preview complete: both players confirmed.\nCameras and a shared start will arrive with live PvP."; }
                     else HandleBattle();
@@ -273,12 +295,128 @@ namespace PushStars.UI
 
         private void Update()
         {
+            if (_link != null) SyncLink();
             if (Time.unscaledTime >= _nextRefresh)
             {
                 _nextRefresh = Time.unscaledTime + .2f;
                 Session.Tick(Time.realtimeSinceStartupAsDouble); Refresh();
             }
             if (IsOpen) { Fit(); if (Input.GetKeyDown(KeyCode.Escape)) Back(); }
+        }
+
+        // ── Live room ────────────────────────────────────────────────────────────────────────
+
+        private async void HostOnline()
+        {
+            if (_busy) return;
+            SetBusy(true, "Creating a room…");
+            try
+            {
+                var (ticket, link) = await LiveDuelService.Host();
+                if (this == null) { LiveDuelService.Leave(link, true); return; }
+                _link = link;
+                Session.Create(ticket.code, Time.realtimeSinceStartupAsDouble);
+                SetBusy(false, ""); Show(Page.Room);
+            }
+            catch (System.Exception e) { if (this != null) SetBusy(false, LiveDuelClient.Explain(e)); Debug.LogWarning("[FriendDuel] host: " + e.Message); }
+        }
+
+        private async void PeekOnline(string code)
+        {
+            if (_busy) return;
+            SetBusy(true, "Looking for the room…");
+            try
+            {
+                var ticket = await LiveDuelClient.Peek(code);
+                if (this == null) return;
+                _candidateHost = ticket.hostName;
+                SetBusy(false, ""); Show(Page.ConfirmJoin);
+            }
+            catch (System.Exception e) { if (this != null) SetBusy(false, LiveDuelClient.Explain(e)); }
+        }
+
+        private async void JoinOnline(string code)
+        {
+            if (_busy) return;
+            SetBusy(true, "Joining…");
+            try
+            {
+                var (ticket, link) = await LiveDuelService.Join(code);
+                if (this == null) { LiveDuelService.Leave(link, false); return; }
+                _link = link;
+                Session.Join(code, ticket.hostName, ticket.hostGender == 1 ? "female" : "male");
+                SetBusy(false, ""); Show(Page.Room);
+            }
+            catch (System.Exception e) { if (this != null) SetBusy(false, LiveDuelClient.Explain(e)); Debug.LogWarning("[FriendDuel] join: " + e.Message); }
+        }
+
+        private void SetBusy(bool busy, string message)
+        {
+            _busy = busy;
+            Refresh();
+            if (Message != null) Message.text = message;
+        }
+
+        /// <summary>Mirrors the live room into the sheet's state machine — the friend arriving,
+        /// their ready flag, our connection dropping and returning, the friend leaving — and opens
+        /// the fight on both phones once both are ready.</summary>
+        private void SyncLink()
+        {
+            var link = _link;
+            double now = Time.realtimeSinceStartupAsDouble;
+            if (link.VersionMismatch) { CloseRoom("Your friend has another app version. Update both apps."); return; }
+            if (link.Status == DuelLinkStatus.Closed || link.Closed)
+            {
+                string error = link.Transport.Error;
+                CloseRoom(string.IsNullOrEmpty(error) ? "Connection lost. Room closed." : error);
+                return;
+            }
+            if (link.Status == DuelLinkStatus.Reconnecting && Session.HasRoom && Session.State != FriendDuelSession.Phase.Reconnecting)
+            { Session.Disconnect(now); link.SetReady(false); }
+            else if (link.Online && Session.State == FriendDuelSession.Phase.Reconnecting) Session.Reconnect(now);
+
+            var peer = link.Peer;
+            if (peer != null && !link.PeerGone)
+            {
+                string look = peer.Gender == 1 ? "female" : "male";
+                if (Session.State == FriendDuelSession.Phase.Waiting) Session.FriendJoined(peer.Name, look);
+                else Session.UpdateFriendAppearance(look);
+                if (peer.Ready && !Session.FriendReady) Session.SetFriendReady(now);
+                else if (!peer.Ready && Session.FriendReady) Session.CancelReady();
+            }
+            if (Session.HasFriend && link.PeerGone && Session.State != FriendDuelSession.Phase.Expired)
+            { Session.FriendLeft(); LeaveLink(); return; }
+            // The sheet's own timeouts (a ready check nobody answered) clear readiness too.
+            if (link.Local.Ready != Session.LocalReady) link.SetReady(Session.LocalReady);
+            if (Session.State == FriendDuelSession.Phase.Expired) { LeaveLink(); return; }
+
+            if (Session.State != FriendDuelSession.Phase.Preparing) { _launchAt = -1f; return; }
+            if (_launchAt < 0f) { _launchAt = Time.unscaledTime + 1.2f; Refresh(); }
+            else if (Time.unscaledTime >= _launchAt) Launch();
+        }
+
+        private void Launch()
+        {
+            var link = _link;
+            _link = null; _launchAt = -1f;
+            Session.Reset();
+            FightRequest.Live(link);
+            OtaSceneLoader.LoadScene(FightConfig.FightSceneName);
+        }
+
+        private void CloseRoom(string notice)
+        {
+            Session.Close(notice);
+            LeaveLink();
+            if (IsOpen) Show(Page.Room); else Refresh();
+        }
+
+        private void LeaveLink()
+        {
+            if (_link == null) return;
+            // A host who leaves before the duel also frees the code for a new invitation.
+            LiveDuelService.Leave(_link, Session.IsHost);
+            _link = null;
         }
 
         [ContextMenu("Preview/Friend leaves")]
@@ -322,7 +460,7 @@ namespace PushStars.UI
             if (!IsOpen) return;
             CodeGroup.SetActive(false); InputGroup.SetActive(false); PlayersGroup.SetActive(false);
             Primary.gameObject.SetActive(true); Secondary.gameObject.SetActive(true); Tertiary.gameObject.SetActive(false);
-            Primary.interactable = true; Help.gameObject.SetActive(_page != Page.Info && _page != Page.Leave);
+            Primary.interactable = !_busy; Help.gameObject.SetActive(_page != Page.Info && _page != Page.Leave);
             PreviewBadge.SetActive(IsPreview && _page == Page.Room);
             DemoAction.gameObject.SetActive(IsPreview && _page == Page.Room && (phase == FriendDuelSession.Phase.Waiting
                 || phase == FriendDuelSession.Phase.Joined || phase == FriendDuelSession.Phase.ReadyCheck && !Session.FriendReady));
@@ -346,7 +484,7 @@ namespace PushStars.UI
                     Body.text = "Check the host, then join.";
                     PrimaryLabel.text = "FIND ROOM"; SecondaryLabel.text = "BACK"; break;
                 case Page.ConfirmJoin:
-                    Title.text = "INVITED BY"; Subtitle.text = "ALEX_M";
+                    Title.text = "INVITED BY"; Subtitle.text = string.IsNullOrEmpty(_candidateHost) ? "ALEX_M" : _candidateHost;
                     LayoutBody(144, 100);
                     Body.text = "1 VS 1 · Push-ups · 60 seconds\n\nNo ranked trophies";
                     PrimaryLabel.text = "JOIN"; SecondaryLabel.text = "CANCEL"; break;
@@ -409,7 +547,8 @@ namespace PushStars.UI
 
         private void OnApplicationPause(bool paused)
         {
-            if (paused && HasRoom) { Session.Disconnect(Time.realtimeSinceStartupAsDouble); Refresh(); }
+            // A live room notices the lost connection itself (SyncLink); this is the preview's.
+            if (paused && HasRoom && _link == null) { Session.Disconnect(Time.realtimeSinceStartupAsDouble); Refresh(); }
         }
         private void OnDisable()
         {

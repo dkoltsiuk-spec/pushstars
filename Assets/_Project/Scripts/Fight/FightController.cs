@@ -171,6 +171,7 @@ namespace PushStars.Fight
         private void OnDestroy()
         {
             ReleaseUnstartedRanked();
+            ReleaseLive();
             GameAudio.ClearMusicOverride(GameAudio.AssessmentMusicName);
             if (_boss != null) _boss.OnRep -= HandleBossAttack;
             ReleaseClapImpact();
@@ -203,6 +204,7 @@ namespace PushStars.Fight
 
             if (mode == FightMode.Ghost)
             {
+                if (FightRequest.IsLiveDuel && TryStartLive()) return FightMode.Ghost;
                 var recording = FightRequest.TestBot?.fight ?? (_ranked != null ? RankedOpponentRecord() : GhostStore.Load());
                 if (FightRequest.IsBotRecording && recording == null) recording = GhostRecord.From(System.Array.Empty<float>(), 0, "recording-partner");
                 if (_ghost != null && _ghost.Configure(recording, FightRequest.TestBot?.displayName ?? _ranked?.opponentName, FightRequest.IsBotRecording))
@@ -276,7 +278,7 @@ namespace PushStars.Fight
             float repTime = Time.time - _liveStartTime;
             if (repTime > FightConfig.DuelDurationSec) return;
             SettleClapRep(repTime);
-            if (_ranked != null && (repTime > FightConfig.DuelDurationSec || _repTimes.Count >= 65 ||
+            if (ServerTimed && (repTime > FightConfig.DuelDurationSec || _repTimes.Count >= 65 ||
                 (_repTimes.Count > 0 && repTime - _repTimes[_repTimes.Count - 1] < .4f))) return;
             _repForms.Add(_session.Form);
             _repTimes.Add(repTime);
@@ -357,7 +359,7 @@ namespace PushStars.Fight
         /// </summary>
         private void PauseSet()
         {
-            if (_ranked != null) return;
+            if (ServerTimed) return;
             if (_paused || _phase == Phase.Finished || _phase == Phase.Rest) return;
             _paused = true;
             _repMilestone?.Cancel();
@@ -396,7 +398,7 @@ namespace PushStars.Fight
         /// for the rest of the minute to make the screen go away.</summary>
         public void FinishEarly()
         {
-            if (_ranked != null && _mode == FightMode.Ghost && _phase == Phase.Live) return;
+            if (ServerTimed && _mode == FightMode.Ghost && _phase == Phase.Live) return;
             if (_phase != Phase.Live)
             {
                 // Relabelled to ПРОПУСТИТЬ by OfferSkipIfStuck — a set that never started has no
@@ -423,6 +425,7 @@ namespace PushStars.Fight
                 _hud.ShowBanner("INITIALIZING…", FightHud.BannerTone.Warn);
                 return;
             }
+            if (_liveLink != null && TickLiveWaitPlank(armer)) return;
 
             if (armer.IsArmed)
             {
@@ -462,6 +465,7 @@ namespace PushStars.Fight
         // ── Countdown ────────────────────────────────────────────────────────────────────────────
         private void TickCountdown()
         {
+            if (_liveLink != null) { TickLiveCountdown(); return; }
             var armer = _session.Armer;
             if (armer == null || !armer.IsArmed)
             {
@@ -484,10 +488,17 @@ namespace PushStars.Fight
 
             // Go live. Baseline excludes any reps done while getting set.
             if (_ranked != null && !_rankedStarted) { StartRankedClock(); return; }
+            BeginLiveSet(0f);
+        }
+
+        /// <summary>The set starts — <paramref name="lateBy"/> seconds ago when a shared start
+        /// was reached late, so both phones' clocks still read the same.</summary>
+        private void BeginLiveSet(float lateBy)
+        {
             _phase = Phase.Live;
             _hud.SetSoloRepsVisible(true);
             _hud.PlayCornerAccents();
-            _liveStartTime = Time.time;
+            _liveStartTime = Time.time - Mathf.Max(0f, lateBy);
             _baselineReps = _session.Reps;
             _repMilestone?.ResetSet();
             _repForms.Clear();
@@ -534,6 +545,7 @@ namespace PushStars.Fight
                 _hud.ShowBanner("COUNT PAUSED — palms on the floor", FightHud.BannerTone.Warn);
             else
                 _hud.HideBanner();
+            if (_liveLink != null && TickLiveConnection()) return;
 
             if (remain <= 0f) Finish();
         }
@@ -578,6 +590,11 @@ namespace PushStars.Fight
                 if (this == null) return;
                 _hud.HideBanner();
             }
+            if (_liveLink != null)
+            {
+                await FinishLiveOnServer(myReps);
+                if (this == null) return;
+            }
 
             if (_mode == FightMode.Training) FinishTrainingSet(myReps, xp);
             else if (_mode == FightMode.LevelTest) FinishLevelTest(myReps, xp);
@@ -613,6 +630,13 @@ namespace PushStars.Fight
             bool win = myReps > oppReps;
             bool draw = myReps == oppReps;
             if (BossHealth != null) { win = BossHealth.PlayerWins; draw = BossHealth.Draw; }
+            if (_liveLink != null)
+            {
+                // The server's verdict when it has one; a friend who forfeited loses meanwhile.
+                if (_liveReceipt != null && _liveReceipt.Settled)
+                { oppReps = _liveReceipt.opponentReps; win = _liveReceipt.won; draw = _liveReceipt.draw; }
+                else if (_liveWalkover) { win = true; draw = false; }
+            }
             bool ghost = _mode == FightMode.Ghost;
 
             if (win && _mode == FightMode.Boss) xp += FightConfig.BossWinXpBonus;
@@ -633,7 +657,9 @@ namespace PushStars.Fight
                 aura.FirstBossWin = ladder >= 0 && !BossCatalog.IsCleared(ladder);
                 aura.IslandKing = chapter != null && chapter.Bosses[chapter.Bosses.Count - 1].Id == bossId;
             }
-            int trophies = LocalProfile.RecordWorkout(_rewardSessionId, ghost ? "ghost" : "boss",
+            // A friend duel is friendly: no trophies, no Aura either way (two friends could
+            // otherwise trade wins for each other).
+            int trophies = LocalProfile.RecordWorkout(_rewardSessionId, _liveLink != null ? "friend" : ghost ? "ghost" : "boss",
                 myReps, xp, oppReps, OpponentLabel, win, draw,
                 Mathf.Clamp(Mathf.RoundToInt(Time.time - _liveStartTime), 0, FightConfig.DuelDurationSec));
 
@@ -643,7 +669,7 @@ namespace PushStars.Fight
 
             if (!ghost) BossCatalog.ReportResult(win);
             aura.WinStreakAfter = LocalProfile.WinStreak;
-            _auraMoments = AuraCalculator.ForFight(aura);
+            _auraMoments = _liveLink != null ? new List<AuraMoment>() : AuraCalculator.ForFight(aura);
 
             PresentResults(new FightResultData
             {
@@ -666,6 +692,7 @@ namespace PushStars.Fight
                 if (_rankedReceipt != null && _mode == FightMode.Ghost)
                 { data.Win = _rankedReceipt.won; data.Draw = _rankedReceipt.draw; }
             }
+            else if (_liveLink != null) data.LeagueStatus = LiveStatus();
             else if (data.Mode == FightMode.Ghost || data.Mode == FightMode.LevelTest)
                 data.LeagueStatus = "LOCAL RESULT · PLAY FROM LEAGUE TO RANK";
             // Eligibility is settled once here. Presentation never rolls or grants another case.
@@ -749,7 +776,7 @@ namespace PushStars.Fight
 
             // Walking out of a live duel is a RAGE QUIT: the one Aura minus that is never waived
             // for effort (the rookie shield still applies). Bosses never cost Aura.
-            if (_mode == FightMode.Ghost && _phase == Phase.Live && !FightRequest.IsBotTest)
+            if (_mode == FightMode.Ghost && _phase == Phase.Live && !FightRequest.IsBotTest && _liveLink == null)
             {
                 try
                 {

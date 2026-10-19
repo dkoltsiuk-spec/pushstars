@@ -478,10 +478,13 @@ namespace PushStars.Fight
         private void Build()
         {
             var gender = CharacterRoster.SavedGender;
-            if (_opponentStage && FightRequest.TestBot != null) gender = (CharacterGender)FightRequest.TestBot.gender;
+            // A test bot or a live friend brings their own hero; the ghost is the player's shadow.
+            int otherHero = 0, otherGender = 0;
+            bool otherPerson = _opponentStage && FightRequest.TryGetOpponentLook(out otherHero, out otherGender);
+            if (otherPerson) gender = (CharacterGender)otherGender;
             var prefab = gender == CharacterGender.Female ? _femalePrefab : _malePrefab;
             if (prefab == null) prefab = gender == CharacterGender.Female ? _malePrefab : _femalePrefab;
-            switch (_opponentStage && FightRequest.TestBot != null ? FightRequest.TestBot.avatar : CharacterRoster.SavedHomeAvatar)
+            switch (otherPerson ? otherHero : CharacterRoster.SavedHomeAvatar)
             {
                 case 1: if (_sonicPrefab != null) prefab = _sonicPrefab; break;
                 case 2: if (_gladiatorPrefab != null) prefab = _gladiatorPrefab; break;
@@ -546,7 +549,7 @@ namespace PushStars.Fight
             _animator.applyRootMotion = false;
             _animator.cullingMode = AnimatorCullingMode.AlwaysAnimate;
 
-            if (_shadow && !bossBody && FightRequest.TestBot == null) ApplyShadowTint();
+            if (_shadow && !bossBody && !otherPerson) ApplyShadowTint();
 
             _renderers = Character.GetComponentsInChildren<Renderer>(true);
             CacheBones();

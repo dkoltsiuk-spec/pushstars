@@ -68,6 +68,16 @@
   - URL вида: `https://<REGION>-<PROJECT_ID>.cloudfunctions.net/onMatchFinished` (точный URL взять из Firebase после деплоя).  
   - Сгенерировать случайный длинный секрет → передавать в заголовке (например `X-Photon-Token`) → тот же секрет в `**PHOTON_WEBHOOK_SECRET`** для Functions.
 
+### Photon — что сделать для живой дуэли (2026-10-19)
+
+Подробно — в [live-duel.md](live-duel.md).
+
+1. Unity: Window ▸ Package Manager ▸ My Assets ▸ **PUN 2 - FREE** ▸ Import. Достаточно папок `Photon/PhotonLibs` и `Photon/PhotonRealtime`, демо можно не брать. Define `PUSHSTARS_PHOTON` включится сам (`PhotonDefineSync`). Если откроется PUN Wizard — закрой его: AppId берётся из `Resources/LiveDuelConfig.json`.
+2. Dashboard: у приложения `b09ed51f…` тип PUN (подходит для Realtime), 20 CCU бесплатно. Регион в конфиге — `eu`.
+3. Сгенерировать секрет (например, `openssl rand -hex 32`), записать в `functions/.env` как `PHOTON_WEBHOOK_SECRET=...` и задеплоить функции.
+4. Dashboard ▸ приложение ▸ **Webhooks**: BaseUrl `https://us-central1-push-stars-d620e.cloudfunctions.net/onMatchFinished`, PathJoin `join`, PathLeave `leave`, PathClose `close`, PathCreate — **пусто**, CustomHttpHeaders `{"X-Photon-Token":"<тот же секрет>"}`.
+5. (Опционально, усиление) Dashboard ▸ **Authentication** ▸ Custom Server: URL `https://us-central1-push-stars-d620e.cloudfunctions.net/photonAuth`, запретить анонимных. Потом поставить `"customAuth": true` в `LiveDuelConfig.json`. Без этого шага всё работает, но Photon UserId выставляет сам клиент.
+
 ### Photon — чеклист
 
 - PUN2 App ID: b09ed51f-b53c-41a0-a2a2-d23f2cbbd2ec
