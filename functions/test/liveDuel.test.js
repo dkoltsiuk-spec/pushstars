@@ -80,9 +80,9 @@ function fixture({ secret = 'hook-secret' } = {}) {
     advance: ms => { now += ms; },
     restore: () => { Date.now = realNow; },
     seedUser: (uid, data) => docs.set(`users/${uid}`, { displayName: uid.toUpperCase(), totalReps: 0, trophies: 0, ...data }),
-    hook: async (body, token = secret) => {
+    hook: async (body, token = secret, path) => {
       const res = { code: 200, body: null, status(c) { this.code = c; return this; }, send(b) { this.body = b; return this; }, json(b) { this.body = b; return this; } };
-      await live.onMatchFinished({ method: 'POST', path: '/' + (body.Type || '').toLowerCase(), body, get: h => h === 'X-Photon-Token' ? token : undefined }, res);
+      await live.onMatchFinished({ method: 'POST', path: path ?? '/' + (body.Type || '').toLowerCase(), body, get: h => h === 'X-Photon-Token' ? token : undefined }, res);
       return res;
     },
   };
@@ -285,3 +285,24 @@ test('Photon custom authentication turns a Firebase token into the Photon UserId
     assert.equal((await call({})).ResultCode, 3);
   } finally { f.restore(); }
 });
+
+test("Photon's real leave types (LeaveRequest, TimeoutDisconnect …) are recorded as leaves", async () => {
+  const f = fixture();
+  try {
+    const { matchId } = await startedDuel(f);
+    f.advance(4000 + 31000);
+    // As Photon sends it: the configured path, its own finer Type.
+    await f.hook({ Type: 'LeaveRequest', GameId: `pd_${matchId}`, UserId: 'bob', ActorNr: 2, IsInactive: false }, undefined, '/leave');
+    assert.equal(f.docs.get(`liveDuels/${matchId}`).room.leaves.bob.inactive, false);
+    f.advance(1000);
+    await f.hook({ Type: 'Join', GameId: `pd_${matchId}`, UserId: 'bob', ActorNr: 2 }, undefined, '/join');
+    f.advance(1000);
+    await f.hook({ Type: 'TimeoutDisconnect', GameId: `pd_${matchId}`, UserId: 'bob', ActorNr: 2, IsInactive: true }, undefined, '/leave');
+    const alice = await finish(f, 'alice', matchId, 12, { durationSec: 30, opponentLeft: true, opponentReps: 9 });
+    assert.equal(alice.state, 'settled'); assert.equal(alice.walkover, true);
+    // No usable path (an older config): Photon's own Type still decides.
+    await f.hook({ Type: 'ClientDisconnect', GameId: `pd_${matchId}`, UserId: 'alice', ActorNr: 1 }, undefined, '/');
+    assert.ok(f.docs.get(`liveDuels/${matchId}`).room.leaves.alice);
+  } finally { f.restore(); }
+});
+

@@ -235,8 +235,9 @@ exports.onMatchFinished = functions.https.onRequest(async (req, res) => {
   if (req.method !== 'POST') return res.status(405).send('POST only');
   const body = req.body || {};
   const id = R.matchIdFromRoom(body.GameId);
-  const type = String(body.Type || req.path.replace(/^\//, '')).toLowerCase();
-  functions.logger.info('photon webhook', { type, path: req.path, room: String(body.GameId || '').slice(0, 40), actor: body.ActorNr ?? null });
+  const type = eventKind(req.path, body.Type);
+  functions.logger.info('photon webhook', { type, photonType: String(body.Type || ''), path: req.path,
+    room: String(body.GameId || '').slice(0, 40), actor: body.ActorNr ?? null });
   if (!id) return res.json({ ResultCode: 0, Message: 'Not a live duel room.' });
   await db.runTransaction(async tx => {
     const ref = matchRef(id);
@@ -256,6 +257,18 @@ exports.onMatchFinished = functions.https.onRequest(async (req, res) => {
   });
   return res.json({ ResultCode: 0, Message: 'OK' });
 });
+
+// Which hook fired. The path we configured (PathJoin "join" …) says it; Photon's own Type is
+// finer-grained and differs by event — a leave arrives as "LeaveRequest", "ClientDisconnect",
+// "TimeoutDisconnect", "PlayerTtlTimedOut"…, a persistent close as "Save".
+function eventKind(path, photonType) {
+  const fromPath = String(path || '').replace(/^\/+|\/+$/g, '').toLowerCase();
+  if (['create', 'join', 'leave', 'close'].includes(fromPath)) return fromPath;
+  const t = String(photonType || '').toLowerCase();
+  if (t === 'create' || t === 'join') return t;
+  if (t === 'close' || t === 'save') return 'close';
+  return t ? 'leave' : '';
+}
 
 // Photon custom authentication: the client passes its Firebase ID token as "token"; the Photon
 // UserId becomes the verified uid, so webhook events name real accounts.
