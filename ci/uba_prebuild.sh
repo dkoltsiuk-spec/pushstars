@@ -29,6 +29,10 @@ else
   cp -R "$PKGDIR"/. "$DEST"/
 fi
 
+# The plugin's own tests carry a Resources folder (lenna.png, thumb-up.jpg, an mp3), and every
+# Resources folder ships in the player whether anything loads it or not — ~2 MB of nothing.
+rm -rf "$DEST/Tests"
+
 echo "[prebuild] copying models into StreamingAssets..."
 mkdir -p Assets/StreamingAssets
 cp -f "$DEST/PackageResources/MediaPipe/$MODEL" "Assets/StreamingAssets/$MODEL"

@@ -18,7 +18,8 @@ namespace PushStars.Editor
     /// <para>Left uncompressed on purpose: anything under <see cref="MinSide"/> px (icons and
     /// buttons — 22 MB between all of them, and where block artefacts would show first), and
     /// glows, which block compression turns into a grid of squares (see
-    /// <see cref="SpriteImporter.IsSoftGradient"/>).</para>
+    /// <see cref="SpriteImporter.IsSoftGradient"/>). Large glows are capped at
+    /// <see cref="GlowMaxSize"/> instead.</para>
     ///
     /// Menu: Tools → Push Stars → Compress Large Textures For Mobile. Also run by every build.
     /// </summary>
@@ -47,6 +48,12 @@ namespace PushStars.Editor
                 {
                     string path = AssetDatabase.GUIDToAssetPath(guid);
                     if (!(AssetImporter.GetAtPath(path) is TextureImporter importer)) continue;
+                    if (NeedsGlowCap(importer, path))
+                    {
+                        CapGlow(importer);
+                        changed.Add(path + " (glow, RGBA32 ≤ " + GlowMaxSize + ")");
+                        continue;
+                    }
                     if (!NeedsOverride(importer, path)) continue;
 
                     foreach (var platform in Platforms)
@@ -77,6 +84,43 @@ namespace PushStars.Editor
 
         private static bool NeedsOverride(TextureImporter importer, string path)
         {
+            if (!Uncompressed(importer, path)) return false;
+            if (IsSoft(path)) return false;
+
+            importer.GetSourceTextureWidthAndHeight(out int width, out int height);
+            return Mathf.Min(Mathf.Max(width, height), importer.maxTextureSize) >= MinSide;
+        }
+
+        /// <summary>
+        /// Glows stay uncompressed but not at full size: a haze has no detail to lose, and the two
+        /// onboarding glows at 1588×2060 RGBA were 24 MB of the build. The sprite keeps its size on
+        /// screen — Unity scales the sprite's pixels-per-unit with the clamp (measured: native size
+        /// 1588 before and after).
+        /// </summary>
+        private const int GlowMaxSize = 1024;
+
+        private static bool NeedsGlowCap(TextureImporter importer, string path)
+        {
+            if (!Uncompressed(importer, path) || !IsSoft(path)) return false;
+            importer.GetSourceTextureWidthAndHeight(out int width, out int height);
+            return Mathf.Min(Mathf.Max(width, height), importer.maxTextureSize) > GlowMaxSize;
+        }
+
+        private static void CapGlow(TextureImporter importer)
+        {
+            foreach (var platform in Platforms)
+                importer.SetPlatformTextureSettings(new TextureImporterPlatformSettings
+                {
+                    name           = platform,
+                    overridden     = true,
+                    maxTextureSize = GlowMaxSize,
+                    format         = TextureImporterFormat.RGBA32,
+                });
+            importer.SaveAndReimport();
+        }
+
+        private static bool Uncompressed(TextureImporter importer, string path)
+        {
             if (importer.textureCompression != TextureImporterCompression.Uncompressed) return false;
             // Player Settings cuts the launcher icons from this texture.
             if (path.StartsWith(AppIconFolder)) return false;
@@ -84,14 +128,16 @@ namespace PushStars.Editor
             // An existing override is somebody's decision (SpriteImporter keeps glows RGBA32).
             foreach (var platform in Platforms)
                 if (importer.GetPlatformTextureSettings(platform).overridden) return false;
+            return true;
+        }
 
+        private static bool IsSoft(string path)
+        {
             string name = Path.GetFileNameWithoutExtension(path).ToLowerInvariant();
-            if (SpriteImporter.IsSoftGradient(name)) return false;
+            if (SpriteImporter.IsSoftGradient(name)) return true;
             foreach (var part in SoftNameParts)
-                if (name.Contains(part)) return false;
-
-            importer.GetSourceTextureWidthAndHeight(out int width, out int height);
-            return Mathf.Min(Mathf.Max(width, height), importer.maxTextureSize) >= MinSide;
+                if (name.Contains(part)) return true;
+            return false;
         }
     }
 }
