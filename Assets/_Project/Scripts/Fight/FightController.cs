@@ -593,11 +593,7 @@ namespace PushStars.Fight
                 if (this == null) return;
                 _hud.HideBanner();
             }
-            if (_liveLink != null)
-            {
-                await FinishLiveOnServer(myReps);
-                if (this == null) return;
-            }
+            if (_liveLink != null) FinishLiveInBackground(myReps);
 
             if (_mode == FightMode.Training) FinishTrainingSet(myReps, xp);
             else if (_mode == FightMode.LevelTest) FinishLevelTest(myReps, xp);
@@ -635,10 +631,9 @@ namespace PushStars.Fight
             if (BossHealth != null) { win = BossHealth.PlayerWins; draw = BossHealth.Draw; }
             if (_liveLink != null)
             {
-                // The server's verdict when it has one; a friend who forfeited loses meanwhile.
-                if (_liveReceipt != null && _liveReceipt.Settled)
-                { oppReps = _liveReceipt.opponentReps; win = _liveReceipt.won; draw = _liveReceipt.draw; }
-                else if (_liveWalkover) { win = true; draw = false; }
+                // Decided on the count both phones watched live; the server settles the same two
+                // timelines in the background. An opponent who left forfeits.
+                if (_liveWalkover) { win = true; draw = false; }
             }
             bool ghost = _mode == FightMode.Ghost;
 

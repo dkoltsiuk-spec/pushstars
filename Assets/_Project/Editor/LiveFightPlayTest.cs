@@ -27,8 +27,13 @@ namespace PushStars.Editor
         private static LiveDuelLink _peer, _me;
         private static float _last, _nextPose, _nextScore, _nextLog, _startedAt;
         private static int _peerReps, _myReps;
+        /// <summary>The scripted opponent's pace; the same as the player's 2 s makes a draw.</summary>
+        public static float PeerRepSec = 2f;
+        public static int PeerReps = 20;
         private static float _nextMyRep = float.MaxValue;
-        private static bool _running;
+        private static bool _running, _summaryLogged;
+        private static string _scene = "", _pressed = "";
+        private static float _sceneAt;
         private static readonly float[] Shots = { 3f, 8f, 11f, 12.5f, 15f, 20f };
         private static int _shots;
 
@@ -98,7 +103,7 @@ namespace PushStars.Editor
             _peer.Open("t", now); _me.Open("t", now);
             LiveDuelLink.SetActive(_me);
             FightRequest.Live(_me, ranked: true);
-            _shots = 0;
+            _shots = 0; _summaryLogged = false; _scene = _pressed = "";
             _last = _nextPose = _nextLog = _startedAt = now; _nextScore = _nextMyRep = float.MaxValue; _peerReps = _myReps = 0;
             _running = true;
             SceneManager.sceneLoaded += OnLoaded;
@@ -166,7 +171,7 @@ namespace PushStars.Editor
                 Log($"my rep {_myReps} done");
             }
             bool live = _peer.HasStart && _peer.SecondsUntilStart <= 0f;
-            if (live && _nextScore == float.MaxValue) _nextScore = now + 1.5f;
+            if (live && _nextScore == float.MaxValue) _nextScore = now + PeerRepSec;
             // The opponent's body is this player's own, echoed back: real frames from the
             // player stage, re-stamped on the opponent's clock — what a second phone would send.
             var heard = _peer.PeerPose.Clip.Frames;
@@ -182,11 +187,25 @@ namespace PushStars.Editor
                 });
             }
             if (_shots < Shots.Length && now - _startedAt >= Shots[_shots]) Capture($"{_shots++:00}_t{now - _startedAt:00}");
-            if (live && now >= _nextScore && _peerReps < 30)
+            if (live && now >= _nextScore && _peerReps < PeerReps)
             {
-                _nextScore = now + 1.5f;
+                _nextScore = now + PeerRepSec;
                 _peer.SendScore(++_peerReps, 0, 80, -_peer.SecondsUntilStart);
             }
+            if (!_summaryLogged && SceneManager.GetActiveScene().name != FightConfig.FightSceneName && FightScreenNavigation.Result != null)
+            {
+                _summaryLogged = true;
+                var r = FightScreenNavigation.Result; var sum = FightScreenNavigation.RewardSummary;
+                Log($"RESULT win={r.Win} draw={r.Draw} me={r.MyReps} opp={r.OppReps} trophies={r.Trophies} status={r.LeagueStatus} | " +
+                    $"aura={sum.Aura} case={sum.HasCase} moments=[{string.Join("; ", sum.AuraMoments ?? new string[0])}] scene={SceneManager.GetActiveScene().name}");
+            }
+            // After the fight: press on through the reward screens like a player would.
+            string scene = SceneManager.GetActiveScene().name;
+            if (scene != _scene) { _scene = scene; _sceneAt = now; Log("scene -> " + scene); }
+            if (scene == "RewardSummary" && now - _sceneAt > 5f && _pressed != scene)
+            { _pressed = scene; Object.FindFirstObjectByType<RewardScreen>()?.Home(); Log("pressed continue on " + scene); }
+            if (scene == "AuraReward" && now - _sceneAt > 8f && _pressed != scene)
+            { _pressed = scene; Object.FindFirstObjectByType<AuraRewardScreen>()?.Collect(); Log("collected aura"); }
             if (now >= _nextLog)
             {
                 _nextLog = now + 1f;

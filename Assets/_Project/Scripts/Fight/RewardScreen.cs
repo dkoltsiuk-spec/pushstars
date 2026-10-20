@@ -260,10 +260,12 @@ namespace PushStars.Fight
             FillOutcome(result, data);
             if (!string.IsNullOrEmpty(result?.LeagueStatus)) Set(_summaryUi.Subtitle, result.LeagueStatus);
             var theme = Resources.Load<PushStarsTheme>("PushStarsTheme");
-            Set(_summaryUi.ContinueLabel, assessment ? data.Aura != 0 ? "CONTINUE" : hasAward ? "OPEN CASE" : "HOME" : "HOME");
+            // Any Aura the result changed has its own screen next; a duel's case otherwise waits
+            // behind its button, the assessment's opens here.
+            Set(_summaryUi.ContinueLabel, data.Aura != 0 ? "CONTINUE" : assessment && hasAward ? "OPEN CASE" : "HOME");
             if (_summaryUi.ContinueIcon != null)
-                _summaryUi.ContinueIcon.sprite = !assessment ? theme?.IconHouse : data.Aura != 0 ? theme?.IconAura
-                    : hasAward ? Resources.Load<Sprite>("Rewards/CaseCommon") : theme?.IconHouse;
+                _summaryUi.ContinueIcon.sprite = data.Aura != 0 ? theme?.IconAura
+                    : assessment && hasAward ? Resources.Load<Sprite>("Rewards/CaseCommon") : theme?.IconHouse;
             if (_summaryUi.CaseAwardButton != null) _summaryUi.CaseAwardButton.gameObject.SetActive(hasAward);
             // Keep the baked image for Edit Mode/fallback; this scene owns a live idle stage.
             if (_summaryUi.Portrait != null)
@@ -947,18 +949,19 @@ namespace PushStars.Fight
             if (_summaryEntering) { _summarySkip = true; return; }
             if (_screen == FightScreen.RewardSummary)
             {
-                // Fight rewards are already credited; HOME returns to the hub. The initial
-                // assessment retains its guided Aura/case reveal sequence.
-                if (FightScreenNavigation.Result?.Mode != FightMode.LevelTest)
-                {
-                    LeaveHome();
-                    return;
-                }
-                // Any Aura this fight changed (plus or minus) gets its own screen, which then continues to the case.
+                // Any Aura this fight changed (plus or minus) gets its own screen, which then
+                // continues to this result's case or home. Rewards are already credited.
                 if (_summary.Aura != 0)
                 {
                     // Straight to black: the stamp's own riser and slam come out of the dark.
                     FightScreenNavigation.Navigate(FightScreen.AuraReward, .22f, ScreenTransition.Reveal.Instant);
+                    return;
+                }
+                // Without Aura a duel goes home; its case waits behind the summary's case button.
+                // The initial assessment keeps its guided case reveal.
+                if (FightScreenNavigation.Result?.Mode != FightMode.LevelTest)
+                {
+                    LeaveHome();
                     return;
                 }
                 bool hasAward = FightScreenNavigation.IsPreview ? _sampleSummary.HasCase :

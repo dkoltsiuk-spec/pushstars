@@ -26,7 +26,6 @@ namespace PushStars.Fight
     {
         private LiveDuelLink _liveLink;
         private LiveOpponent _live;
-        private LiveDuelReceipt _liveReceipt;
         private bool _liveWalkover, _liveStartReported, _liveAborting, _liveRanked;
         private int _liveSentReps = -1, _liveSentClaps = -1, _liveSeenPeerReps = -1;
         private float _liveAbortAt;
@@ -173,40 +172,38 @@ namespace PushStars.Fight
             }
         }
 
-        /// <summary>Sends this phone's timeline; waits a little for the friend's to land so the
-        /// result screen can show the server's verdict rather than a guess.</summary>
-        private async Task FinishLiveOnServer(int myReps)
+        /// <summary>Tells the other phone this set is over and hands the timeline to the server in
+        /// the background. The result screen opens at once on this phone's own count (what both
+        /// phones watched live); the server checks both timelines whenever they land.</summary>
+        private void FinishLiveInBackground(int myReps)
         {
             LiveDuelDiagnostics.Mark("fight:finish");
             _live?.StopPlayback();
             _liveLink.Finish(myReps);
-            _hud.ShowBanner("SAVING DUEL RESULT…", FightHud.BannerTone.Warn);
             float duration = Mathf.Clamp(Time.time - _liveStartTime, 1, FightConfig.DuelDurationSec);
+            SendLiveResult(_liveLink.MatchId, _repTimes.ToArray(), _clapTimes.ToArray(), duration, _opponent.Reps, _liveWalkover);
+        }
+
+        /// <summary>Static on purpose: it outlives the fight screen, which has moved on by then.</summary>
+        private static async void SendLiveResult(string matchId, float[] repTimes, float[] clapTimes, float duration,
+            int opponentReps, bool opponentLeft)
+        {
             for (int attempt = 0; attempt < 6; attempt++)
             {
                 try
                 {
-                    _liveReceipt = await LiveDuelClient.Finish(_liveLink.MatchId, _repTimes.ToArray(), _clapTimes.ToArray(),
-                        duration, _opponent.Reps, _liveWalkover);
-                    if (_liveReceipt != null && _liveReceipt.Settled) break;
+                    var receipt = await LiveDuelClient.Finish(matchId, repTimes, clapTimes, duration, opponentReps, opponentLeft);
+                    Debug.Log($"[LiveDuel] result sent: {receipt?.state} won={receipt?.won} reps={receipt?.reps}:{receipt?.opponentReps}");
+                    return;
                 }
-                catch (LeagueCallException e) when (e.Permanent) { Debug.LogWarning("[LiveDuel] result refused: " + e.Message); break; }
+                catch (LeagueCallException e) when (e.Permanent) { Debug.LogWarning("[LiveDuel] result refused: " + e.Message); return; }
                 catch (Exception e) { Debug.LogWarning("[LiveDuel] result: " + e.Message); }
-                if (this == null) return;
-                await Task.Delay(2500);
-                if (this == null) return;
+                await Task.Delay(3000 * (attempt + 1));
             }
-            if (this != null) _hud.HideBanner();
         }
 
-        private string LiveStatus()
-        {
-            string duel = _liveRanked ? "LIVE DUEL" : "FRIEND DUEL", who = _liveRanked ? "OPPONENT" : "FRIEND";
-            return _liveReceipt == null ? $"{duel} · RESULT NOT SAVED"
-                : !_liveReceipt.Settled ? (_liveWalkover ? $"{who} LEFT · RESULT PENDING" : $"{duel} · WAITING FOR {who}'S RESULT")
-                : _liveReceipt.walkover ? (_liveReceipt.won ? $"{who} LEFT · WIN CONFIRMED" : "YOU LEFT · LOSS RECORDED")
-                : $"{duel} · RESULT CONFIRMED";
-        }
+        private string LiveStatus() =>
+            _liveWalkover ? (_liveRanked ? "OPPONENT LEFT" : "FRIEND LEFT") : _liveRanked ? "LIVE DUEL" : "FRIEND DUEL";
 
         private void ReleaseLive()
         {
