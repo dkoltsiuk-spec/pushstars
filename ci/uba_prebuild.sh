@@ -71,5 +71,36 @@ elif [ ! -f "Assets/GoogleService-Info.plist" ]; then
 PLIST
 fi
 
+# Resources/PostHogConfig.json (gitignored): without it Analytics sends nothing, silently.
+# Source: the UBA env var POSTHOG_API_KEY — the "phc_…" project key of PushUp Stars (310522),
+# public by design, so plain text, no base64. POSTHOG_HOST is optional (EU by default).
+# A local file is kept when the variable is unset.
+POSTHOG_CONFIG="Assets/_Project/Resources/PostHogConfig.json"
+if [ -n "${POSTHOG_API_KEY:-}" ]; then
+  POSTHOG_API_KEY="$(printf '%s' "$POSTHOG_API_KEY" | tr -d '[:space:]')"
+  POSTHOG_HOST="${POSTHOG_HOST:-https://eu.i.posthog.com}"
+  if ! printf '%s' "$POSTHOG_API_KEY" | grep -Eq '^phc_[A-Za-z0-9_-]+$'; then
+    echo "[prebuild] ERROR: POSTHOG_API_KEY is not a phc_ project key" >&2
+    exit 1
+  fi
+  if ! printf '%s' "$POSTHOG_HOST" | grep -Eq '^https://[A-Za-z0-9.-]+/?$'; then
+    echo "[prebuild] ERROR: POSTHOG_HOST must look like https://eu.i.posthog.com" >&2
+    exit 1
+  fi
+  echo "[prebuild] writing PostHogConfig.json from env var (key ${POSTHOG_API_KEY:0:8}…, host $POSTHOG_HOST)"
+  mkdir -p "$(dirname "$POSTHOG_CONFIG")"
+  cat > "$POSTHOG_CONFIG" <<JSON
+{
+  "apiKey": "$POSTHOG_API_KEY",
+  "host": "$POSTHOG_HOST",
+  "sendFromEditor": false
+}
+JSON
+elif [ -f "$POSTHOG_CONFIG" ]; then
+  echo "[prebuild] PostHogConfig.json already present — keeping it"
+else
+  echo "[prebuild] WARNING: POSTHOG_API_KEY not set — this build sends NO analytics"
+fi
+
 echo "[prebuild] done."
 ls -la "$DEST/Runtime/Plugins" 2>/dev/null | head

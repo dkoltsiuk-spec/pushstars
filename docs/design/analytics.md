@@ -19,8 +19,14 @@
   ```json
   { "apiKey": "phc_…", "host": "https://eu.i.posthog.com", "sendFromEditor": false }
   ```
-  Нет файла — ничего не отправляется. **CI (Codemagic): записать файл из секрета перед сборкой**,
-  иначе релиз уйдёт без аналитики.
+  Нет файла — ничего не отправляется (так и было в сборках UBA до 2026-10-20: с телефонов с 18.10 не
+  пришло ни одного события). **UBA: `ci/uba_prebuild.sh` пишет файл из переменной окружения
+  `POSTHOG_API_KEY`** — значение `phc_…` из `PostHogConfig.json` / PostHog ▸ Project settings ▸
+  Project API key, как есть, без base64 (ключ проекта публичный по замыслу). Необязательная
+  `POSTHOG_HOST` (по умолчанию `https://eu.i.posthog.com`). Задать в **каждом** таргете UBA
+  (iOS Ad Hoc, iOS TestFlight, Android) ▸ Advanced settings ▸ Environment variables. Без переменной
+  в логе сборки — `[prebuild] WARNING: POSTHOG_API_KEY not set — this build sends NO analytics`;
+  при удачной записи — `[prebuild] writing PostHogConfig.json from env var (key phc_xxxx…)`.
 - Editor: отправляет только при `sendFromEditor: true` (несколько сессий гоняют Play Mode в одном
   Editor — иначе это «один очень верный игрок»). Все события несут `is_editor`, `dev_build`;
   плитки дашборда фильтруют `is_editor` сами (фильтр тестовых аккаунтов проекта не трогали — у ключа MCP нет права project:write).
