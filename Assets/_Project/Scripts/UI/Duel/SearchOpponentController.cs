@@ -136,7 +136,7 @@ namespace PushStars.UI
         {
             float started = Time.realtimeSinceStartup;
             LiveQueueGhost stranger = null;
-            if (LiveDuelService.Available && Application.CanStreamedLevelBeLoaded(FightConfig.FightSceneName))
+            if (LiveDuelService.Available && Application.CanStreamedLevelBeLoaded(FightConfig.PreparationSceneName))
             {
                 var search = _liveSearch = LiveDuelService.Search(GhostStore.Load()?.reps ?? LocalProfile.BestReps);
                 while (search.State == LiveQueueSearch.Result.Searching)
@@ -146,13 +146,14 @@ namespace PushStars.UI
                 }
                 if (search.State == LiveQueueSearch.Result.Live)
                 {
-                    // Both phones are in the room and ready: the same hand-over as a friend duel.
+                    // Both phones are in the room: the preparation screen's READY opens the fight
+                    // once both have pressed it.
                     ShowFoundCard(search.OpponentName);
                     yield return new WaitForSeconds(FightConfig.FoundPauseSec);
                     _liveSearch = null;
                     _searchRoutine = null;
                     FightRequest.Live(search.Link, ranked: true);
-                    OtaSceneLoader.LoadScene(FightConfig.FightSceneName);
+                    OtaSceneLoader.LoadScene(FightConfig.PreparationSceneName);
                     yield break;
                 }
                 _liveSearch = null;

@@ -375,6 +375,7 @@ namespace PushStars.Editor
                 "Queue pair is not one room with the waiting player hosting.");
             Require(alice.OpponentName == "BOB" && bob.OpponentName == "ALICE" && bob.Link.Peer.Hero == 7, "Queue opponents not introduced.");
             Require(q.Cancelled.Count == 0, "A met pair cancelled its match.");
+            Require(!alice.Link.Local.Ready && !bob.Link.Local.Ready, "READY belongs to the preparation screen, not the search.");
             FightRequest.Live(bob.Link, ranked: true);
             Require(FightRequest.IsLiveDuel && FightRequest.IsRankedLive && FightRequest.Mode == FightMode.Ghost, "Queue duel request is not ranked live.");
             FightRequest.Live(bob.Link);

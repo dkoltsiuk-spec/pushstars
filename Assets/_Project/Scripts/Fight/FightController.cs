@@ -512,6 +512,7 @@ namespace PushStars.Fight
             _clapRepAt = -1f;
             BeginClapImpact();
             _opponent?.Begin();
+            if (_liveLink != null) LiveDuelDiagnostics.Mark("fight:set-begin");
             _hud.FlashGo();
         }
 

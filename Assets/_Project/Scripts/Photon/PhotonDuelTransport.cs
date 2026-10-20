@@ -24,7 +24,9 @@ namespace PushStars.Photon
     /// what that means.</para>
     ///
     /// <para><b>Loading screens.</b> A background timer sends acknowledgements when the main
-    /// thread stalls (scene loads), so the server does not time this phone out mid-load.</para>
+    /// thread stalls (scene loads), so the server does not time this phone out mid-load. It never
+    /// touches the peer while the main thread does: every main-thread use holds <c>_peerLock</c>,
+    /// and the timer only tries it.</para>
     /// </summary>
     public sealed class PhotonDuelTransport : IDuelTransport, IConnectionCallbacks, IMatchmakingCallbacks, IInRoomCallbacks, IOnEventCallback
     {
@@ -36,6 +38,7 @@ namespace PushStars.Photon
         private float _lostAt = -1f, _nextRetry;
         private Timer _keepAlive;
         private int _lastServiceTick;
+        private readonly object _peerLock = new object();
 
         public DuelLinkStatus Status { get; private set; } = DuelLinkStatus.Idle;
         public string Error { get; private set; } = "";
@@ -80,7 +83,7 @@ namespace PushStars.Photon
             Status = DuelLinkStatus.Connecting;
             _lastServiceTick = Environment.TickCount;
             _keepAlive = new Timer(KeepAlive, null, 100, 100);
-            Connect();
+            lock (_peerLock) Connect();
         }
 
         private void Connect()
@@ -102,24 +105,30 @@ namespace PushStars.Photon
 
         public void Send(byte code, byte[] payload, bool reliable)
         {
-            if (!_client.InRoom) return;
-            _client.OpRaiseEvent(code, payload, RaiseEventOptions.Default,
-                reliable ? SendOptions.SendReliable : SendOptions.SendUnreliable);
+            lock (_peerLock)
+            {
+                if (!_client.InRoom) return;
+                _client.OpRaiseEvent(code, payload, RaiseEventOptions.Default,
+                    reliable ? SendOptions.SendReliable : SendOptions.SendUnreliable);
+            }
         }
 
         public void Service()
         {
             _lastServiceTick = Environment.TickCount;
             if (Status == DuelLinkStatus.Closed) return;
-            _client.Service();
-            if (Status != DuelLinkStatus.Reconnecting && !(Status == DuelLinkStatus.Connecting && _lostAt >= 0)) return;
-            float now = Time.realtimeSinceStartup;
-            if (now - _lostAt > GiveUpSec) { Fail("Connection lost. Room closed."); return; }
-            if (now < _nextRetry || _client.IsConnected) return;
-            _nextRetry = now + RetryEverySec;
-            if (_everJoined && !_rejoinByName && _client.ReconnectAndRejoin()) return;
-            _rejoinByName = _everJoined;
-            Connect();
+            lock (_peerLock)
+            {
+                _client.Service();
+                if (Status != DuelLinkStatus.Reconnecting && !(Status == DuelLinkStatus.Connecting && _lostAt >= 0)) return;
+                float now = Time.realtimeSinceStartup;
+                if (now - _lostAt > GiveUpSec) { Fail("Connection lost. Room closed."); return; }
+                if (now < _nextRetry || _client.IsConnected) return;
+                _nextRetry = now + RetryEverySec;
+                if (_everJoined && !_rejoinByName && _client.ReconnectAndRejoin()) return;
+                _rejoinByName = _everJoined;
+                Connect();
+            }
         }
 
         public void Close()
@@ -128,6 +137,7 @@ namespace PushStars.Photon
             _closing = true; _wantRoom = false;
             Status = DuelLinkStatus.Closed;
             _keepAlive?.Dispose(); _keepAlive = null;
+            lock (_peerLock)
             try
             {
                 if (_client.InRoom) _client.OpLeaveRoom(false);
@@ -155,8 +165,10 @@ namespace PushStars.Photon
         {
             try
             {
-                if (_closing || !_client.IsConnected) return;
-                if (Environment.TickCount - Volatile.Read(ref _lastServiceTick) > 200) _client.LoadBalancingPeer.SendAcksOnly();
+                if (_closing || Environment.TickCount - Volatile.Read(ref _lastServiceTick) <= 200) return;
+                if (!Monitor.TryEnter(_peerLock)) return;   // the main thread is in the peer right now
+                try { if (!_closing && _client.IsConnected) _client.LoadBalancingPeer.SendAcksOnly(); }
+                finally { Monitor.Exit(_peerLock); }
             }
             catch (Exception) { /* the main thread owns errors */ }
         }

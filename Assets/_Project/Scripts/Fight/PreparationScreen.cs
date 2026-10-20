@@ -1,12 +1,15 @@
 using System.Linq;
 using PushStars.Core;
+using PushStars.Services;
 using PushStars.UI;
 using UnityEngine;
 using UnityEngine.UI;
 
 namespace PushStars.Fight
 {
-    /// <summary>Fills an authored preparation scene; its button chooses where the player goes next.</summary>
+    /// <summary>Fills an authored preparation scene; its button chooses where the player goes next.
+    /// For a live duel from the queue the screen is a ready check: READY tells the other phone,
+    /// and the fight opens on both once both have pressed it.</summary>
     [DefaultExecutionOrder(350)]
     public sealed class PreparationScreen : MonoBehaviour
     {
@@ -37,6 +40,16 @@ namespace PushStars.Fight
                 opponentFlag = null;
                 FightScreenNavigation.PreparedOpponent = null;
             }
+            else if (FightRequest.IsLiveDuel)
+            {
+                _live = FightRequest.LiveDuel;
+                var peer = _live.Peer;
+                opponent = new DuelReadyPanel.Side(string.IsNullOrEmpty(peer?.Name) ? "OPPONENT" : peer.Name,
+                    DuelReadyPanel.Side.Unknown, DuelReadyPanel.Side.Unknown, DuelReadyPanel.Side.Unknown, peer?.Country);
+                opponentFlag = null;
+                _liveDeadline = Time.realtimeSinceStartup + LiveReadySec;
+                LiveDuelDiagnostics.Mark("prep");
+            }
             else if (FightRequest.TestBot != null)
             {
                 var bot = FightRequest.TestBot;
@@ -65,7 +78,7 @@ namespace PushStars.Fight
                 opponentFlag = null;
             }
             _panel.Show(player, opponent, null, opponentFlag, !preview);
-            AttachEmotes(FightRequest.TestBot == null && (FightRequest.Mode != FightMode.Boss || preview));
+            AttachEmotes(FightRequest.TestBot == null && _live == null && (FightRequest.Mode != FightMode.Boss || preview));
         }
 
         /// <summary>The emote button over the card. The two stages are told apart by which
@@ -92,9 +105,63 @@ namespace PushStars.Fight
             if (_homeButton != null) _homeButton.onClick.RemoveListener(Home);
         }
 
+        // ── Live ready check ──────────────────────────────────────────────────────────────────
+        private const float LiveReadySec = 40f;
+        private LiveDuelLink _live;
+        private float _liveDeadline;
+        private bool _liveLeaving;
+
+        private void Update()
+        {
+            if (_live == null || _liveLeaving) return;
+            var peer = _live.Peer;
+            bool gone = _live.Closed || _live.Status == DuelLinkStatus.Closed || _live.PeerGone || _live.VersionMismatch;
+            if (gone || Time.realtimeSinceStartup >= _liveDeadline)
+            {
+                Debug.Log($"[LiveDuel] Ready check ended without a fight (gone={gone}).");
+                LeaveLive();
+                return;
+            }
+            if (!_live.Local.Ready) return;
+            if (peer == null || !peer.Ready)
+            {
+                _panel.SetReadyCaption("WAITING…", false);
+                return;
+            }
+            _liveLeaving = true;   // both ready: the fight takes the link over
+            _panel.SetReadyCaption("GO!", false);
+            FightScreenNavigation.Navigate(_readyDestination);
+        }
+
+        /// <summary>The opponent left, never confirmed, or the player went home: the match is
+        /// released and nobody is charged for it.</summary>
+        private void LeaveLive()
+        {
+            if (_live == null || _liveLeaving) return;
+            _liveLeaving = true;
+            var link = _live;
+            link.Leave();
+            CancelMatch(link.MatchId);
+            FightScreenNavigation.Navigate(FightScreen.Home);
+        }
+
+        private static async void CancelMatch(string matchId)
+        {
+            try { await LiveDuelClient.Cancel(matchId); }
+            catch (System.Exception e) { Debug.LogWarning("[LiveDuel] cancel: " + e.Message); }
+        }
+
         private bool _selectingArena;
         private void Ready()
         {
+            if (_live != null)
+            {
+                if (_liveLeaving) return;
+                _live.SetReady(true);
+                _panel.SetReadyCaption("WAITING…", false);
+                LiveDuelDiagnostics.Mark("prep:ready");
+                return;
+            }
             if (_selectingArena) return;
             if (FightRequest.Mode != FightMode.Ghost && !FightScreenNavigation.IsPreview)
             { FightScreenNavigation.Navigate(_readyDestination); return; }
@@ -116,6 +183,10 @@ namespace PushStars.Fight
             ArenaMatch.PresentationComplete = true;
             FightScreenNavigation.Navigate(_readyDestination);
         }
-        private void Home() => FightScreenNavigation.Navigate(FightScreen.Home);
+        private void Home()
+        {
+            if (_live != null) { LeaveLive(); return; }
+            FightScreenNavigation.Navigate(FightScreen.Home);
+        }
     }
 }

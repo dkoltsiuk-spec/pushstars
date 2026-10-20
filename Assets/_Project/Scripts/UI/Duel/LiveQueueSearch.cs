@@ -22,9 +22,8 @@ namespace PushStars.UI
     /// <summary>
     /// One press of "Search opponent" against the live queue: enqueue, poll about once a second for
     /// <see cref="SearchSec"/>, and on a pairing open the match's room and wait — at most
-    /// <see cref="RoomSec"/> — for the stranger to be there and ready. Ends in
-    /// <see cref="Result.Live"/> (a link both phones are ready in, fought exactly like a friend
-    /// duel) or <see cref="Result.Fallback"/> (nobody came: the queue place is freed, and
+    /// <see cref="RoomSec"/> — for the stranger to be there. Ends in <see cref="Result.Live"/>
+    /// (a link both phones are in; the preparation screen's READY check comes next) or <see cref="Result.Fallback"/> (nobody came: the queue place is freed, and
     /// <see cref="Ghost"/> is a stranger's best set when the season has one).
     ///
     /// <para>Ticked by its owner every frame; never throws. Every network failure degrades to the
@@ -82,7 +81,7 @@ namespace PushStars.UI
                     if (_enter.Status != TaskStatus.RanToCompletion || _enter.Result == null)
                     { Warn("room", _enter.Exception); Abandon(); return; }
                     Link = _enter.Result;
-                    Link.SetReady(true);
+                    LiveDuelDiagnostics.Mark("search:room");
                     _roomUntil = now + RoomSec;
                     _step = Step.Room;
                     return;
@@ -118,7 +117,7 @@ namespace PushStars.UI
             _nextPoll = now + PollSec;
         }
 
-        /// <summary>Both phones are in the match's room and ready: the fight can open on each.
+        /// <summary>Both phones are in the match's room and have introduced themselves.
         /// A stranger who never arrives, leaves, or runs another app version ends the search.</summary>
         private void TickRoom(float now)
         {
@@ -129,7 +128,7 @@ namespace PushStars.UI
                 return;
             }
             var peer = link.Peer;
-            if (peer == null || !peer.Ready || !link.PeerPresent) return;
+            if (peer == null || !link.PeerPresent) return;
             if (!string.IsNullOrEmpty(peer.Name)) OpponentName = peer.Name;
             State = Result.Live;
         }

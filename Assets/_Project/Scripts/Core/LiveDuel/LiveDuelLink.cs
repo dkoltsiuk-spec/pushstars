@@ -198,7 +198,15 @@ namespace PushStars.Core
             DontDestroyOnLoad(go);
             _instance = go.AddComponent<LiveDuelRunner>();
         }
-        private void Update() => LiveDuelLink.Active?.Tick(Time.realtimeSinceStartup);
+        private void Update()
+        {
+            var link = LiveDuelLink.Active;
+            if (link == null) { LiveDuelDiagnostics.Stop(); return; }
+            LiveDuelDiagnostics.Beat();
+            link.Tick(Time.realtimeSinceStartup);
+        }
         private void OnApplicationQuit() => LiveDuelLink.Active?.Leave();
+        // A paused app is not a frozen one: the watch restarts on the first frame back.
+        private void OnApplicationPause(bool paused) { if (paused) LiveDuelDiagnostics.Stop(); }
     }
 }

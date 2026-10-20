@@ -220,6 +220,15 @@ namespace PushStars.Fight
 
         private static string Number(int value) => value == Side.Unknown ? "—" : value.ToString();
 
+        /// <summary>A live duel waits on the other phone after READY: the button says so.</summary>
+        public void SetReadyCaption(string caption, bool interactable)
+        {
+            if (_readyButton == null) return;
+            _readyButton.interactable = interactable;
+            var label = _readyButton.GetComponentInChildren<TextMeshProUGUI>(true);
+            if (label != null) label.text = caption;
+        }
+
         private void Ready()
         {
             if (OnReady == null) { Hide(); return; }

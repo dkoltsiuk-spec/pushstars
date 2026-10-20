@@ -28,7 +28,7 @@ namespace PushStars.Fight
         private LiveOpponent _live;
         private LiveDuelReceipt _liveReceipt;
         private bool _liveWalkover, _liveStartReported, _liveAborting, _liveRanked;
-        private int _liveSentReps = -1, _liveSentClaps = -1;
+        private int _liveSentReps = -1, _liveSentClaps = -1, _liveSeenPeerReps = -1;
         private float _liveAbortAt;
 
         /// <summary>The set's clock checks against the server's: reps closer than 0.4 s or past 65
@@ -47,6 +47,7 @@ namespace PushStars.Fight
             foreach (var driver in FindObjectsByType<GhostAvatarDriver>(FindObjectsSortMode.None))
                 if (driver.gameObject.scene == gameObject.scene) driver.Follow(_live);
             _live.OnClap += ShowOpponentClap;
+            LiveDuelDiagnostics.Mark("fight:open");
             return true;
         }
 
@@ -70,6 +71,7 @@ namespace PushStars.Fight
             _liveLink.SetArmed(armer.IsArmed);
             if (_liveLink.HasStart)
             {
+                LiveDuelDiagnostics.Mark("fight:countdown");
                 _everArmed = true;
                 ReportLiveStart();
                 _phase = Phase.Countdown;
@@ -108,9 +110,15 @@ namespace PushStars.Fight
         /// has gone for good. Returns true when the set ended.</summary>
         private bool TickLiveConnection()
         {
+            if (_live.Reps != _liveSeenPeerReps)
+            {
+                _liveSeenPeerReps = _live.Reps;
+                LiveDuelDiagnostics.Mark($"fight:set me {_repTimes.Count} peer {_liveSeenPeerReps} @{Time.time - _liveStartTime:0}s");
+            }
             if (_repTimes.Count != _liveSentReps || _clapReps != _liveSentClaps)
             {
                 _liveSentReps = _repTimes.Count; _liveSentClaps = _clapReps;
+                LiveDuelDiagnostics.Mark($"fight:set me {_liveSentReps} peer {_live.Reps} @{Time.time - _liveStartTime:0}s");
                 _liveLink.SendScore(_liveSentReps, _liveSentClaps, AverageForm(), Time.time - _liveStartTime);
             }
             _hud.SetOpponentForm(_live.FormPercent);
@@ -169,6 +177,7 @@ namespace PushStars.Fight
         /// result screen can show the server's verdict rather than a guess.</summary>
         private async Task FinishLiveOnServer(int myReps)
         {
+            LiveDuelDiagnostics.Mark("fight:finish");
             _live?.StopPlayback();
             _liveLink.Finish(myReps);
             _hud.ShowBanner("SAVING DUEL RESULT…", FightHud.BannerTone.Warn);
