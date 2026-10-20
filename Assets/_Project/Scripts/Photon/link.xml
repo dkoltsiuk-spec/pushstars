@@ -3,4 +3,7 @@
   <assembly fullname="Photon3Unity3D" preserve="all" />
   <assembly fullname="PhotonRealtime" preserve="all" />
   <assembly fullname="PushStars.Photon" preserve="all" />
+  <!-- WSS: Photon finds SocketWebTcp by name (Type.GetType), so the linker sees no use of it. -->
+  <assembly fullname="PhotonWebSocket" preserve="all" />
+  <assembly fullname="websocket-sharp" preserve="all" />
 </linker>

@@ -72,7 +72,7 @@ namespace PushStars.Photon
         public PhotonDuelTransport(LiveDuelConfig config)
         {
             _config = config;
-            _client = new LoadBalancingClient(ConnectionProtocol.Udp);
+            _client = new LoadBalancingClient(ConnectionProtocol.WebSocketSecure);
             _client.AddCallbackTarget(this);
         }
 
@@ -98,7 +98,7 @@ namespace PushStars.Photon
             var settings = new AppSettings
             {
                 AppIdRealtime = _config.appId, AppVersion = _config.appVersion,
-                FixedRegion = _config.region, UseNameServer = true, Protocol = ConnectionProtocol.Udp
+                FixedRegion = _config.region, UseNameServer = true, Protocol = ConnectionProtocol.WebSocketSecure
             };
             if (!_client.ConnectUsingSettings(settings)) Lost();
         }

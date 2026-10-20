@@ -159,6 +159,8 @@ namespace PushStars.Editor
             string outPath = GetArg("-buildOutput") ?? "Builds/Android/PushupStars" + (appBundle ? ".aab" : ".apk");
             Directory.CreateDirectory(Path.GetDirectoryName(Path.GetFullPath(outPath)));
             EditorUserBuildSettings.buildAppBundle = appBundle;
+            int previousVersionCode = PlayerSettings.Android.bundleVersionCode;
+            StampAndroidVersionCode();
 
             var options = new BuildPlayerOptions
             {
@@ -171,7 +173,11 @@ namespace PushStars.Editor
 
             BuildReport report;
             try { report = BuildPipeline.BuildPlayer(options); }
-            finally { ClearAndroidSigning(); }
+            finally
+            {
+                ClearAndroidSigning();
+                PlayerSettings.Android.bundleVersionCode = previousVersionCode; // keep ProjectSettings out of the diff
+            }
             if (report.summary.result != BuildResult.Succeeded)
             {
                 Debug.LogError($"[Build] Android build FAILED: {report.summary.result} ({report.summary.totalErrors} errors)");
@@ -310,6 +316,16 @@ namespace PushStars.Editor
             string stamp = System.DateTime.UtcNow.ToString("yyMMdd.HHmm", System.Globalization.CultureInfo.InvariantCulture);
             PlayerSettings.iOS.buildNumber = stamp;
             Debug.Log($"[Build] iOS build number {stamp} (version {PlayerSettings.bundleVersion}).");
+        }
+
+        /// <summary>Google Play takes each version code once, and only above the last. Minutes since
+        /// 2025-01-01 UTC always are, with nothing to keep in sync (fits an int until the 5000s).</summary>
+        private static void StampAndroidVersionCode()
+        {
+            var epoch = new System.DateTime(2025, 1, 1, 0, 0, 0, System.DateTimeKind.Utc);
+            int code = (int)(System.DateTime.UtcNow - epoch).TotalMinutes;
+            PlayerSettings.Android.bundleVersionCode = code;
+            Debug.Log($"[Build] Android version code {code} (version {PlayerSettings.bundleVersion}).");
         }
 
         private const int AndroidTargetSdk = 36;
