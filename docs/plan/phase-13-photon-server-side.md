@@ -41,4 +41,4 @@ Photon sandbox + логи Functions + искусственное закрыти�
 ## Статус (2026-10-19)
 
 Сделан бой с другом по коду — см. [live-duel.md](../architecture/live-duel.md). Вместо очереди RTDB матч создаётся по 6-значному коду (`createLiveDuel` / `joinLiveDuel`). Комнату создают сами клиенты (JoinOrCreate по имени `pd_<matchId>`), поэтому Photon REST и его секрет не нужны. Готовы `onMatchFinished` (вебхук Join/Leave/Close с `X-Photon-Token`, 401 при неверном токене), `photonAuth`, `cleanupMatchmaking`, античит по образцу `finishRankedMatch`, тесты `functions/test/liveDuel.test.js`.
-Не сделано: `matchPlayers` (очередь случайных соперников) и деплой функций.
+2026-10-20: сделана и очередь `matchPlayers` — `enqueueLiveDuel` / `pollLiveDuel` / `leaveLiveDuel` поверх Firestore (`liveDuelQueue/{uid}`), матч `pvp` с трофеями ±25/15; см. раздел «Очередь» в live-duel.md. Деплой очереди — после согласования с владельцем.

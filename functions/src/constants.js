@@ -17,8 +17,14 @@ module.exports = {
   LIVE_DUEL_SETTLE_GRACE_SEC: 120,    // after the set: how long a missing result is waited for
   LIVE_DUEL_REPS_TOLERANCE: 3,        // reps above what the opponent watched live that still count
   // Trophies by live mode. A friend duel is friendly (the room sheet promises "No trophies");
-  // 'pvp' is the queue's ranked live duel when it arrives.
+  // 'pvp' is the random queue's ranked live duel.
   LIVE_DUEL_TROPHIES: { friend: { win: 0, loss: 0 }, pvp: { win: 25, loss: 15 } },
+  // Random live queue (matchPlayers).
+  LIVE_QUEUE_HEARTBEAT_SEC: 5,        // a waiting place stays visible this long after its last poll
+  LIVE_QUEUE_ENTRY_TTL_SEC: 60,       // cleanup removes a place this long after its last write
+  LIVE_QUEUE_ROOM_TTL_SEC: 90,        // a queue match nobody started expires
+  LIVE_QUEUE_POOL: 10,                // waiting places read per pairing attempt
+  LIVE_QUEUE_GHOST_POOL: 50,          // season rows read to find a stranger's ghost after a miss
   GHOST_MAX_FILE_BYTES: 204800, // 200 KB
   LEADERBOARD_CACHE_SEC: 60,
 

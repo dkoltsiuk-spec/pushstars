@@ -5,6 +5,7 @@ using UnityEngine.SceneManagement;
 using UnityEngine.UI;
 using PushStars.Core;
 using PushStars.OTA;
+using PushStars.Services;
 
 namespace PushStars.UI
 {
@@ -19,11 +20,14 @@ namespace PushStars.UI
     ///     back forward.
     ///   • While open, <see cref="LoadingVsRing"/> spins the dashed VS ring.
     ///
-    /// The spinner is not pure cosmetics — after <see cref="FightConfig.SearchDelaySec"/> an opponent
-    /// is found (the player's own best recording, see <see cref="GhostStore"/>), the card flips to
-    /// СОПЕРНИК НАЙДЕН and the Fight scene loads. The found-state UI is built at runtime from the
-    /// overlay's own Title label, so the serialized Main scene needs no regeneration. Phase 12.5
-    /// replaces the fixed delay with the real ladder (live queue → other players' ghosts → bot).
+    /// The spinner is not pure cosmetics — it is the search ladder: with a live transport in the
+    /// build (<see cref="LiveDuelService.Available"/>) the player waits in the random live queue
+    /// for up to <see cref="LiveQueueSearch.SearchSec"/>; two players searching at the same moment
+    /// meet in a ranked live duel. When nobody comes, the opponent is another player's best set
+    /// (handed back by the queue), else the player's own best recording (<see cref="GhostStore"/>).
+    /// Either way the card flips to OPPONENT FOUND and the fight loads. The found-state UI is built
+    /// at runtime from the overlay's own Title label, so the serialized Main scene needs no
+    /// regeneration.
     ///
     /// Lives on a small always-active GameObject so it keeps running while the overlay
     /// itself is toggled on/off.
@@ -54,6 +58,7 @@ namespace PushStars.UI
 
         // ── Boss matchmaking state (phase 08.9) ──
         private Coroutine _searchRoutine;
+        private LiveQueueSearch _liveSearch; // the live queue part of the search, while it runs
         private TextMeshProUGUI _title;      // the overlay's "ПОИСК СОПЕРНИКА" label (found by name)
         private string _titleOriginalText;
         private TextMeshProUGUI _bossLabel;  // runtime clone of the title showing the boss name
@@ -110,6 +115,9 @@ namespace PushStars.UI
             _open = false;
 
             if (_searchRoutine != null) { StopCoroutine(_searchRoutine); _searchRoutine = null; }
+            // Leaving the screen leaves the queue, or the room a stranger is waiting in.
+            _liveSearch?.Cancel();
+            _liveSearch = null;
             ResetFoundCard();
 
             if (_juicy != null) _juicy.PlayOut(() => { if (_overlay != null) _overlay.SetActive(false); });
@@ -118,15 +126,41 @@ namespace PushStars.UI
             RecedeMain(false);
         }
 
-        // ── Matchmaking: delay → "СОПЕРНИК НАЙДЕН: <имя>" → Fight scene ────────────────
+        // ── Matchmaking: live queue → "OPPONENT FOUND: <имя>" → Fight scene ─────────────
         //
-        // The opponent is the player's own best recorded set. Until real players are in the pool
-        // that IS the match: a duel against your strongest self, fought in real time. A player with
-        // no recording yet is sent to the level test instead of being told "nobody found" — the
-        // search screen always ends in a set.
+        // First a real person: someone pressing search at the same moment. Nobody → another
+        // player's best set, else the player's own (a duel against your strongest self, fought in
+        // real time). A player with no recording yet is sent to the level test instead of being
+        // told "nobody found" — the search screen always ends in a set.
         private IEnumerator SearchRoutine()
         {
-            yield return new WaitForSeconds(FightConfig.SearchDelaySec);
+            float started = Time.realtimeSinceStartup;
+            LiveQueueGhost stranger = null;
+            if (LiveDuelService.Available && Application.CanStreamedLevelBeLoaded(FightConfig.FightSceneName))
+            {
+                var search = _liveSearch = LiveDuelService.Search(GhostStore.Load()?.reps ?? LocalProfile.BestReps);
+                while (search.State == LiveQueueSearch.Result.Searching)
+                {
+                    search.Tick(Time.realtimeSinceStartup);
+                    yield return null;
+                }
+                if (search.State == LiveQueueSearch.Result.Live)
+                {
+                    // Both phones are in the room and ready: the same hand-over as a friend duel.
+                    ShowFoundCard(search.OpponentName);
+                    yield return new WaitForSeconds(FightConfig.FoundPauseSec);
+                    _liveSearch = null;
+                    _searchRoutine = null;
+                    FightRequest.Live(search.Link, ranked: true);
+                    OtaSceneLoader.LoadScene(FightConfig.FightSceneName);
+                    yield break;
+                }
+                _liveSearch = null;
+                stranger = search.Ghost;
+            }
+            // The ring always spins a moment, even when the queue answered at once.
+            float rest = FightConfig.SearchDelaySec - (Time.realtimeSinceStartup - started);
+            if (rest > 0f) yield return new WaitForSeconds(rest);
 
             if (!Application.CanStreamedLevelBeLoaded(FightConfig.FightSceneName) ||
                 !Application.CanStreamedLevelBeLoaded(FightConfig.PreparationSceneName))
@@ -136,6 +170,21 @@ namespace PushStars.UI
                 Debug.LogError("[SearchOpponent] Fight or FightPreparation is missing from Build Settings.");
                 _searchRoutine = null;
                 yield break;
+            }
+
+            if (stranger != null)
+            {
+                var record = GhostRecord.From(stranger.repTimes, 0, "stranger");
+                record.clapTimes = stranger.clapTimes ?? System.Array.Empty<float>();
+                if (record.IsValid)
+                {
+                    ShowFoundCard($"{stranger.name}  ·  {record.reps}");
+                    yield return new WaitForSeconds(FightConfig.FoundPauseSec);
+                    _searchRoutine = null;
+                    FightRequest.StrangerGhost(record, stranger.name);
+                    OtaSceneLoader.LoadScene(FightConfig.PreparationSceneName);
+                    yield break;
+                }
             }
 
             var ghost = GhostStore.Load();
@@ -233,6 +282,7 @@ namespace PushStars.UI
 
         private void OnDestroy()
         {
+            _liveSearch?.Cancel();
             if (_findButton != null) _findButton.onClick.RemoveListener(Show);
             if (_exitButton != null) _exitButton.onClick.RemoveListener(Hide);
         }

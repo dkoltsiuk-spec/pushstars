@@ -9,7 +9,8 @@ using UnityEngine;
 namespace PushStars.Fight
 {
     /// <summary>
-    /// A live duel against a friend's phone (<see cref="FightRequest.LiveDuel"/>).
+    /// A live duel against another phone (<see cref="FightRequest.LiveDuel"/>) — a friend's by
+    /// code, or a stranger's from the random queue (<see cref="FightRequest.IsRankedLive"/>).
     ///
     /// <para>The screen runs the ordinary duel with three differences. The start is shared: each
     /// phone reports its plank, the host names a moment on the server clock, and both count down
@@ -26,7 +27,7 @@ namespace PushStars.Fight
         private LiveDuelLink _liveLink;
         private LiveOpponent _live;
         private LiveDuelReceipt _liveReceipt;
-        private bool _liveWalkover, _liveStartReported, _liveAborting;
+        private bool _liveWalkover, _liveStartReported, _liveAborting, _liveRanked;
         private int _liveSentReps = -1, _liveSentClaps = -1;
         private float _liveAbortAt;
 
@@ -39,6 +40,7 @@ namespace PushStars.Fight
             var link = FightRequest.LiveDuel;
             if (link == null || link.Closed) return false;
             _liveLink = link;
+            _liveRanked = FightRequest.IsRankedLive;
             _live = gameObject.AddComponent<LiveOpponent>();
             _live.Configure(link);
             _opponent = _live;
@@ -59,7 +61,7 @@ namespace PushStars.Fight
 
         public void StreamPose(GhostMotionClip.Frame frame) => _liveLink?.SendPose(frame);
 
-        private string LivePeerName => _live != null ? _live.DisplayName : "FRIEND";
+        private string LivePeerName => _live != null ? _live.DisplayName : _liveRanked ? "OPPONENT" : "FRIEND";
 
         /// <summary>WaitPlank for a live duel. Returns true when it decided the frame.</summary>
         private bool TickLiveWaitPlank(PlankArmer armer)
@@ -138,7 +140,8 @@ namespace PushStars.Fight
                 if (Time.time >= _liveAbortAt) ExitToCaller();
                 return true;
             }
-            string reason = _liveLink.VersionMismatch ? "YOUR FRIEND HAS ANOTHER APP VERSION — UPDATE BOTH"
+            string reason = _liveLink.VersionMismatch
+                ? (_liveRanked ? "YOUR OPPONENT HAS ANOTHER APP VERSION" : "YOUR FRIEND HAS ANOTHER APP VERSION — UPDATE BOTH")
                 : _liveLink.PeerGone ? $"{LivePeerName} LEFT THE DUEL"
                 : _liveLink.Status == DuelLinkStatus.Closed ? "CONNECTION CLOSED" : null;
             if (reason == null) return false;
@@ -187,11 +190,14 @@ namespace PushStars.Fight
             if (this != null) _hud.HideBanner();
         }
 
-        private string LiveStatus() =>
-            _liveReceipt == null ? "FRIEND DUEL · RESULT NOT SAVED"
-            : !_liveReceipt.Settled ? (_liveWalkover ? "FRIEND LEFT · RESULT PENDING" : "FRIEND DUEL · WAITING FOR FRIEND'S RESULT")
-            : _liveReceipt.walkover ? (_liveReceipt.won ? "FRIEND LEFT · WIN CONFIRMED" : "YOU LEFT · LOSS RECORDED")
-            : "FRIEND DUEL · RESULT CONFIRMED";
+        private string LiveStatus()
+        {
+            string duel = _liveRanked ? "LIVE DUEL" : "FRIEND DUEL", who = _liveRanked ? "OPPONENT" : "FRIEND";
+            return _liveReceipt == null ? $"{duel} · RESULT NOT SAVED"
+                : !_liveReceipt.Settled ? (_liveWalkover ? $"{who} LEFT · RESULT PENDING" : $"{duel} · WAITING FOR {who}'S RESULT")
+                : _liveReceipt.walkover ? (_liveReceipt.won ? $"{who} LEFT · WIN CONFIRMED" : "YOU LEFT · LOSS RECORDED")
+                : $"{duel} · RESULT CONFIRMED";
+        }
 
         private void ReleaseLive()
         {

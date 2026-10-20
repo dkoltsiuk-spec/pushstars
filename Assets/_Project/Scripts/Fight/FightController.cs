@@ -205,9 +205,11 @@ namespace PushStars.Fight
             if (mode == FightMode.Ghost)
             {
                 if (FightRequest.IsLiveDuel && TryStartLive()) return FightMode.Ghost;
-                var recording = FightRequest.TestBot?.fight ?? (_ranked != null ? RankedOpponentRecord() : GhostStore.Load());
+                var recording = FightRequest.TestBot?.fight ?? (_ranked != null ? RankedOpponentRecord() : FightRequest.Stranger ?? GhostStore.Load());
                 if (FightRequest.IsBotRecording && recording == null) recording = GhostRecord.From(System.Array.Empty<float>(), 0, "recording-partner");
-                if (_ghost != null && _ghost.Configure(recording, FightRequest.TestBot?.displayName ?? _ranked?.opponentName, FightRequest.IsBotRecording))
+                string opponentName = FightRequest.TestBot?.displayName ?? _ranked?.opponentName
+                    ?? (recording == FightRequest.Stranger ? FightRequest.StrangerName : null);
+                if (_ghost != null && _ghost.Configure(recording, opponentName, FightRequest.IsBotRecording))
                 {
                     _opponent = _ghost;
                     return FightMode.Ghost;
@@ -658,8 +660,10 @@ namespace PushStars.Fight
                 aura.IslandKing = chapter != null && chapter.Bosses[chapter.Bosses.Count - 1].Id == bossId;
             }
             // A friend duel is friendly: no trophies, no Aura either way (two friends could
-            // otherwise trade wins for each other).
-            int trophies = LocalProfile.RecordWorkout(_rewardSessionId, _liveLink != null ? "friend" : ghost ? "ghost" : "boss",
+            // otherwise trade wins for each other). A queue duel against a stranger is ranked:
+            // "pvp" trophies, as the server settles it, and Aura like any duel.
+            string ledgerMode = _liveLink != null ? (_liveRanked ? "pvp" : "friend") : ghost ? "ghost" : "boss";
+            int trophies = LocalProfile.RecordWorkout(_rewardSessionId, ledgerMode,
                 myReps, xp, oppReps, OpponentLabel, win, draw,
                 Mathf.Clamp(Mathf.RoundToInt(Time.time - _liveStartTime), 0, FightConfig.DuelDurationSec));
 
@@ -669,7 +673,7 @@ namespace PushStars.Fight
 
             if (!ghost) BossCatalog.ReportResult(win);
             aura.WinStreakAfter = LocalProfile.WinStreak;
-            _auraMoments = _liveLink != null ? new List<AuraMoment>() : AuraCalculator.ForFight(aura);
+            _auraMoments = _liveLink != null && !_liveRanked ? new List<AuraMoment>() : AuraCalculator.ForFight(aura);
 
             PresentResults(new FightResultData
             {

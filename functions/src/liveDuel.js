@@ -10,6 +10,13 @@
 //   photonAuth      → Photon custom authentication: the Photon UserId is the Firebase uid
 //   cleanupMatchmaking → expires unused codes, settles duels whose results never all arrived
 //
+// The random queue (matchPlayers) binds two strangers the same way, without a code:
+//   enqueueLiveDuel → start searching; pairs at once with anyone already waiting
+//   pollLiveDuel    → still here (keeps the place) — and pairs, or reports the pairing
+//   leaveLiveDuel   → stop searching; hands back another player's best set to fight instead
+// A queue match is mode 'pvp' (ranked trophies, LIVE_DUEL_TROPHIES.pvp) and otherwise runs
+// start / finish / webhook exactly like a friend duel.
+//
 // The rules of the outcome live in liveDuelRules.js; this file only reads and writes.
 const crypto = require('crypto');
 const functions = require('firebase-functions/v1');
@@ -17,6 +24,7 @@ const admin = require('./admin');
 const C = require('./constants');
 const R = require('./liveDuelRules');
 const { cleanClapTimes } = require('./clapTimes');
+const { seasonAt } = require('./league');
 const db = admin.firestore();
 const { Timestamp } = admin.firestore;
 
@@ -27,6 +35,9 @@ const matchRef = id => db.doc(`liveDuels/${id}`);
 const codeRef = code => db.doc(`liveDuelCodes/${code}`);
 const validCode = code => typeof code === 'string' && /^\d{6}$/.test(code) && code !== '000000';
 const validMatch = id => typeof id === 'string' && R.MATCH_ID.test(id);
+// A queue match has no code; only a friend duel's code document needs reading or freeing.
+const codeOf = (tx, match) => match.code ? tx.get(codeRef(match.code)) : null;
+const queueRef = uid => db.doc(`liveDuelQueue/${uid}`);
 
 function look(data) {
   const hero = Number.isInteger(data?.hero) && data.hero >= 0 && data.hero <= 999 ? data.hero : 0;
@@ -112,6 +123,96 @@ exports.joinLiveDuel = functions.https.onCall(async (data, context) => {
   });
 });
 
+// ── Random queue (matchPlayers) ──────────────────────────────────────────────────────────
+//
+// liveDuelQueue/{uid}: one place per player. A waiting place is visible to others only while
+// its phone keeps polling (waitUntilMs, one range query, no composite index); a phone that died
+// mid-search drops out within LIVE_QUEUE_HEARTBEAT_SEC. Pairing happens in a transaction that
+// reads both places, so two phones pairing each other at once commit only one match.
+
+function queueTicket(entry, now) {
+  return {
+    status: 'matched', matchId: entry.matchId, roomName: R.roomName(entry.matchId), mode: 'pvp',
+    host: entry.role === 'host', opponentUid: entry.opponent.uid, opponentName: entry.opponent.name,
+    opponentHero: entry.opponent.hero, opponentGender: entry.opponent.gender, serverTimeMs: now,
+  };
+}
+
+async function search(uid, data, fresh) {
+  const me = look(data);
+  const best = Number.isInteger(data?.best) ? Math.max(0, Math.min(C.MAX_REPS_PER_MATCH, data.best)) : 0;
+  const profile = await db.doc(`users/${uid}`).get();
+  const name = nameOf(profile.exists ? profile.data() : null);
+  return db.runTransaction(async tx => {
+    const now = Date.now();
+    const mine = await tx.get(queueRef(uid));
+    const pool = await tx.get(db.collection('liveDuelQueue').where('waitUntilMs', '>', now).limit(C.LIVE_QUEUE_POOL));
+    // Paired while away (by another phone's call): the room is waiting. A fresh search honours
+    // only a pairing made just now — an older one belongs to a search that was abandoned.
+    const paired = mine.exists && mine.data().state === 'matched'
+      && (!fresh || now - mine.data().matchedAtMs < C.LIVE_QUEUE_HEARTBEAT_SEC * 1000);
+    if (paired) return queueTicket(mine.data(), now);
+    const seat = { uid, name, hero: me.hero, gender: me.gender, country: me.country, best };
+    const other = pool.docs.map(d => d.data()).find(e => e.uid !== uid && e.state === 'waiting');
+    if (!other) {
+      tx.set(queueRef(uid), { ...seat, state: 'waiting', enqueuedAtMs: fresh || !mine.exists ? now : mine.data().enqueuedAtMs || now,
+        waitUntilMs: now + C.LIVE_QUEUE_HEARTBEAT_SEC * 1000, expiresAtMs: now + C.LIVE_QUEUE_ENTRY_TTL_SEC * 1000,
+        matchId: '', role: '', opponent: null });
+      return { status: 'waiting', serverTimeMs: now };
+    }
+    // The one who waited hosts (names the shared start); the one who found them is the guest.
+    const id = randomId();
+    const expiresAtMs = now + C.LIVE_QUEUE_ROOM_TTL_SEC * 1000;
+    tx.create(matchRef(id), {
+      mode: 'pvp', code: '', state: 'joined', createdAtMs: now, codeExpiresAtMs: 0, expiresAtMs,
+      hostUid: other.uid, hostName: other.name, hostHero: other.hero, hostGender: other.gender, hostCountry: other.country,
+      guestUid: uid, guestName: name, guestHero: me.hero, guestGender: me.gender, guestCountry: me.country,
+      startedAtMs: 0, results: {}, room: { joins: {}, leaves: {}, closedAtMs: 0 },
+    });
+    const opponentOf = s => ({ uid: s.uid, name: s.name, hero: s.hero, gender: s.gender });
+    const matched = { state: 'matched', matchId: id, matchedAtMs: now, waitUntilMs: 0, expiresAtMs: now + C.LIVE_QUEUE_ENTRY_TTL_SEC * 1000 };
+    tx.set(queueRef(other.uid), { ...other, ...matched, role: 'host', opponent: opponentOf(seat) });
+    const own = { ...seat, ...matched, enqueuedAtMs: now, role: 'guest', opponent: opponentOf(other) };
+    tx.set(queueRef(uid), own);
+    return queueTicket(own, now);
+  });
+}
+
+exports.enqueueLiveDuel = functions.https.onCall(async (data, context) => search(uidOf(context), data, true));
+exports.pollLiveDuel = functions.https.onCall(async (data, context) => search(uidOf(context), data, false));
+
+// Stops searching. Paired in the last moment: the match stands and the phone takes it (the
+// other phone is already on its way to the room). Otherwise the place is freed and another
+// player's best set — the nearest in reps — comes back to fight instead, when there is one.
+exports.leaveLiveDuel = functions.https.onCall(async (data, context) => {
+  const uid = uidOf(context);
+  const left = await db.runTransaction(async tx => {
+    const now = Date.now();
+    const mine = await tx.get(queueRef(uid));
+    if (mine.exists && mine.data().state === 'matched') return queueTicket(mine.data(), now);
+    if (mine.exists) tx.delete(queueRef(uid));
+    return null;
+  });
+  if (left) return left;
+  const best = Number.isInteger(data?.best) ? data.best : 0;
+  return { status: 'left', ghost: await ghostFor(uid, best), serverTimeMs: Date.now() };
+});
+
+// Another player's best ranked set from this season's table, close to the player's own level.
+// A few nearest candidates take turns, so the same stranger does not answer every search.
+async function ghostFor(uid, best) {
+  const season = seasonAt(Date.now());
+  const rows = await db.collection(`seasons/${season.id}/players`).orderBy('standing').limit(C.LIVE_QUEUE_GHOST_POOL).get();
+  const candidates = rows.docs.map(d => d.data())
+    .filter(row => row.uid !== uid && Array.isArray(row.bestTimes) && row.bestTimes.length > 0)
+    .sort((a, b) => Math.abs(a.bestTimes.length - best) - Math.abs(b.bestTimes.length - best))
+    .slice(0, 3);
+  if (!candidates.length) return null;
+  const pick = candidates[crypto.randomInt(candidates.length)];
+  return { uid: pick.uid, name: String(pick.displayName || 'PLAYER').slice(0, 20),
+    repTimes: pick.bestTimes, clapTimes: pick.bestClapTimes || [] };
+}
+
 exports.cancelLiveDuel = functions.https.onCall(async (data, context) => {
   const uid = uidOf(context);
   if (!validMatch(data?.matchId)) fail('invalid-argument', 'Invalid duel.');
@@ -120,11 +221,15 @@ exports.cancelLiveDuel = functions.https.onCall(async (data, context) => {
     if (!snap.exists) return;
     const match = snap.data();
     participant(match, uid);
-    const code = await tx.get(codeRef(match.code));
+    const code = await codeOf(tx, match);
+    // A queue pairing nobody used: both places go, so a phone that has not seen the pairing yet
+    // simply keeps searching on its next poll instead of waiting in an empty room.
+    const places = match.code ? [] : await tx.getAll(queueRef(match.hostUid), queueRef(match.guestUid));
     // A duel that has started cannot be cancelled away; it settles.
     if (!['waiting', 'joined'].includes(match.state)) return;
     tx.update(matchRef(data.matchId), { state: 'cancelled', expiresAtMs: FAR });
-    if (code.exists && code.data().matchId === data.matchId) tx.delete(codeRef(match.code));
+    if (code?.exists && code.data().matchId === data.matchId) tx.delete(codeRef(match.code));
+    for (const place of places) if (place.exists && place.data().matchId === data.matchId) tx.delete(place.ref);
   });
   return { status: 'ok' };
 });
@@ -139,12 +244,12 @@ exports.startLiveDuel = functions.https.onCall(async (data, context) => {
     participant(match, uid);
     if (match.startedAtMs) return { startedAtMs: match.startedAtMs };
     if (match.state !== 'joined' || !match.guestUid) fail('failed-precondition', 'The duel is not ready to start.');
-    const code = await tx.get(codeRef(match.code));
+    const code = await codeOf(tx, match);
     const now = Date.now();
     const settleBy = now + (C.LIVE_DUEL_START_LEAD_SEC + C.MATCH_DURATION_SEC + C.LIVE_DUEL_SETTLE_GRACE_SEC) * 1000;
     tx.update(matchRef(data.matchId), { state: 'started', startedAtMs: now, settleByMs: settleBy, expiresAtMs: settleBy });
     // The room is full and running: the code is spent.
-    if (code.exists && code.data().matchId === data.matchId) tx.delete(codeRef(match.code));
+    if (code?.exists && code.data().matchId === data.matchId) tx.delete(codeRef(match.code));
     return { startedAtMs: now };
   });
 });
@@ -283,8 +388,8 @@ exports.photonAuth = functions.https.onRequest(async (req, res) => {
   }
 });
 
-// Unused codes expire; duels whose results never all arrived are settled with what there is.
-// One single-field range query (expiresAtMs) — no composite index needed.
+// Unused codes expire; duels whose results never all arrived are settled with what there is;
+// abandoned queue places go. Single-field range queries (expiresAtMs) — no composite index needed.
 exports.cleanupMatchmaking = functions.pubsub.schedule('every 5 minutes').timeZone('UTC').onRun(async () => sweep());
 
 async function sweep(now = Date.now()) {
@@ -297,15 +402,26 @@ async function sweep(now = Date.now()) {
       const match = snap.data();
       if (match.expiresAtMs > Date.now()) return;
       if (['waiting', 'joined'].includes(match.state)) {
-        const code = await tx.get(codeRef(match.code));
+        const code = await codeOf(tx, match);
         tx.update(doc.ref, { state: 'expired', expiresAtMs: FAR });
-        if (code.exists && code.data().matchId === doc.id) tx.delete(codeRef(match.code));
+        if (code?.exists && code.data().matchId === doc.id) tx.delete(codeRef(match.code));
         expired++;
       } else if (match.state === 'started' && !match.receipts) {
         if (await settleInto(tx, doc.ref, match, true)) settled++;
       } else tx.update(doc.ref, { expiresAtMs: FAR });
     });
   }
-  return { expired, settled };
+  // Queue places of phones that stopped searching without leaving, and pairings nobody used.
+  const stale = await db.collection('liveDuelQueue').where('expiresAtMs', '<=', now).limit(200).get();
+  let dequeued = 0;
+  for (const doc of stale.docs) {
+    await db.runTransaction(async tx => {
+      const snap = await tx.get(doc.ref);
+      if (!snap.exists || snap.data().expiresAtMs > Date.now()) return;
+      tx.delete(doc.ref);
+      dequeued++;
+    });
+  }
+  return { expired, settled, dequeued };
 }
 exports.sweep = sweep;

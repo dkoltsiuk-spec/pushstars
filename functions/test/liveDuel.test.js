@@ -22,12 +22,17 @@ function fakeDb(clock) {
     docs.set(p, { ...base, ...copy(data) });
   }
   const ops = { '<=': (a, b) => a <= b, '==': (a, b) => a === b, '>': (a, b) => a > b };
-  const query = (name, filters = [], max = Infinity) => ({
-    where: (field, op, value) => query(name, [...filters, [field, op, value]], max),
-    limit: n => query(name, filters, n),
+  // Range filters return in their field's order, as Firestore does.
+  const query = (name, filters = [], max = Infinity, order = null) => ({
+    where: (field, op, value) => query(name, [...filters, [field, op, value]], max, order ?? (op === '==' ? null : field)),
+    orderBy: field => query(name, filters, max, field),
+    limit: n => query(name, filters, n, order),
     get: async () => {
-      const found = [...docs.keys()].filter(p => p.startsWith(name + '/') && p.split('/').length === 2)
-        .filter(p => filters.every(([f, op, v]) => ops[op](docs.get(p)[f], v))).slice(0, max).map(snap);
+      const depth = name.split('/').length + 1;
+      let found = [...docs.keys()].filter(p => p.startsWith(name + '/') && p.split('/').length === depth)
+        .filter(p => filters.every(([f, op, v]) => ops[op](docs.get(p)[f], v)));
+      if (order) found.sort((a, b) => docs.get(a)[order] < docs.get(b)[order] ? -1 : docs.get(a)[order] > docs.get(b)[order] ? 1 : 0);
+      found = found.slice(0, max).map(snap);
       return { docs: found, size: found.length, empty: !found.length };
     },
   });
@@ -38,7 +43,11 @@ function fakeDb(clock) {
       const writes = [];
       const read = r => { if (writes.length) throw new Error('Transaction read after write: ' + r.path); return snap(r.path); };
       const tx = {
-        get: async r => read(r),
+        get: async r => {
+          if (r.path) return read(r);
+          if (writes.length) throw new Error('Transaction query after write');
+          return r.get();
+        },
         getAll: async (...refs) => refs.map(read),
         set: (r, d, o) => writes.push(['set', r.path, d, o]),
         update: (r, d) => writes.push(['update', r.path, d]),
@@ -196,7 +205,7 @@ test('a walkover claim without Photon evidence waits for the opponent, then the 
     await f.hook({ Type: 'Join', GameId: `pd_${matchId}`, UserId: 'bob' });
     assert.deepEqual(await finish(f, 'alice', matchId, 15, { durationSec: 40, opponentLeft: true, opponentReps: 14 }), { state: 'pending' });
     f.advance(200000);
-    assert.deepEqual(await f.live.sweep(), { expired: 0, settled: 1 });
+    assert.deepEqual(await f.live.sweep(), { expired: 0, settled: 1, dequeued: 0 });
     const match = f.docs.get(`liveDuels/${matchId}`);
     assert.equal(match.receipts.alice.won, true);
     assert.deepEqual(match.flags, ['walkover-by-deadline']);
@@ -253,10 +262,10 @@ test('cleanup expires unused codes and frees them; cancel frees a code at once',
     await f.live.cancelLiveDuel({ matchId: cancelled.matchId }, f.as('bob'));
     assert.equal(f.docs.has(`liveDuelCodes/${cancelled.code}`), false);
     f.advance(301000);
-    assert.deepEqual(await f.live.sweep(), { expired: 1, settled: 0 });
+    assert.deepEqual(await f.live.sweep(), { expired: 1, settled: 0, dequeued: 0 });
     assert.equal(f.docs.get(`liveDuels/${stale.matchId}`).state, 'expired');
     assert.equal(f.docs.has(`liveDuelCodes/${stale.code}`), false);
-    assert.deepEqual(await f.live.sweep(), { expired: 0, settled: 0 }, 'done duels are not swept twice');
+    assert.deepEqual(await f.live.sweep(), { expired: 0, settled: 0, dequeued: 0 }, 'done duels are not swept twice');
   } finally { f.restore(); }
 });
 
@@ -306,3 +315,101 @@ test("Photon's real leave types (LeaveRequest, TimeoutDisconnect …) are record
   } finally { f.restore(); }
 });
 
+
+// ── Random queue (matchPlayers) ──────────────────────────────────────────────────────────────
+
+const seasonId = () => { const d = new Date(Date.now()); return `${d.getUTCFullYear()}-${String(d.getUTCMonth() + 1).padStart(2, '0')}`; };
+
+test('two players searching at the same moment are paired into one ranked live duel', async () => {
+  const f = fixture();
+  try {
+    f.seedUser('alice'); f.seedUser('bob');
+    assert.equal((await f.live.enqueueLiveDuel({ hero: 5, gender: 1, country: 'RU', best: 30 }, f.as('alice'))).status, 'waiting');
+    f.advance(1000);
+    assert.equal((await f.live.pollLiveDuel({ hero: 5, gender: 1, best: 30 }, f.as('alice'))).status, 'waiting', 'alone in the queue');
+    const bob = await f.live.enqueueLiveDuel({ hero: 2, gender: 0, best: 25 }, f.as('bob'));
+    assert.equal(bob.status, 'matched'); assert.equal(bob.host, false, 'the one who found the waiting player is the guest');
+    assert.equal(bob.opponentName, 'ALICE'); assert.equal(bob.opponentHero, 5); assert.equal(bob.opponentGender, 1);
+    assert.equal(bob.roomName, `pd_${bob.matchId}`); assert.equal(bob.mode, 'pvp');
+    f.advance(800);
+    const alice = await f.live.pollLiveDuel({ hero: 5, gender: 1 }, f.as('alice'));
+    assert.equal(alice.status, 'matched'); assert.equal(alice.host, true); assert.equal(alice.matchId, bob.matchId);
+    assert.equal(alice.opponentName, 'BOB'); assert.equal(alice.opponentHero, 2);
+    const match = f.docs.get(`liveDuels/${bob.matchId}`);
+    assert.equal(match.mode, 'pvp'); assert.equal(match.state, 'joined'); assert.equal(match.code, '');
+    assert.equal(match.hostUid, 'alice'); assert.equal(match.guestUid, 'bob');
+    // Leaving after the pairing does not undo it: the phone takes the match.
+    assert.equal((await f.live.leaveLiveDuel({}, f.as('alice'))).matchId, bob.matchId);
+
+    // From here it is an ordinary live duel, with the pvp trophies.
+    await f.live.startLiveDuel({ matchId: bob.matchId }, f.as('alice'));
+    await f.live.startLiveDuel({ matchId: bob.matchId }, f.as('bob'));
+    f.advance(64000);
+    await finish(f, 'alice', bob.matchId, 31, { opponentReps: 24 });
+    const result = await finish(f, 'bob', bob.matchId, 24, { opponentReps: 31 });
+    assert.equal(result.won, false); assert.equal(result.trophyDelta, 0, 'bob had no trophies to lose');
+    assert.equal(f.docs.get('users/alice').trophies, 25);
+    assert.equal(f.docs.get(`matches/live_${bob.matchId}`).mode, 'pvp');
+  } finally { f.restore(); }
+});
+
+test('a phone that stopped polling drops out; a third searcher is never paired twice', async () => {
+  const f = fixture();
+  try {
+    f.seedUser('alice'); f.seedUser('bob'); f.seedUser('carol'); f.seedUser('dave');
+    await f.live.enqueueLiveDuel({}, f.as('alice'));
+    f.advance(6000);                                     // alice's phone went quiet
+    assert.equal((await f.live.enqueueLiveDuel({}, f.as('bob'))).status, 'waiting', 'a silent place is not offered');
+    const carol = await f.live.enqueueLiveDuel({}, f.as('carol'));
+    assert.equal(carol.status, 'matched'); assert.equal(carol.opponentUid, 'bob');
+    assert.equal((await f.live.enqueueLiveDuel({}, f.as('dave'))).status, 'waiting', 'bob is taken');
+    // Alice comes back and polls: dave is the one waiting now.
+    const alice = await f.live.pollLiveDuel({}, f.as('alice'));
+    assert.equal(alice.status, 'matched'); assert.equal(alice.opponentUid, 'dave');
+    assert.equal([...f.docs.keys()].filter(k => k.startsWith('liveDuels/')).length, 2);
+  } finally { f.restore(); }
+});
+
+test('nobody found: leaving frees the place and hands back a stranger\'s best set near your level', async () => {
+  const f = fixture();
+  try {
+    f.seedUser('alice');
+    const players = `seasons/${seasonId()}/players`;
+    f.docs.set(`${players}/alice`, { uid: 'alice', displayName: 'ALICE', standing: '1', bestTimes: times(30) });
+    f.docs.set(`${players}/bob`, { uid: 'bob', displayName: 'BOB', standing: '2', bestTimes: times(28), bestClapTimes: [3] });
+    f.docs.set(`${players}/zed`, { uid: 'zed', displayName: 'ZED', standing: '3', bestTimes: [] });
+    await f.live.enqueueLiveDuel({ best: 27 }, f.as('alice'));
+    const left = await f.live.leaveLiveDuel({ best: 27 }, f.as('alice'));
+    assert.equal(left.status, 'left');
+    assert.equal(left.ghost.uid, 'bob', 'never your own row, never an empty set');
+    assert.equal(left.ghost.repTimes.length, 28); assert.deepEqual(left.ghost.clapTimes, [3]);
+    assert.equal(f.docs.has('liveDuelQueue/alice'), false);
+    f.docs.delete(`${players}/bob`);
+    assert.equal((await f.live.leaveLiveDuel({}, f.as('alice'))).ghost, null, 'no strangers: the phone falls back on its own');
+  } finally { f.restore(); }
+});
+
+test('an abandoned pairing does not trap the next search; cleanup clears queue places and dead queue rooms', async () => {
+  const f = fixture();
+  try {
+    f.seedUser('alice'); f.seedUser('bob'); f.seedUser('carol');
+    await f.live.enqueueLiveDuel({}, f.as('alice'));
+    const bob = await f.live.enqueueLiveDuel({}, f.as('bob'));
+    // Alice's phone died before it saw the pairing; she searches again a minute later.
+    f.advance(30000);
+    assert.equal((await f.live.enqueueLiveDuel({}, f.as('alice'))).status, 'waiting', 'a stale pairing is dropped');
+    assert.equal((await f.live.enqueueLiveDuel({}, f.as('carol'))).opponentUid, 'alice');
+    f.advance(100000);
+    const swept = await f.live.sweep();
+    assert.equal(swept.dequeued, 3); assert.equal(swept.expired, 2, 'unstarted queue rooms expire');
+    assert.equal(f.docs.get(`liveDuels/${bob.matchId}`).state, 'expired');
+    // Bob gives up right after pairing: alice, who has not seen the pairing yet, keeps searching.
+    await f.live.enqueueLiveDuel({}, f.as('alice'));
+    const again = await f.live.enqueueLiveDuel({}, f.as('bob'));
+    await f.live.cancelLiveDuel({ matchId: again.matchId }, f.as('bob'));
+    assert.equal(f.docs.get(`liveDuels/${again.matchId}`).state, 'cancelled');
+    assert.equal((await f.live.pollLiveDuel({}, f.as('alice'))).status, 'waiting');
+    assert.equal((await f.live.enqueueLiveDuel({}, f.as('carol'))).opponentUid, 'alice');
+    await assert.rejects(f.live.enqueueLiveDuel({}, {}), e => e.code === 'unauthenticated');
+  } finally { f.restore(); }
+});

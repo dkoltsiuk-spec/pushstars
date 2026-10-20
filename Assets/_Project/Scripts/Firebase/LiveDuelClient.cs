@@ -21,6 +21,27 @@ namespace PushStars.Services
         public bool Settled => state == "settled";
     }
 
+    /// <summary>Another player's best set, handed back when the random queue found nobody.</summary>
+    [Serializable] public sealed class LiveQueueGhost
+    {
+        public string uid, name;
+        public float[] repTimes, clapTimes;
+    }
+    /// <summary>Where a search in the random queue stands (enqueueLiveDuel / pollLiveDuel /
+    /// leaveLiveDuel): "waiting", "matched" (a ranked live duel with a stranger, room named) or
+    /// "left" (with a stranger's ghost to fight instead, when the season has one).</summary>
+    [Serializable] public sealed class LiveQueueStatus
+    {
+        public string status, matchId, roomName, mode, opponentUid, opponentName;
+        public bool host;
+        public int opponentHero, opponentGender;
+        public long serverTimeMs;
+        public LiveQueueGhost ghost;
+        public bool Matched => status == "matched" && !string.IsNullOrEmpty(matchId) && !string.IsNullOrEmpty(roomName);
+        // JsonUtility never leaves a nested field null: an absent ghost arrives empty.
+        public bool HasGhost => ghost != null && ghost.repTimes != null && ghost.repTimes.Length > 0;
+    }
+
     /// <summary>
     /// Server side of a live duel (functions/src/liveDuel.js): the six-digit code, the match both
     /// phones are bound to, and the result. The Photon room only carries the duel; whether it
@@ -37,6 +58,7 @@ namespace PushStars.Services
             public string matchId; public float[] repTimes, clapTimes; public float durationSec;
             public int opponentReps; public bool opponentLeft;
         }
+        [Serializable] private sealed class QueueRequest { public int hero, gender, best; public string country; }
         [Serializable] private sealed class Empty { }
 
         public static string Uid => LeagueClient.Uid;
@@ -61,6 +83,23 @@ namespace PushStars.Services
             return await LeagueClient.Call<CodeRequest, LiveDuelTicket>("joinLiveDuel",
                 new CodeRequest { code = code, hero = hero, gender = gender, country = country ?? "" }, Uid);
         }
+
+        /// <summary>Starts a search in the random queue; pairs at once with anyone already waiting.</summary>
+        public static async Task<LiveQueueStatus> Enqueue(int hero, int gender, string country, int best)
+        {
+            await FirebaseAuthService.EnsureReadyAsync();
+            return await LeagueClient.Call<QueueRequest, LiveQueueStatus>("enqueueLiveDuel",
+                new QueueRequest { hero = hero, gender = gender, country = country ?? "", best = best }, Uid);
+        }
+
+        /// <summary>Keeps the place in the queue, and pairs or reports the pairing.</summary>
+        public static Task<LiveQueueStatus> Poll(int hero, int gender, string country, int best) =>
+            LeagueClient.Call<QueueRequest, LiveQueueStatus>("pollLiveDuel",
+                new QueueRequest { hero = hero, gender = gender, country = country ?? "", best = best }, Uid);
+
+        /// <summary>Stops searching. A pairing made in the last moment comes back as "matched".</summary>
+        public static Task<LiveQueueStatus> LeaveQueue(int best) =>
+            LeagueClient.Call<QueueRequest, LiveQueueStatus>("leaveLiveDuel", new QueueRequest { best = best }, Uid);
 
         public static Task Cancel(string matchId) =>
             LeagueClient.Call<MatchRequest, Empty>("cancelLiveDuel", new MatchRequest { matchId = matchId }, Uid);

@@ -28,11 +28,18 @@ namespace PushStars.Core
         public static bool IsBotRecording { get; private set; }
         public static BotRecording TestBot { get; private set; }
         public static bool IsBotTest => IsBotRecording || TestBot != null;
-        /// <summary>A live duel against a friend's phone: the opponent is <see cref="LiveDuelLink"/>'s
-        /// peer, not a recording. Runs as a <see cref="FightMode.Ghost"/> duel so every duel screen
+        /// <summary>A live duel against another phone (a friend's, or a stranger's from the random
+        /// queue): the opponent is <see cref="LiveDuelLink"/>'s peer, not a recording. Runs as a <see cref="FightMode.Ghost"/> duel so every duel screen
         /// treats it as one.</summary>
         public static LiveDuelLink LiveDuel { get; private set; }
         public static bool IsLiveDuel => LiveDuel != null;
+        /// <summary>The live duel came from the random queue: a stranger, ranked (mode "pvp"),
+        /// rather than a friendly duel by code.</summary>
+        public static bool IsRankedLive { get; private set; }
+        /// <summary>Another player's best set to fight when the live queue found nobody; null for
+        /// the player's own ghost.</summary>
+        public static GhostRecord Stranger { get; private set; }
+        public static string StrangerName { get; private set; }
         // Snapshot the chosen boss: winning advances the ladder before the result scene opens.
         public static string BossId { get; private set; }
 
@@ -44,6 +51,9 @@ namespace PushStars.Core
             IsBotRecording = false;
             TestBot = null;
             LiveDuel = null;
+            IsRankedLive = false;
+            Stranger = null;
+            StrangerName = null;
             BossId = null;
             Mode = FightMode.Ghost;
             ReturnScene = FightConfig.MainSceneName;
@@ -81,11 +91,24 @@ namespace PushStars.Core
             ArenaMatch.BeginLocal(ArenaProfile.SelectedId, bot.fight.arenaId);
         }
 
-        public static void Live(LiveDuelLink link)
+        /// <summary>Another player's best set (the live queue found nobody). Fought like the
+        /// player's own ghost, under the stranger's name.</summary>
+        public static void StrangerGhost(GhostRecord record, string name, string returnScene = FightConfig.MainSceneName)
+        {
+            if (record == null || !record.IsValid) throw new System.ArgumentException("Invalid ghost.");
+            Set(FightMode.Ghost, returnScene);
+            Stranger = record;
+            StrangerName = string.IsNullOrEmpty(name) ? "PLAYER" : name;
+            ArenaMatch.BeginLocal(ArenaProfile.SelectedId, ArenaProfile.SelectedId);
+        }
+
+        /// <param name="ranked">A stranger from the random queue (trophies) rather than a friend.</param>
+        public static void Live(LiveDuelLink link, bool ranked = false)
         {
             if (link == null) throw new System.ArgumentNullException(nameof(link));
             Set(FightMode.Ghost, FightConfig.MainSceneName);
             LiveDuel = link;
+            IsRankedLive = ranked;
             // Both phones show the arena their own player picked; no coin flip against a ghost's.
             ArenaMatch.BeginLocal(ArenaProfile.SelectedId, ArenaProfile.SelectedId);
         }
@@ -107,6 +130,9 @@ namespace PushStars.Core
             IsBotRecording = false;
             TestBot = null;
             LiveDuel = null;
+            IsRankedLive = false;
+            Stranger = null;
+            StrangerName = null;
             ArenaMatch.Clear();
             if (mode == FightMode.Ghost) ArenaMatch.BeginLocal(ArenaProfile.SelectedId, GhostStore.Load()?.arenaId);
             HasRequest = true;

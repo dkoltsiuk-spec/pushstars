@@ -52,6 +52,12 @@ namespace PushStars.Fight
                 opponent = new DuelReadyPanel.Side(identity.Name, identity.Trophies, identity.BestReps, identity.WinRate);
                 opponentFlag = MockupProfile.FlagSprite(identity.Flag, theme);
             }
+            else if (FightRequest.Stranger != null)
+            {
+                opponent = new DuelReadyPanel.Side(FightRequest.StrangerName, DuelReadyPanel.Side.Unknown,
+                    FightRequest.Stranger.reps, DuelReadyPanel.Side.Unknown);
+                opponentFlag = null;
+            }
             else
             {
                 opponent = new DuelReadyPanel.Side(FightConfig.GhostOpponentName, DuelReadyPanel.Side.Unknown,
