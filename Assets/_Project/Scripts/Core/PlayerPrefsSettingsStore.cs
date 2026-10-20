@@ -6,7 +6,7 @@ namespace PushStars.Core
     /// <see cref="ISettingsStore"/> backed by Unity <see cref="PlayerPrefs"/>. Every setter writes
     /// through immediately (and calls <see cref="PlayerPrefs.Save"/>) so toggles persist even if the
     /// app is killed before a graceful quit. Defaults: sound/vibration/notifications on, language
-    /// defaults to English. The selected interface language persists between sessions.
+    /// follows the device (RU / PT-BR / otherwise EN) until the player picks one, which then persists.
     /// </summary>
     public sealed class PlayerPrefsSettingsStore : ISettingsStore
     {
@@ -39,13 +39,27 @@ namespace PushStars.Core
 
         public string Language
         {
-            get => Localization.NormalizeLanguage(PlayerPrefs.GetString(KeyLanguage, LangEn));
+            get => PlayerPrefs.HasKey(KeyLanguage)
+                ? Localization.NormalizeLanguage(PlayerPrefs.GetString(KeyLanguage))
+                : DeviceLanguage();
             set
             {
                 string language = Localization.NormalizeLanguage(value);
                 PlayerPrefs.SetString(KeyLanguage, language);
                 PlayerPrefs.Save();
                 Localization.NotifyLanguageChanged();
+            }
+        }
+
+        /// <summary>Phone UI language mapped onto the supported set; not stored, so it keeps following
+        /// the device until the player picks a language in settings.</summary>
+        public static string DeviceLanguage()
+        {
+            switch (Application.systemLanguage)
+            {
+                case SystemLanguage.Russian: return LangRu;
+                case SystemLanguage.Portuguese: return LangPtBr;
+                default: return LangEn;
             }
         }
 

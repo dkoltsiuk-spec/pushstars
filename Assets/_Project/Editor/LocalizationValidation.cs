@@ -61,6 +61,8 @@ namespace PushStars.Editor
                 Require(new PlayerPrefsSettingsStore().Language == "pt-BR", "Portuguese compatibility alias failed");
                 new PlayerPrefsSettingsStore().Language = "unsupported";
                 Require(new PlayerPrefsSettingsStore().Language == "en", "Unknown locale did not fall back to English");
+                PlayerPrefs.DeleteKey("settings.language");
+                Require(new PlayerPrefsSettingsStore().Language == PlayerPrefsSettingsStore.DeviceLanguage(), "Unpicked language did not follow the device");
                 Directory.CreateDirectory("output/localization");
                 File.WriteAllText("output/localization/catalog-validation.txt", "PASS: " + catalog.entries.Length + " entries; placeholders, rich text, all three preferences, timer templates, fallback and spacing.\n");
                 Debug.Log("[Localization] Catalog and preferences passed.");
