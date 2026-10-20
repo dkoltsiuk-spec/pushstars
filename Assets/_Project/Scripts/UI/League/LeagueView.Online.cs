@@ -3,7 +3,6 @@ using System.Collections;
 using System.Collections.Generic;
 using System.Threading.Tasks;
 using PushStars.Core;
-using PushStars.OTA;
 using PushStars.Services;
 using TMPro;
 using UnityEngine;
@@ -159,16 +158,6 @@ namespace PushStars.UI
             var layout = GetComponent<LeagueLayout>();
             if (layout == null || layout.Rows == null) return;
             float y = 0;
-            MakeButton(layout.Rows, "Ranked", _archive == "" ? (_cloud.seeded ? "PLAY RANKED" : "CALIBRATE RANK") : "CURRENT SEASON", y,
-                () => { if (_archive == "") _ = PlayRanked(); else { _archive = ""; _ = LoadPage(false, true); } });
-            // Ranked and archive actions share one row above the real leaderboard.
-            MakeButton(layout.Rows, "Archive", "PREVIOUS SEASON", y, () =>
-            {
-                var month = DateTime.ParseExact(_cloud.season.id + "-01", "yyyy-MM-dd", System.Globalization.CultureInfo.InvariantCulture);
-                _archive = month.AddMonths(-1).ToString("yyyy-MM");
-                _ = LoadPage(false, true);
-            });
-            y += 82;
             var template = RowTemplate(false) ?? RowTemplate(true);
             foreach (var player in _players)
             {
@@ -213,31 +202,21 @@ namespace PushStars.UI
             _generated.Add(go);
             var rect = (RectTransform)go.transform; rect.SetParent(parent, false);
             rect.anchorMin = rect.anchorMax = rect.pivot = new Vector2(0, 1);
-            bool archive = name == "Archive", ranked = name == "Ranked";
-            bool primary = ranked || name == "Retry";
-            rect.sizeDelta = new Vector2(archive ? 108 : 248, 66);
-            rect.anchoredPosition = new Vector2(archive ? 258 : ranked ? 0 : 59, -y);
+            rect.sizeDelta = new Vector2(248, 66);
+            rect.anchoredPosition = new Vector2(59, -y);
             var style = GetComponent<LeagueVisualStyle>();
             var plate = go.GetComponent<Image>();
-            plate.sprite = primary ? style?.RankedPlate : style?.SecondaryPlate;
+            plate.sprite = name == "Retry" ? style?.RankedPlate : style?.SecondaryPlate;
             plate.color = plate.sprite != null ? Color.white : new Color32(43, 100, 245, 255);
             var button = go.GetComponent<Button>(); button.targetGraphic = plate;
             button.onClick.AddListener(() => { if (!_loading) action(); });
-            if (archive && style != null && style.HistoryIcon != null)
-            {
-                var iconObject = new GameObject("HistoryIcon", typeof(RectTransform), typeof(Image));
-                var icon = iconObject.GetComponent<Image>(); icon.transform.SetParent(go.transform, false);
-                icon.sprite = style.HistoryIcon; icon.preserveAspect = true; icon.raycastTarget = false;
-                icon.rectTransform.anchorMin = icon.rectTransform.anchorMax = new Vector2(.5f, 1);
-                icon.rectTransform.sizeDelta = new Vector2(42, 42); icon.rectTransform.anchoredPosition = new Vector2(0, -10);
-            }
             var caption = new GameObject("Label", typeof(RectTransform), typeof(TextMeshProUGUI));
             caption.transform.SetParent(go.transform, false);
             var labelRect = (RectTransform)caption.transform; labelRect.anchorMin = Vector2.zero; labelRect.anchorMax = Vector2.one;
-            labelRect.offsetMin = new Vector2(8, 5); labelRect.offsetMax = new Vector2(-8, archive ? -31 : -5);
-            var label = caption.GetComponent<TextMeshProUGUI>(); label.text = archive ? "PREVIOUS\nSEASON" : text;
+            labelRect.offsetMin = new Vector2(8, 5); labelRect.offsetMax = new Vector2(-8, -5);
+            var label = caption.GetComponent<TextMeshProUGUI>(); label.text = text;
             label.font = Title != null ? Title.font : null; label.fontSharedMaterial = Title != null ? Title.fontSharedMaterial : null;
-            label.fontSize = archive ? 12 : 23; label.enableAutoSizing = true; label.fontSizeMin = archive ? 10 : 15; label.fontSizeMax = archive ? 12 : 23;
+            label.fontSize = 23; label.enableAutoSizing = true; label.fontSizeMin = 15; label.fontSizeMax = 23;
             label.alignment = TextAlignmentOptions.Center; label.raycastTarget = false;
         }
         private void ShowRetry()
@@ -245,26 +224,6 @@ namespace PushStars.UI
             ClearGenerated();
             var layout = GetComponent<LeagueLayout>();
             if (layout?.Rows != null) { MakeButton(layout.Rows, "Retry", "RETRY CONNECTION", 75, () => _ = LoadPage(false, true)); layout.Fit(); }
-        }
-        private async Task PlayRanked()
-        {
-            if (_loading) return;
-            _loading = true;
-            int version = _generation;
-            if (Online != null) Online.text = "PREPARING RANKED SET…";
-            try
-            {
-                var session = await LeagueClient.Begin(!_cloud.seeded);
-                if (this == null || !isActiveAndEnabled || version != _generation) { await LeagueClient.Cancel(session); return; }
-                LeagueClient.PreparedSession = session;
-                if (session.mode == "assessment") FightRequest.LevelTest(); else FightRequest.Ghost();
-                OtaSceneLoader.LoadScene(FightConfig.FightSceneName);
-            }
-            catch (Exception e)
-            {
-                if (this != null && isActiveAndEnabled && version == _generation) _notice = e.Message;
-            }
-            finally { if (this != null && version == _generation) _loading = false; }
         }
     }
 }
