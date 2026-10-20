@@ -23,7 +23,7 @@ namespace PushStars.Fight
             bool preview = FightScreenNavigation.IsPreview;
             var theme = Resources.Load<PushStarsTheme>("PushStarsTheme");
             var achievements = ProfileAchievementCatalog.Progress(LocalProfile.Profile, LocalProfile.History, LocalProfile.BestReps, System.DateTime.Today);
-            var player = new DuelReadyPanel.Side(ProfileIdentityEditor.ResolveName("YOU"),
+            var player = new DuelReadyPanel.Side(ProfileIdentityEditor.PlayerName(),
                 LocalProfile.Trophies, LocalProfile.BestReps,
                 LocalProfile.Games > 0 ? LocalProfile.WinRatePercent : DuelReadyPanel.Side.Unknown,
                 ProfileCountry.Code, ProfileAchievementCatalog.BestEarned(achievements).Select(i => ProfileAchievementCatalog.Entries[i].Id).ToArray());

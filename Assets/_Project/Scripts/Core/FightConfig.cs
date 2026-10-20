@@ -31,6 +31,12 @@ namespace PushStars.Core
         /// player's own name — the opponent is explicitly their past self, which is the appeal of the
         /// mode. Lives in Core because both the search overlay (UI) and the duel (Fight) show it.</summary>
         public const string GhostOpponentName = "YOUR GHOST";
+
+        /// <summary>An opponent name as it should read on screen. Name labels skip the automatic
+        /// translation (they hold player data), so the ghost's own label is translated here; the
+        /// ledger keeps the English key so history follows a later language switch.</summary>
+        public static string ShownOpponentName(string name) =>
+            name == GhostOpponentName ? Localization.Text(name) : name;
     }
 
     /// <summary>

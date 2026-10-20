@@ -271,7 +271,7 @@ namespace PushStars.UI
                 resultIcon.sprite = AthleteDesign && (m.IsSolo || m.Draw) ? (m.Mode == "assessment" ? AssessmentIcon : TrainingIcon) : m.Won ? WinIcon : LossIcon;
                 row.transform.Find("Opponent").GetComponent<TextMeshProUGUI>().text = m.IsSolo
                     ? (m.Mode == "assessment" ? "ASSESSMENT" : "TRAINING SET")
-                    : "vs " + (string.IsNullOrEmpty(m.OpponentName) ? "OPPONENT" : m.OpponentName);
+                    : "vs " + (string.IsNullOrEmpty(m.OpponentName) ? "OPPONENT" : FightConfig.ShownOpponentName(m.OpponentName));
                 row.transform.Find("Opponent").GetComponent<TextMeshProUGUI>().richText = false;
                 var score = row.transform.Find("Score").GetComponent<TextMeshProUGUI>();
                 score.text = m.IsSolo ? m.MyReps + " REPS" : m.MyReps + " : " + m.OpponentReps + (m.Draw && !AthleteDesign ? "  DRAW" : "");

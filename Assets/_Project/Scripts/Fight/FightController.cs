@@ -69,7 +69,7 @@ namespace PushStars.Fight
 
         private Phase _phase = Phase.WaitPlank;
         /// <summary>Use the same saved name as the profile and preparation screens.</summary>
-        private static string PlayerLabel => ProfileIdentityEditor.ResolveName("YOU");
+        private static string PlayerLabel => ProfileIdentityEditor.PlayerName();
         private FightMode _mode;
         private IOpponentFeed _opponent;   // null in the level test
 
@@ -235,7 +235,7 @@ namespace PushStars.Fight
                 return;
             }
 
-            _hud.ConfigureDuel(OpponentLabel, PlayerLabel);
+            _hud.ConfigureDuel(FightConfig.ShownOpponentName(OpponentLabel), PlayerLabel);
             _hud.SetOpponentForm(_opponent.FormPercent);
             _hud.SetOpponentTempo(_opponent.SecondsPerRep);
         }
@@ -680,7 +680,7 @@ namespace PushStars.Fight
                 Mode = _mode, Win = win, Draw = draw, MyReps = myReps, OppReps = oppReps,
                 MyForm = AverageForm(), OppForm = _opponent.FormPercent,
                 MyRepsPerMinute = _session.TempoRpm, OppSecondsPerRep = _opponent.SecondsPerRep,
-                Xp = xp, Trophies = trophies, OpponentName = OpponentLabel,
+                Xp = xp, Trophies = trophies, OpponentName = FightConfig.ShownOpponentName(OpponentLabel),
                 PlayerName = PlayerLabel, NewRecord = newRecord
             });
         }

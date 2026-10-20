@@ -19,7 +19,7 @@ namespace PushStars.UI
 
         public static LiveDuelSeat LocalSeat() => new LiveDuelSeat
         {
-            Uid = LiveDuelClient.Uid ?? "", Name = ProfileIdentityEditor.ResolveName("YOU"),
+            Uid = LiveDuelClient.Uid ?? "", Name = ProfileIdentityEditor.PlayerName(),
             Hero = CharacterRoster.SavedHomeAvatar, Gender = (int)CharacterRoster.SavedGender,
             Country = ProfileCountry.Code ?? ""
         };

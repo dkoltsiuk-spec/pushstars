@@ -176,7 +176,7 @@ namespace PushStars.Fight
 
         private void LoadPlayerName()
         {
-            if (_playerName != null) _playerName.text = PushStars.UI.ProfileIdentityEditor.ResolveName("YOU");
+            if (_playerName != null) _playerName.text = PushStars.UI.ProfileIdentityEditor.PlayerName();
         }
 
         public void Hide()
@@ -203,7 +203,7 @@ namespace PushStars.Fight
         private static void Fill(in Side side, TextMeshProUGUI name, TextMeshProUGUI trophies,
                                  TextMeshProUGUI best, TextMeshProUGUI winRate)
         {
-            if (name != null) name.text = side.Name;
+            if (name != null) name.text = PushStars.Core.FightConfig.ShownOpponentName(side.Name);
             if (trophies != null) trophies.text = Number(side.Trophies);
             if (best != null) best.text = Number(side.BestReps);
             if (winRate != null) winRate.text = side.WinRatePercent == Side.Unknown

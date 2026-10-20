@@ -26,7 +26,7 @@ namespace PushStars.UI
             if (_badge != null) { _badge.enabled = !m.Draw && !m.IsSolo; _badge.sprite = m.Won ? _winSprite : _loseSprite; }
 
             // "vs" is dimmed (valid paired <color> tag — <alpha> has no closing tag in TMP).
-            if (_vsName  != null) _vsName.text = m.IsSolo ? (m.Mode == "assessment" ? "ASSESSMENT" : "TRAINING SET") : $"<color=#7E8497>vs</color> {m.OpponentName}";
+            if (_vsName  != null) _vsName.text = m.IsSolo ? (m.Mode == "assessment" ? "ASSESSMENT" : "TRAINING SET") : $"<color=#7E8497>vs</color> {Core.FightConfig.ShownOpponentName(m.OpponentName)}";
             if (_meta    != null) _meta.text   = $"{TimeAgo(m.CreatedAt)} - {m.DurationSec}s - {Up(m.Exercise)}";
             if (_myScore != null) { _myScore.text = m.MyReps.ToString(); _myScore.color = m.IsSolo || m.Draw ? Color.white : m.Won ? AppColors.AccentLime : AppColors.DangerRed; }
             if (_oppScore != null) _oppScore.text = m.IsSolo ? "REPS" : m.Draw ? "DRAW" : m.OpponentReps.ToString();

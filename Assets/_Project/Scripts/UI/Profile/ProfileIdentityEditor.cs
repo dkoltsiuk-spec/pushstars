@@ -43,6 +43,9 @@ namespace PushStars.UI
         public static string ResolveName(string fallback) => PlayerPrefs.GetString(Scope + "name",
             PlayerPrefs.GetString("profile.identity.local.name", fallback));
 
+        /// <summary>The nickname the profile header shows — the edited name, else the profile's.</summary>
+        public static string PlayerName() => ResolveName(LocalProfile.Profile.DisplayName);
+
         private void Awake()
         {
             BuildModal();
