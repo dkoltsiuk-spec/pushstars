@@ -248,6 +248,15 @@ namespace PushStars.Editor
                 Require(body.HasPose && body.MotionPhase == GhostMotionClip.Setup && body.Motion == p.Guest.PeerPose.Clip, "Live pose not exposed to the avatar.");
                 feed.StopPlayback();
                 Require(!body.HasPose && !body.PlaybackActive, "Stopped feed still poses the body.");
+
+                // The fight screen does not listen to a live opponent's reps: catching up the count
+                // must not depend on a listener (it froze both phones when it did).
+                var silent = go.AddComponent<LiveOpponent>();
+                silent.Configure(p.Guest);
+                silent.Begin();
+                p.Host.SendScore(7, 2, 80, 9); p.Step();
+                silent.Tick(9.5f);
+                Require(silent.Reps == 7 && silent.Claps == 2, $"Unheard live reps did not count ({silent.Reps}/{silent.Claps}).");
             }
             finally { Object.DestroyImmediate(go); }
 

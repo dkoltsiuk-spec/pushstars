@@ -14,9 +14,11 @@ namespace PushStars.Fight
         private float _sceneStart, _lastTime = -1;
         private GhostMotionClip _lastClip;
         private byte _lastPhase = byte.MaxValue;
+        private Vector3 _restScale = Vector3.one;
         public void Bind(Animator animator, FightController fight)
         {
             _animator = animator; _fight = fight; _sceneStart = Time.time;
+            _restScale = animator.transform.localScale;
             if (animator.avatar != null && animator.avatar.isHuman && HumanTrait.MuscleCount == GhostMotionClip.MuscleCount)
                 _handler = new HumanPoseHandler(animator.avatar, animator.transform);
         }
@@ -29,7 +31,16 @@ namespace PushStars.Fight
         {
             if (_fight == null || !_fight.TryGetStreamClock(out byte phase, out float time)) return;
             if (phase == _lastStreamedPhase && time - _lastStreamed + .0001f < LiveDuelLink.PoseIntervalSec) return;
-            _fight.StreamPose(CaptureFrame(_animator, _handler, ref _pose, phase, time));
+            // This stage moves and scales its own rig for its shots, and the body position the
+            // handler reports carries that along. The other phone has its own stage, so the pose
+            // goes out as if the rig stood at rest: root at the origin, unrotated, bound scale.
+            var root = _animator.transform;
+            Vector3 position = root.localPosition, scale = root.localScale;
+            Quaternion rotation = root.localRotation;
+            root.localPosition = Vector3.zero; root.localRotation = Quaternion.identity; root.localScale = _restScale;
+            var frame = CaptureFrame(_animator, _handler, ref _pose, phase, time);
+            root.localPosition = position; root.localRotation = rotation; root.localScale = scale;
+            _fight.StreamPose(frame);
             _lastStreamed = time; _lastStreamedPhase = phase;
         }
 

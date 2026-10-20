@@ -13,6 +13,8 @@ namespace PushStars.Fight
         private GhostMotionClip _preparation;
         private float _start;
         private Transform _head, _hips;
+        private Vector3 _restPosition;
+        private Quaternion _restRotation = Quaternion.identity;
         public bool UsesPushupFraming { get; private set; }
         /// <summary>Switches the body to another timeline — a live friend replacing the scene's ghost.</summary>
         public void SetSource(IOpponentPose source) => _ghost = source;
@@ -22,6 +24,8 @@ namespace PushStars.Fight
             var playback = animator.gameObject.AddComponent<GhostPosePlayback>();
             playback._animator = animator; playback._ghost = ghost; playback._start = Time.time;
             playback._handler = new HumanPoseHandler(animator.avatar, animator.transform);
+            playback._restPosition = animator.transform.localPosition;
+            playback._restRotation = animator.transform.localRotation;
             playback._head = animator.GetBoneTransform(HumanBodyBones.Head);
             playback._hips = animator.GetBoneTransform(HumanBodyBones.Hips);
             if (animator.gameObject.scene.name == FightConfig.PreparationSceneName && FightRequest.TestBot != null)
@@ -35,7 +39,15 @@ namespace PushStars.Fight
             byte phase = _preparation != null ? GhostMotionClip.Preparation : _ghost.MotionPhase;
             float time = _preparation != null ? Time.time - _start : _ghost.Elapsed;
             if (!clip.Sample(phase, time, ref _pose, out var position, out var rotation)) return;
-            _animator.transform.localPosition = position; _animator.transform.localRotation = rotation;
+            if (_ghost is LiveOpponent)
+            {
+                // A live pose is sent as if the sender's rig stood at rest (FightPoseRecorder); this
+                // stage keeps its own rig at rest too and frames it itself. Applying the sender's
+                // root, which its stage moves and scales for its own shot, put the opponent
+                // off-screen as soon as the set began.
+                _animator.transform.localPosition = _restPosition; _animator.transform.localRotation = _restRotation;
+            }
+            else { _animator.transform.localPosition = position; _animator.transform.localRotation = rotation; }
             _handler.SetHumanPose(ref _pose);
             if (_preparation == null && phase == GhostMotionClip.Live && _head != null && _hips != null)
             {

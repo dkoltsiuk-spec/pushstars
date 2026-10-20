@@ -38,8 +38,10 @@ namespace PushStars.Fight
         {
             if (_link == null) return;
             _lastElapsed = elapsedSec;
-            while (Reps < _link.PeerReps) OnRep?.Invoke(++Reps);
-            while (Claps < _link.PeerClaps) OnClap?.Invoke(++Claps);
+            // Count first, then tell: with nobody listening, OnRep?.Invoke(++Reps) skips its
+            // argument too, Reps never moves and the loop never ends (the freeze of 2026-10-20).
+            while (Reps < _link.PeerReps) { Reps++; OnRep?.Invoke(Reps); }
+            while (Claps < _link.PeerClaps) { Claps++; OnClap?.Invoke(Claps); }
         }
 
         public void StopPlayback() => _stopped = true;
