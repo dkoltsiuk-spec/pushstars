@@ -12,8 +12,9 @@ namespace PushStars.UI
     {
         Task<LiveQueueStatus> Enqueue(LiveDuelSeat seat, int best);
         Task<LiveQueueStatus> Poll(LiveDuelSeat seat, int best);
-        /// <param name="standby">Left for a recorded fight with "notify me" on: stay callable.</param>
-        Task<LiveQueueStatus> Leave(int best, bool standby);
+        /// <param name="standby">Left with "notify me" on: stay callable.</param>
+        /// <param name="busy">Left for a recorded fight: not called while it runs.</param>
+        Task<LiveQueueStatus> Leave(int best, bool standby, bool busy);
         /// <summary>Opens the match's room (Photon in the app).</summary>
         Task<LiveDuelLink> Enter(LiveQueueStatus match, LiveDuelSeat seat);
         /// <summary>Releases a match that never started.</summary>
@@ -109,7 +110,7 @@ namespace PushStars.UI
                     if (_call.IsCompleted) OnStatus(now);
                     return;
                 case Step.Wait:
-                    if (now - _startedAt >= _searchSec) { _step = Step.Leave; _call = Call(() => _queue.Leave(_best, false)); }
+                    if (now - _startedAt >= _searchSec) { _step = Step.Leave; _call = Call(() => _queue.Leave(_best, false, false)); }
                     else if (now >= _nextPoll) { _step = Step.Poll; _call = Call(() => _queue.Poll(_seat, _best)); }
                     return;
                 case Step.Enter:
@@ -179,14 +180,14 @@ namespace PushStars.UI
         }
 
         /// <summary>The player gave up (ВЫЙТИ), took a recorded fight instead, or left the found card
-        /// before the fight opened. <paramref name="standby"/>: "notify me" is on and the player
-        /// went to a recorded fight — the queue keeps them callable.</summary>
-        public void Cancel(bool standby = false)
+        /// before the fight opened. <paramref name="standby"/>: "notify me" is on — the queue keeps
+        /// them callable; <paramref name="busy"/>: not while the recorded fight they went to runs.</summary>
+        public void Cancel(bool standby = false, bool busy = true)
         {
             if (State == Result.Cancelled || State == Result.Fallback) return;
             bool queued = _startedAt >= 0f && _match == null;
             State = Result.Cancelled;
-            if (queued) Forget(Call(() => _queue.Leave(_best, standby)));
+            if (queued) Forget(Call(() => _queue.Leave(_best, standby, busy)));
             else if (_step == Step.Enter && Link == null) DiscardWhenOpen(_enter);
             Release();
             End();

@@ -343,7 +343,7 @@ namespace PushStars.Editor
                     return Task.FromResult(_q.Pair(_uid, seat));
                 }
 
-                public Task<LiveQueueStatus> Leave(int best, bool standby)
+                public Task<LiveQueueStatus> Leave(int best, bool standby, bool busy)
                 {
                     if (_q.Matched.TryGetValue(_uid, out var paired)) return Task.FromResult(paired);
                     _q.Waiting.Remove(_uid);

@@ -75,7 +75,7 @@ namespace PushStars.Services
             public int opponentReps; public bool opponentLeft;
         }
         [Serializable] private sealed class QueueRequest { public int hero, gender, best; public string country; public bool notify; }
-        [Serializable] private sealed class LeaveRequest { public int best; public bool standby, ghost; }
+        [Serializable] private sealed class LeaveRequest { public int best; public bool standby, busy, ghost; }
         [Serializable] private sealed class Empty { }
 
         public static string Uid => LeagueClient.Uid;
@@ -121,11 +121,11 @@ namespace PushStars.Services
                 new QueueRequest { hero = hero, gender = gender, country = country ?? "", best = best, notify = notify }, Uid, QueueRegion);
 
         /// <summary>Stops searching. A pairing made in the last moment comes back as "matched".
-        /// <paramref name="standby"/>: left for a recorded fight with "notify me" on — the place
-        /// stays callable afterwards.</summary>
-        public static Task<LiveQueueStatus> LeaveQueue(int best, bool standby) =>
+        /// <paramref name="standby"/>: left with "notify me" on — the place stays callable;
+        /// <paramref name="busy"/>: not until the recorded fight the player went to is over.</summary>
+        public static Task<LiveQueueStatus> LeaveQueue(int best, bool standby, bool busy) =>
             LeagueClient.Call<LeaveRequest, LiveQueueStatus>("leaveLiveDuel",
-                new LeaveRequest { best = best, standby = standby, ghost = false }, Uid, QueueRegion);
+                new LeaveRequest { best = best, standby = standby, busy = busy, ghost = false }, Uid, QueueRegion);
 
         /// <summary>Whether another player's search called this one lately (the push may have
         /// opened the app, or been missed): read from the server, never the offline cache.</summary>
@@ -169,8 +169,10 @@ namespace PushStars.Services
         /// Listens to this player's own place in the queue (liveDuelQueue/{uid}, firestore.rules)
         /// and reports a pairing the moment another phone's call writes it, so the waiting phone
         /// need not learn of it on its next poll. Only answers from the server count — the offline
-        /// cache may still hold a pairing from an earlier search. Null when Firestore is not up
-        /// (the polls still find the pairing); dispose to stop.
+        /// cache may still hold a pairing from an earlier search. A place that no longer holds a
+        /// pairing reports null: a phone back from the background must not take a pairing that was
+        /// cancelled while it was away. Null when Firestore is not up (the polls still find the
+        /// pairing); dispose to stop.
         /// </summary>
         public static IDisposable WatchQueue(long sinceServerMs, Action<LiveQueueStatus> matched)
         {
@@ -180,9 +182,8 @@ namespace PushStars.Services
             {
                 var registration = fs.Db.Collection("liveDuelQueue").Document(uid).Listen(snapshot =>
                 {
-                    if (snapshot == null || !snapshot.Exists || snapshot.Metadata.IsFromCache) return;
-                    var status = FromPlace(snapshot.ToDictionary(), sinceServerMs);
-                    if (status != null) matched?.Invoke(status);
+                    if (snapshot == null || snapshot.Metadata.IsFromCache) return;
+                    matched?.Invoke(snapshot.Exists ? FromPlace(snapshot.ToDictionary(), sinceServerMs) : null);
                 });
                 return new Watch(registration);
             }

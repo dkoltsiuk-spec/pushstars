@@ -88,12 +88,12 @@ namespace PushStars.UI
                 if (_warm == null) { _warm = Warm(); _warmSince = Time.realtimeSinceStartup; }
                 var status = await LiveDuelClient.Enqueue(seat.Hero, seat.Gender, seat.Country, best, _notify());
                 if (!_ended && _watch == null && status != null && status.status == "waiting")
-                    _watch = LiveDuelClient.WatchQueue(status.serverTimeMs, match => Interlocked.Exchange(ref _pushed, match));
+                    _watch = LiveDuelClient.WatchQueue(status.serverTimeMs, match => Volatile.Write(ref _pushed, match));
                 return status;
             }
 
             public Task<LiveQueueStatus> Poll(LiveDuelSeat seat, int best) => LiveDuelClient.Poll(seat.Hero, seat.Gender, seat.Country, best, _notify());
-            public Task<LiveQueueStatus> Leave(int best, bool standby) => LiveDuelClient.LeaveQueue(best, standby);
+            public Task<LiveQueueStatus> Leave(int best, bool standby, bool busy) => LiveDuelClient.LeaveQueue(best, standby, busy);
 
             public async Task<LiveDuelLink> Enter(LiveQueueStatus match, LiveDuelSeat seat)
             {

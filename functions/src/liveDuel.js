@@ -193,11 +193,15 @@ async function search(uid, data, fresh) {
       startedAtMs: 0, results: {}, room: { joins: {}, leaves: {}, closedAtMs: 0 },
     });
     const opponentOf = s => ({ uid: s.uid, name: s.name, hero: s.hero, gender: s.gender });
-    // A pairing ends both searches, and with them both players' standby.
+    // A pairing ends both searches, and with them both players' standby — held until the room
+    // is used, though: a phone put away right after searching is still in the pool for a few
+    // seconds, and a player who never comes to the room goes back to standby (standbyAgain).
     const matched = { state: 'matched', matchId: id, roomName: R.roomName(id), matchedAtMs: now, waitUntilMs: 0,
       standbyUntilMs: 0, expiresAtMs: now + C.LIVE_QUEUE_ENTRY_TTL_SEC * 1000 };
-    tx.set(queueRef(other.uid), { ...other, ...matched, role: 'host', opponent: opponentOf(seat) });
-    const own = { ...seat, ...matched, enqueuedAtMs: now, role: 'guest', opponent: opponentOf(other) };
+    tx.set(queueRef(other.uid), { ...other, ...matched, heldStandbyUntilMs: other.standbyUntilMs || 0,
+      role: 'host', opponent: opponentOf(seat) });
+    const own = { ...seat, ...matched, heldStandbyUntilMs: notify ? now + C.LIVE_QUEUE_STANDBY_SEC * 1000 : 0,
+      enqueuedAtMs: now, role: 'guest', opponent: opponentOf(other) };
     tx.set(queueRef(uid), own);
     return queueTicket(own, now);
   });
@@ -212,6 +216,17 @@ async function search(uid, data, fresh) {
 }
 
 const bestOf = data => Number.isInteger(data?.best) ? Math.max(0, Math.min(C.MAX_REPS_PER_MATCH, data.best)) : 0;
+
+// A paired place whose player never came to the match's room (the phone was put away right
+// after searching, before its place dropped out of the pool) goes back to standby when they had
+// "notify me" on — callable at once, so the search that is still waiting for them sends the push.
+// Null when the place should simply go: no standby held, the player was in the room, or the duel ran.
+function standbyAgain(place, match, now) {
+  if (!((place.heldStandbyUntilMs || 0) > now) || !match || match.startedAtMs || match.room?.joins?.[place.uid]) return null;
+  return { ...place, state: 'waiting', waitUntilMs: 0, standbyUntilMs: place.heldStandbyUntilMs, standbyFromMs: now,
+    expiresAtMs: place.heldStandbyUntilMs, heldStandbyUntilMs: 0, calledAtMs: 0, callerName: '',
+    matchId: '', roomName: '', matchedAtMs: 0, role: '', opponent: null };
+}
 
 // Standby players: searched earlier, allowed notifications, left the screen (not polling), not
 // in a recorded fight right now. The nearest in level are called first; each push is budgeted
@@ -239,9 +254,10 @@ exports.pollLiveDuel = functions.region(...QUEUE_REGIONS).https.onCall(async (da
 // Stops searching. Paired in the last moment: the match stands and the phone takes it (the
 // other phone is already on its way to the room). Otherwise the place is freed and another
 // player's best set — the nearest in reps — comes back to fight instead, when there is one.
-// `standby`: the player left for a recorded fight with "notify me" on — the place stays callable
-// (not during the fight itself) instead of being freed. Builds that pick their opponent while
-// searching pass `ghost: false`.
+// `standby`: the player left with "notify me" on — the place stays callable instead of being
+// freed: not during the recorded fight they left for, or at once with `busy: false` (back to the
+// main screen, which shows a call above START). Builds that pick their opponent while searching
+// pass `ghost: false`.
 exports.leaveLiveDuel = functions.region(...QUEUE_REGIONS).https.onCall(async (data, context) => {
   const uid = uidOf(context);
   const left = await db.runTransaction(async tx => {
@@ -250,7 +266,7 @@ exports.leaveLiveDuel = functions.region(...QUEUE_REGIONS).https.onCall(async (d
     if (mine.exists && mine.data().state === 'matched') return queueTicket(mine.data(), now);
     if (!mine.exists) return null;
     if (data?.standby === true && mine.data().standbyUntilMs > now)
-      tx.update(queueRef(uid), { waitUntilMs: 0, standbyFromMs: now + C.LIVE_QUEUE_BUSY_SEC * 1000 });
+      tx.update(queueRef(uid), { waitUntilMs: 0, standbyFromMs: data?.busy === false ? now : now + C.LIVE_QUEUE_BUSY_SEC * 1000 });
     else tx.delete(queueRef(uid));
     return null;
   });
@@ -289,13 +305,24 @@ exports.cancelLiveDuel = functions.https.onCall(async (data, context) => {
     participant(match, uid);
     const code = await codeOf(tx, match);
     // A queue pairing nobody used: both places go, so a phone that has not seen the pairing yet
-    // simply keeps searching on its next poll instead of waiting in an empty room.
+    // simply keeps searching on its next poll instead of waiting in an empty room — except the
+    // place of a player who never came (not the one cancelling), which may go back to standby.
     const places = match.code ? [] : await tx.getAll(queueRef(match.hostUid), queueRef(match.guestUid));
     // A duel that has started cannot be cancelled away; it settles.
     if (!['waiting', 'joined'].includes(match.state)) return;
     tx.update(matchRef(data.matchId), { state: 'cancelled', expiresAtMs: FAR });
     if (code?.exists && code.data().matchId === data.matchId) tx.delete(codeRef(match.code));
-    for (const place of places) if (place.exists && place.data().matchId === data.matchId) tx.delete(place.ref);
+    const now = Date.now();
+    let restored = false;
+    for (const place of places) {
+      if (!place.exists || place.data().matchId !== data.matchId) continue;
+      const again = place.id !== uid ? standbyAgain(place.data(), match, now) : null;
+      if (again) { tx.set(place.ref, again); restored = true; } else tx.delete(place.ref);
+    }
+    // The one cancelling is usually searching again by now; if their new search got here first,
+    // it calls the restored player on its next poll rather than LIVE_QUEUE_RECALL_SEC later.
+    const mine = places.find(p => p.exists && p.id === uid && p.data().state === 'waiting');
+    if (restored && mine) tx.update(mine.ref, { callsMadeAtMs: 0 });
   });
   return { status: 'ok' };
 });
@@ -479,14 +506,18 @@ async function sweep(now = Date.now()) {
       } else tx.update(doc.ref, { expiresAtMs: FAR });
     });
   }
-  // Queue places of phones that stopped searching without leaving, and pairings nobody used.
+  // Queue places of phones that stopped searching without leaving, and pairings nobody used
+  // (a player who never came to such a room may go back to standby instead).
   const stale = await db.collection('liveDuelQueue').where('expiresAtMs', '<=', now).limit(200).get();
   let dequeued = 0;
   for (const doc of stale.docs) {
     await db.runTransaction(async tx => {
       const snap = await tx.get(doc.ref);
       if (!snap.exists || snap.data().expiresAtMs > Date.now()) return;
-      tx.delete(doc.ref);
+      const place = snap.data();
+      const match = place.state === 'matched' && validMatch(place.matchId) ? await tx.get(matchRef(place.matchId)) : null;
+      const again = match?.exists ? standbyAgain(place, match.data(), Date.now()) : null;
+      if (again) tx.set(doc.ref, again); else tx.delete(doc.ref);
       dequeued++;
     });
   }

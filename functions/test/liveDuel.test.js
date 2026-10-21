@@ -466,6 +466,81 @@ test('"notify me": a searcher who left is called by the next search, within budg
   } finally { f.restore(); }
 });
 
+test('"notify me": a phone put away right after searching is paired, never comes, and is called back', async () => {
+  const f = fixture();
+  try {
+    f.seedUser('alice'); f.seedUser('bob'); f.seedUser('carol');
+    await f.push.registerPushToken({ token: 'tok-alice', platform: 'ios', lang: 'ru' }, f.as('alice'));
+    await f.live.enqueueLiveDuel({ best: 30, notify: true }, f.as('alice'));
+    // Alice locks the phone; bob searches a second later, while her place is still in the pool.
+    f.advance(1000);
+    const bob = await f.live.enqueueLiveDuel({ best: 28 }, f.as('bob'));
+    assert.equal(bob.status, 'matched'); assert.equal(f.sent.length, 0);
+    // Bob waits in the room alone, gives up and searches again before his cancel lands.
+    await f.hook({ Type: 'Join', GameId: bob.roomName, UserId: 'bob', ActorNr: 1 });
+    f.advance(10000);
+    assert.equal((await f.live.enqueueLiveDuel({ best: 28 }, f.as('bob'))).called, 0, 'alice is still paired');
+    await f.live.cancelLiveDuel({ matchId: bob.matchId }, f.as('bob'));
+    const place = f.docs.get('liveDuelQueue/alice');
+    assert.equal(place.state, 'waiting', 'back to standby'); assert.equal(place.waitUntilMs, 0, 'not in the pool');
+    assert.ok(place.standbyUntilMs > Date.now()); assert.equal(place.matchId, '');
+    f.advance(1000);
+    const recall = await f.live.pollLiveDuel({ best: 28 }, f.as('bob'));
+    assert.equal(recall.status, 'waiting'); assert.equal(recall.called, 1, 'called on the next poll');
+    assert.equal(f.sent.length, 1); assert.equal(f.sent[0].token, 'tok-alice'); assert.match(f.sent[0].notification.body, /BOB/);
+    assert.equal(f.docs.get('liveDuelQueue/alice').callerName, 'BOB');
+    // Alice opens the app on the push: her search resumes and meets bob.
+    const alice = await f.live.pollLiveDuel({ best: 30, notify: true }, f.as('alice'));
+    assert.equal(alice.status, 'matched'); assert.equal(alice.opponentUid, 'bob');
+
+    // Without "notify me" an unused pairing simply goes; the one who cancels never goes to standby.
+    await f.live.enqueueLiveDuel({}, f.as('carol'));
+    f.advance(6000);
+    const carol = await f.live.enqueueLiveDuel({ notify: true }, f.as('carol'));
+    const late = await f.live.enqueueLiveDuel({}, f.as('bob'));
+    assert.equal(late.opponentUid, 'carol');
+    await f.live.cancelLiveDuel({ matchId: late.matchId }, f.as('carol'));
+    assert.equal(f.docs.has('liveDuelQueue/bob'), false); assert.equal(f.docs.has('liveDuelQueue/carol'), false);
+    assert.equal(carol.status, 'waiting');
+  } finally { f.restore(); }
+});
+
+test('"notify me": an unused pairing swept by cleanup goes back to standby; a played one does not', async () => {
+  const f = fixture();
+  try {
+    f.seedUser('alice'); f.seedUser('bob');
+    await f.live.enqueueLiveDuel({ notify: true }, f.as('alice'));
+    const unused = await f.live.enqueueLiveDuel({}, f.as('bob'));
+    f.advance(100000);                                   // nobody cancelled: both phones went away
+    await f.live.sweep();
+    assert.equal(f.docs.get(`liveDuels/${unused.matchId}`).state, 'expired');
+    assert.equal(f.docs.get('liveDuelQueue/alice').state, 'waiting', 'alice can still be called');
+    assert.equal(f.docs.has('liveDuelQueue/bob'), false, 'bob had not asked to be notified');
+    assert.equal(f.docs.get('liveDuelQueue/alice').waitUntilMs, 0, 'but not paired until her phone polls again');
+    // A pairing whose duel ran ends the standby for good.
+    await f.live.pollLiveDuel({ notify: true }, f.as('alice'));
+    const played = await f.live.enqueueLiveDuel({ notify: true }, f.as('bob'));
+    assert.equal(played.opponentUid, 'alice');
+    await f.live.startLiveDuel({ matchId: played.matchId }, f.as('alice'));
+    f.advance(100000);
+    await f.live.sweep();
+    assert.equal(f.docs.has('liveDuelQueue/alice'), false); assert.equal(f.docs.has('liveDuelQueue/bob'), false);
+  } finally { f.restore(); }
+});
+
+test('"notify me": leaving the search for the main screen keeps the player callable at once', async () => {
+  const f = fixture();
+  try {
+    f.seedUser('alice'); f.seedUser('bob');
+    await f.push.registerPushToken({ token: 'tok-alice', platform: 'android', lang: 'en' }, f.as('alice'));
+    await f.live.enqueueLiveDuel({ notify: true }, f.as('alice'));
+    await f.live.leaveLiveDuel({ standby: true, busy: false, ghost: false }, f.as('alice'));
+    f.advance(1000);
+    assert.equal((await f.live.enqueueLiveDuel({}, f.as('bob'))).called, 1);
+    assert.equal(f.docs.get('liveDuelQueue/alice').callerName, 'BOB');
+  } finally { f.restore(); }
+});
+
 test('calls respect the daily budget and standby expiry; a dead token is forgotten; an empty token unregisters', async () => {
   const f = fixture();
   try {

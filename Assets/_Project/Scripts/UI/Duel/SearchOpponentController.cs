@@ -172,11 +172,11 @@ namespace PushStars.UI
                 _searchRoutine = null;
                 Analytics.SearchEnded("cancel", Elapsed(), _notify);
             }
-            // Leaving the screen leaves the queue (and "notify me" with it), or the room a
-            // stranger is waiting in.
-            _liveSearch?.Cancel();
+            // Leaving the screen leaves the queue, or the room a stranger is waiting in. With
+            // "notify me" on the player stays callable: the main screen shows a call above START.
+            _liveSearch?.Cancel(standby: _notify, busy: false);
             _liveSearch = null;
-            PlayerPrefs.DeleteKey(KeyStandbyUntil);
+            if (_notify) MarkStandby(); else PlayerPrefs.DeleteKey(KeyStandbyUntil);
             ResetFoundCard();
 
             if (_juicy != null) _juicy.PlayOut(() => { if (_overlay != null) _overlay.SetActive(false); });
@@ -548,7 +548,7 @@ namespace PushStars.UI
 
         private void OnDestroy()
         {
-            _liveSearch?.Cancel(standby: _notify);
+            _liveSearch?.Cancel(standby: _notify, busy: false);
             _callWatch?.Dispose();
             PushTokens.Received -= OnPush;
             if (_findButton != null) _findButton.onClick.RemoveListener(Show);
