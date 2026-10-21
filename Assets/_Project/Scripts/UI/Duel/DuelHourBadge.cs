@@ -8,7 +8,7 @@ namespace PushStars.UI
     /// <summary>
     /// "DUEL HOUR · 42:10" just above the main screen's START while the duel hour runs
     /// (<see cref="DuelHour"/>) and the duel mode is selected — the hour the daily reminder
-    /// gathers players for. Hidden the rest of the day.
+    /// gathers players for. Hidden the rest of the day, and while a call's callout takes the spot.
     /// </summary>
     public sealed class DuelHourBadge : MonoBehaviour
     {
@@ -60,7 +60,7 @@ namespace PushStars.UI
         {
             _nextTick = Time.unscaledTime + 1f;
             var now = DateTime.Now;
-            bool on = DuelHour.IsOn(now) && SelectedGameMode.Current == GameMode.Pvp;
+            bool on = DuelHour.IsOn(now) && SelectedGameMode.Current == GameMode.Pvp && !CallBanner.Showing;
             var plate = GetComponent<DuelActionPlate>();
             if (plate != null) plate.enabled = on;
             _label.enabled = on;

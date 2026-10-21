@@ -30,7 +30,7 @@ namespace PushStars.UI
     /// player's level, shown as that player, else the player's own shadow — and "notify me" lets
     /// the player close the game: the next player who searches calls them with a push
     /// (functions/src/push.js), and the app opened on that call goes straight back into the search.
-    /// A call that arrives while the app is open on the main screen shows a banner instead.
+    /// A call that arrives while the app is open on the main screen shows a callout above START instead.
     /// The found-state UI is built at runtime from the overlay's own Title label, so the
     /// serialized Main scene needs no regeneration.
     ///
@@ -454,11 +454,12 @@ namespace PushStars.UI
 
         private void ShowBanner(string caller)
         {
-            var parent = _mainContent != null ? _mainContent.parent as RectTransform : transform as RectTransform;
-            if (parent == null) return;
+            if (_findButton == null) return;
             EnsureTitleRef();
-            if (_banner == null) _banner = CallBanner.Create(parent, _title != null ? _title.font : null, () => OpenSearch(null));
-            _banner.Show(Localization.Text($"{(string.IsNullOrEmpty(caller) ? "PLAYER" : caller)} is looking for a duel"));
+            if (_banner == null)
+                _banner = CallBanner.Create(_findButton.transform as RectTransform, _title != null ? _title.font : null, () => OpenSearch(null));
+            string name = string.IsNullOrEmpty(caller) ? "PLAYER" : caller;
+            _banner.Show(string.Format(Localization.Text("{0} is looking for a duel"), $"<color=#FFD21F>{name}</color>"));
         }
 
         private void OnApplicationPause(bool paused)
