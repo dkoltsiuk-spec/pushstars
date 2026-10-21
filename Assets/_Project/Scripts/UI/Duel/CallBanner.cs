@@ -8,14 +8,13 @@ namespace PushStars.UI
     /// <summary>
     /// "● DENIS ищет дуэль [БОЙ]": a callout just above the main screen's START when another
     /// player's search calls this one while the app is open (with the app closed, the push does
-    /// this job). Its tail points at START, it pops in, breathes gently while the caller waits and
+    /// this job). It pops in, breathes gently while the caller waits and
     /// goes away by itself once they have stopped waiting. The whole callout is the button.
     /// </summary>
     public sealed class CallBanner : MonoBehaviour
     {
         private const float ShowSec = 30f, PopSec = .28f;
         private static readonly Color Plate = new Color32(24, 27, 36, 245);
-        private static readonly Color Ink = new Color32(0, 0, 0, 255);
         private static readonly Color Gold = new Color32(255, 210, 31, 255);
         private static readonly Color Live = new Color32(82, 255, 2, 255);
 
@@ -31,7 +30,7 @@ namespace PushStars.UI
         [RuntimeInitializeOnLoadMethod(RuntimeInitializeLoadType.SubsystemRegistration)]
         private static void ResetStatics() => Showing = false;
 
-        /// <param name="button">START: the callout sits above it, tail down.</param>
+        /// <param name="button">START: the callout sits just above it.</param>
         public static CallBanner Create(RectTransform button, TMP_FontAsset font, Action fight)
         {
             var rt = new GameObject("CallBubble", typeof(RectTransform)).GetComponent<RectTransform>();
@@ -45,9 +44,6 @@ namespace PushStars.UI
             font = font != null ? font : TMP_Settings.defaultFontAsset;
             var theme = Resources.Load<PushStarsTheme>("PushStarsTheme");
 
-            // Tail first, so the plate covers its upper half: a diamond outlined like the plate.
-            Diamond(rt, "TailInk", 19f, Ink, -10f);
-            Diamond(rt, "Tail", 15f, Plate, -9f);
             var plate = new GameObject("Plate", typeof(RectTransform)).AddComponent<DuelActionPlate>();
             plate.rectTransform.SetParent(rt, false);
             Fill(plate.rectTransform);
@@ -133,19 +129,6 @@ namespace PushStars.UI
             var c = _dot.color;
             c.a = .55f + .45f * (.5f + .5f * Mathf.Sin(age * 5f));
             _dot.color = c;
-        }
-
-        private static void Diamond(RectTransform parent, string name, float size, Color color, float y)
-        {
-            var image = new GameObject(name, typeof(RectTransform)).AddComponent<Image>();
-            var rt = image.rectTransform;
-            rt.SetParent(parent, false);
-            rt.anchorMin = rt.anchorMax = new Vector2(.5f, 0f);
-            rt.anchoredPosition = new Vector2(0f, y + 8f);
-            rt.sizeDelta = new Vector2(size, size);
-            rt.localRotation = Quaternion.Euler(0f, 0f, 45f);
-            image.color = color;
-            image.raycastTarget = false;
         }
 
         private static TextMeshProUGUI Text(Transform parent, TMP_FontAsset font, float size, Color color, TextAlignmentOptions align)
