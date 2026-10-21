@@ -143,6 +143,8 @@ namespace PushStars.Core
             Commit(next);
         }
 
+        public string ToJson() => JsonUtility.ToJson(_state);
+
         private void Commit(LocalProgress next)
         {
             _save(JsonUtility.ToJson(next));

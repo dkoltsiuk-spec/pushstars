@@ -4,7 +4,7 @@ The Apple, Google and Email buttons open `SettingsAuthDialog` on the existing Se
 
 - Email supports sign-in, registration and password reset. Registration links the current Firebase user, preserving its UID and cloud profile.
 - **Save current progress** links Apple/Google credentials to the current UID. An account collision stays an error; it never silently switches accounts.
-- **Sign in** explicitly selects the provider account and reloads Main when its UID changes, so profile views rebind. It does not merge guest cloud progress or upload the app's separate local PlayerPrefs progress.
+- **Switch account** (a collision) signs in to the existing account, restores its cloud progress over the guest's and reloads Main. Linking keeps the UID, so the guest's progress becomes the account's first cloud copy. Sign-out uploads first and then starts the phone as a new guest. Rules and verification: [cloud progress](cloud-progress.md).
 - Settings initializes Firebase on demand, sharing initialization with Boot. Later launches restore the Firebase session in the background. Passwords and provider tokens are never saved by the app or printed to logs.
 - Apple/Google use native UI on mobile; Editor uses Email. Apple on Android uses Firebase's federated provider flow. Google Android uses Credential Manager; iOS uses GoogleSignIn. Apple iOS uses AuthenticationServices with random nonce and state validation.
 

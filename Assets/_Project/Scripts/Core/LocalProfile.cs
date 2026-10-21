@@ -5,7 +5,7 @@ using UnityEngine;
 
 namespace PushStars.Core
 {
-    /// <summary>Device progress. Cloud authentication does not replace this unsynced save.</summary>
+    /// <summary>Device progress. A signed-in account's cloud copy follows it (<see cref="ProgressStore"/>).</summary>
     public static class LocalProfile
     {
         private static LocalWorkoutLedger _ledger;
@@ -66,6 +66,20 @@ namespace PushStars.Core
             File.WriteAllText(temp, json);
             if (File.Exists(path)) File.Replace(temp, path, null);
             else File.Move(temp, path);
+            ProgressEvents.MarkChanged();
+        }
+
+        /// <summary>The save as the ledger holds it, legacy counters included, for the cloud copy.</summary>
+        public static string ExportSave() => Ledger.ToJson();
+
+        /// <summary>Replaces the save with one from the account's cloud copy; "" starts from zero
+        /// (never from the legacy counters). Throws, writing nothing, when the save would not load.</summary>
+        public static void ImportSave(string json)
+        {
+            if (string.IsNullOrEmpty(json)) json = JsonUtility.ToJson(new LocalProgress());
+            else new LocalWorkoutLedger(json, _ => { });
+            Save(json);
+            _ledger = null;
         }
 
         /// <summary>Explicit debug reset, never invoked during migration or sign-in.</summary>

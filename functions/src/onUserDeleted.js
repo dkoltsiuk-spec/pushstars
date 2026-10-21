@@ -20,6 +20,9 @@ exports.onUserDeleted = functions.auth.user().onDelete(async (user) => {
   batch.delete(userRef);
   batch.delete(db.doc(`onlinePresence/${uid}`));
   batch.delete(db.doc(`leaderboard/${league}/players/${uid}`));
+  // Cloud progress (progress.js) is a subcollection, which deleting the profile does not remove.
+  batch.delete(db.doc(`users/${uid}/progress/state`));
+  batch.delete(db.doc(`users/${uid}/progress/ghost`));
 
   const ghostSnap = await db.collection(`ghost_sessions/${uid}/sessions`).get();
   ghostSnap.forEach((doc) => batch.delete(doc.ref));

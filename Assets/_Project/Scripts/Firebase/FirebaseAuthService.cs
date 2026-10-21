@@ -69,6 +69,7 @@ namespace PushStars.Services
             }
             PlayerPrefs.SetInt(RememberBackendKey, 1);
             PlayerPrefs.Save();
+            CloudProgressSync.NotifyAuthReady();
             return auth;
         }
 
@@ -154,6 +155,14 @@ namespace PushStars.Services
                     return () => _auth.SignInWithEmailAndPasswordAsync(email, password);
                 }
             }
+        }
+
+        /// <summary>Fetches a new ID token, so calls made right after linking carry the linked
+        /// provider rather than the guest's cached sign-in.</summary>
+        public async Task RefreshTokenAsync()
+        {
+            var user = _auth?.CurrentUser;
+            if (user != null) await user.TokenAsync(true);
         }
 
         /// <summary>Leaves the account; Boot then starts a fresh guest session.</summary>

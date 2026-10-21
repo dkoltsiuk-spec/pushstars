@@ -86,7 +86,7 @@ namespace PushStars.Core
     /// </summary>
     public static class BossCatalog
     {
-        private const string ProgressKey = "boss_progress";
+        internal const string ProgressKey = "boss_progress";
 
         /// <summary>One bursty 15-hit timeline; at 75 damage the player falls on hit 14 (~54 s).</summary>
         private static readonly (float, int, float)[] StandardBursts =
@@ -191,7 +191,7 @@ namespace PushStars.Core
         public static int ClearedCount
         {
             get => Mathf.Clamp(PlayerPrefs.GetInt(ProgressKey, 0), 0, Bosses.Count);
-            private set { PlayerPrefs.SetInt(ProgressKey, value); PlayerPrefs.Save(); }
+            private set { PlayerPrefs.SetInt(ProgressKey, value); PlayerPrefs.Save(); ProgressEvents.MarkChanged(); }
         }
 
         public static int CurrentIndex => Mathf.Min(ClearedCount, Bosses.Count - 1);

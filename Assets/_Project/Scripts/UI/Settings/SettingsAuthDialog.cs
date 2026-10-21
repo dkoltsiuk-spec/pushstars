@@ -163,26 +163,32 @@ namespace PushStars.UI
         {
             if (_busy) return;
             ShowConfirm(provider, "SIGN OUT?",
-                "You'll keep playing as a guest on this phone.\nSign in again any time.", "SIGN OUT",
-                () =>
+                "Your progress stays in your account.\nThis phone starts over as a guest.", "SIGN OUT",
+                async () =>
                 {
-                    if (ServiceLocator.TryGet<FirebaseAuthService>(out var auth)) auth.SignOut();
+                    // Uploads the latest progress first; offline, this throws and nothing changes.
+                    if (ServiceLocator.TryGet<FirebaseAuthService>(out var auth)) await CloudProgressSync.SignOutAsync(auth);
+                    await UniTask.SwitchToMainThread();
                     // Boot re-initializes services and starts a fresh guest session.
                     SceneManager.LoadScene(BootSceneName, LoadSceneMode.Single);
-                    return Task.CompletedTask;
                 }, null);
         }
 
         private void AskSwitch(string provider, Func<Task> switchAccount, Action back)
         {
             string detail = provider == "apple.com"
-                ? "This Apple ID is already linked to another profile.\nSwitch to it on this phone?"
+                ? "This Apple ID already has a profile.\nIts saved progress replaces this phone's."
                 : provider == "google.com"
-                    ? "This Google account is already linked to another profile.\nSwitch to it on this phone?"
-                    : "This email is already linked to another profile.\nSwitch to it on this phone?";
+                    ? "This Google account already has a profile.\nIts saved progress replaces this phone's."
+                    : "This email already has a profile.\nIts saved progress replaces this phone's.";
             ShowConfirm(provider, "SWITCH ACCOUNT?", detail, "SWITCH", async () =>
             {
                 await switchAccount();
+                await UniTask.SwitchToMainThread();
+                // The account's cloud copy replaces the guest's save before Main reads it. Offline,
+                // the phone keeps the guest's save and the next Main load tries again.
+                try { await CloudProgressSync.ReconcileAsync(force: true, reloadMain: false); }
+                catch (Exception e) { Debug.LogWarning($"[Settings] Progress restore deferred: {e.Message}"); }
                 await UniTask.SwitchToMainThread();
                 // Rebind repositories/presenters to the chosen UID; do not reuse the guest view.
                 SceneManager.LoadScene(MainSceneName, LoadSceneMode.Single);
@@ -192,8 +198,17 @@ namespace PushStars.UI
         private void Linked(string provider)
         {
             _owner.RefreshAccount();
-            _owner.ShowNotice(provider == "apple.com" ? "Signed in with Apple."
-                : provider == "google.com" ? "Signed in with Google." : "Signed in with email.");
+            _owner.ShowNotice(provider == "apple.com" ? "Signed in with Apple. Progress is saved to your account."
+                : provider == "google.com" ? "Signed in with Google. Progress is saved to your account."
+                : "Signed in with email. Progress is saved to your account.");
+            // Same UID as the guest: its progress becomes the account's first cloud copy.
+            SaveLinkedProgress().Forget();
+        }
+
+        private static async UniTaskVoid SaveLinkedProgress()
+        {
+            try { await CloudProgressSync.ReconcileAsync(force: true); }
+            catch (Exception e) { Debug.LogWarning($"[Settings] Progress upload deferred: {e.Message}"); }
         }
 
         private void ShowEmailForm(bool open)
@@ -392,7 +407,7 @@ namespace PushStars.UI
                     case AuthError.Cancelled: return "Sign-in cancelled.";
                 }
             }
-            if (exception is PlatformNotSupportedException || exception is TimeoutException)
+            if (exception is PlatformNotSupportedException || exception is TimeoutException || exception is CloudSaveException)
                 return exception.Message;
             // Do not expose SDK exception payloads (which can include credentials) in UI/logs.
             return "Sign-in failed. Check your connection and try again.";

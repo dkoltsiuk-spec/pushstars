@@ -118,6 +118,7 @@ namespace PushStars.Core
                 _cached = record;
                 _loaded = true;
                 Debug.Log($"[GhostStore] Saved ghost: {record.reps} reps, form {record.avgForm:0}.");
+                ProgressEvents.MarkChanged();
             }
             catch (Exception e)
             {
@@ -145,6 +146,18 @@ namespace PushStars.Core
             catch (Exception e) { Debug.LogError($"[GhostStore] Could not delete {FilePath}: {e.Message}"); }
             _cached = null;
             _loaded = true;
+            ProgressEvents.MarkChanged();
+        }
+
+        /// <summary>The stored record as JSON for the account's cloud copy; "" when there is none.</summary>
+        public static string ExportJson() => Load() != null ? JsonUtility.ToJson(Load()) : "";
+
+        /// <summary>Puts the account's cloud record on this phone; "" removes the local one.</summary>
+        public static void ImportJson(string json)
+        {
+            var record = string.IsNullOrEmpty(json) ? null : JsonUtility.FromJson<GhostRecord>(json);
+            if (record != null && record.IsValid) Save(record);
+            else Clear();
         }
     }
 }

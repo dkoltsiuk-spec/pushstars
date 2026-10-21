@@ -49,6 +49,10 @@ namespace PushStars.App
                  "the level test, the ghost duel and XP are all local. Turn back on with phase 11.5.")]
         [SerializeField] private bool _initializeBackend = false;
 
+        [Tooltip("Longest a signed-in phone waits at launch for the account's cloud progress before " +
+                 "opening on the save it already has.")]
+        [SerializeField, Range(0f, 10f)] private float _cloudRestoreWaitSec = 4f;
+
         private float _startTime;
 
         private void Awake()
@@ -74,7 +78,15 @@ namespace PushStars.App
             // The backend is started beside the launch, never in front of it. Where it runs at all
             // is decided by _initializeBackend; either way the router below only reads local state.
             if (_initializeBackend || PlayerPrefs.GetInt(FirebaseAuthService.RememberBackendKey, 0) == 1)
-                InitServicesAsync().Forget();
+            {
+                var services = InitServicesAsync().Preserve();
+                services.Forget();
+                // A signed-in phone gives the account's cloud copy a moment to land (another phone
+                // may have moved it on), so the first screen reads the restored save. Offline, the
+                // wait simply ends and the launch goes on with the save on this phone.
+                if (CloudProgressSync.IsLinkedOnThisPhone)
+                    await UniTask.WhenAny(services, UniTask.Delay(TimeSpan.FromSeconds(_cloudRestoreWaitSec), DelayType.Realtime));
+            }
 
             string next = ResolveNextScene();
             Analytics.AppOpen(next);
@@ -99,6 +111,9 @@ namespace PushStars.App
                 }
                 await UniTask.SwitchToMainThread();
                 Debug.Log("[AppBootstrap] Services initialized.");
+                // Whose progress this phone holds, restored from the account's cloud copy if needed.
+                await WithTimeout(CloudProgressSync.ReconcileAsync());
+                await UniTask.SwitchToMainThread();
             }
             catch (Exception e)
             {

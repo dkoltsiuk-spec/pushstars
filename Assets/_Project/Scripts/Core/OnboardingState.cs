@@ -9,21 +9,22 @@ namespace PushStars.Core
     ///
     /// <para>PlayerPrefs, not Firestore, on purpose: the very first launch has to route correctly
     /// before (and whether or not) the backend answers, and an offline install must not be sent
-    /// through the intro twice. Phase 11.5 mirrors these flags to <c>users/{uid}/flags</c> so a
-    /// reinstall restores them; the local copy stays the one the router reads.</para>
+    /// through the intro twice. A signed-in account's cloud copy carries these flags
+    /// (<see cref="ProgressStore"/>) so a reinstall restores them; the local copy stays the one the
+    /// router reads.</para>
     /// </summary>
     public static class OnboardingState
     {
-        private const string KeyIntroSeen     = "onboarding.intro_seen";
-        private const string KeyLevelTestDone = "onboarding.level_test_done";
-        private const string KeyLevelTestReps = "onboarding.level_test_reps";
-        private const string KeyLevelTestSkipped = "onboarding.level_test_skipped";
+        internal const string KeyIntroSeen     = "onboarding.intro_seen";
+        internal const string KeyLevelTestDone = "onboarding.level_test_done";
+        internal const string KeyLevelTestReps = "onboarding.level_test_reps";
+        internal const string KeyLevelTestSkipped = "onboarding.level_test_skipped";
 
         /// <summary>The intro pages have been read through to the end.</summary>
         public static bool IntroSeen
         {
             get => PlayerPrefs.GetInt(KeyIntroSeen, 0) != 0;
-            set { if (value && !IntroSeen) Analytics.OnboardingStep("intro_done"); PlayerPrefs.SetInt(KeyIntroSeen, value ? 1 : 0); PlayerPrefs.Save(); }
+            set { if (value && !IntroSeen) Analytics.OnboardingStep("intro_done"); PlayerPrefs.SetInt(KeyIntroSeen, value ? 1 : 0); PlayerPrefs.Save(); ProgressEvents.MarkChanged(); }
         }
 
         /// <summary>The level test has been completed at least once.</summary>
@@ -40,7 +41,7 @@ namespace PushStars.Core
         public static bool LevelTestSkipped
         {
             get => PlayerPrefs.GetInt(KeyLevelTestSkipped, 0) != 0;
-            set { if (value && !LevelTestSkipped) Analytics.OnboardingStep("assessment_skipped"); PlayerPrefs.SetInt(KeyLevelTestSkipped, value ? 1 : 0); PlayerPrefs.Save(); }
+            set { if (value && !LevelTestSkipped) Analytics.OnboardingStep("assessment_skipped"); PlayerPrefs.SetInt(KeyLevelTestSkipped, value ? 1 : 0); PlayerPrefs.Save(); ProgressEvents.MarkChanged(); }
         }
 
         /// <summary>Reps scored in the level test (0 before it is taken).</summary>
@@ -61,6 +62,7 @@ namespace PushStars.Core
             // A taken test outranks a postponed one: the flag has nothing left to postpone.
             PlayerPrefs.DeleteKey(KeyLevelTestSkipped);
             PlayerPrefs.Save();
+            ProgressEvents.MarkChanged();
         }
 
         /// <summary>Sends the next launch back through the intro and the level test. Wired to the

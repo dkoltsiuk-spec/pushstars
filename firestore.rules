@@ -14,6 +14,12 @@ service cloud.firestore {
 
       allow create: if false;  // onUserCreated (Auth trigger) seeds the doc
       allow delete: if false;  // onUserDeleted Cloud Function
+
+      // Cloud progress — only its owner reads it; written only by saveProgress (server-validated).
+      match /progress/{doc} {
+        allow read: if request.auth != null && request.auth.uid == uid;
+        allow write: if false;
+      }
     }
 
     // Leaderboard — read only; written by Cloud Functions.

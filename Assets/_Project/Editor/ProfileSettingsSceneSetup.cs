@@ -262,7 +262,7 @@ namespace PushStars.Editor
             dialog.anchorMin = dialog.anchorMax = new Vector2(.5f, .5f); dialog.pivot = new Vector2(.5f, .5f);
             Panel(dialog, "Body", Card, 0, 0, 330, 235);
             var question = Text(dialog, "Question", "DELETE ACCOUNT?", 20, 22, 290, 36, 23); question.alignment = TextAlignmentOptions.Center;
-            var warning = Text(dialog, "Warning", "Your account and online progress will be deleted. This cannot be undone.", 25, 70, 280, 64, 16, false);
+            var warning = Text(dialog, "Warning", "Your account and all its progress will be deleted. This cannot be undone.", 25, 70, 280, 64, 16, false);
             warning.alignment = TextAlignmentOptions.Center;
             var no = Button(dialog, "Cancel", S("Group 543"), "CANCEL", 25, 160, 130, 48, 17);
             ProfileSettingsActions.FitSlantPlate(no.image, 48);

@@ -62,11 +62,29 @@ namespace PushStars.Core
             {
                 PlayerPrefs.SetString(SaveKey, json);
                 PlayerPrefs.Save();
+                ProgressEvents.MarkChanged();
             }));
 
         /// <summary>Drops the cached ledger so the next read loads the save again. Editor QA calls
         /// this after putting a player's real wallet back over a test one.</summary>
         public static void ReloadFromSave() => _ledger = null;
+
+        /// <summary>The save exactly as stored, for the account's cloud copy ("" before the first award).</summary>
+        public static string ExportSave() => PlayerPrefs.GetString(SaveKey, string.Empty);
+
+        /// <summary>Replaces the save with one from the account's cloud copy; "" starts a new wallet.
+        /// Throws, writing nothing, when the save would not load.</summary>
+        public static void ImportSave(string json)
+        {
+            if (string.IsNullOrEmpty(json)) PlayerPrefs.DeleteKey(SaveKey);
+            else
+            {
+                new CaseRewardLedger(json, () => 0, _ => { });
+                PlayerPrefs.SetString(SaveKey, json);
+            }
+            PlayerPrefs.Save();
+            _ledger = null;
+        }
 
         public static PendingCase Pending => Ledger.Pending;
         public static int PendingCount => Ledger.PendingCount;

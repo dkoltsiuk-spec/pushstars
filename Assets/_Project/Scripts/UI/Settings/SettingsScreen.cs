@@ -209,6 +209,9 @@ namespace PushStars.UI
                 {
                     await auth.DeleteAccountAsync();
                     await UniTask.SwitchToMainThread();
+                    // The account and its progress are gone; the phone starts over as a new guest.
+                    await CloudProgressSync.ForgetAfterDeleteAsync();
+                    await UniTask.SwitchToMainThread();
                 }
                 else
                 {
