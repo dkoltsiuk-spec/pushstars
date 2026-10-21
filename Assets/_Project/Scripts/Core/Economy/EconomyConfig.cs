@@ -74,6 +74,11 @@ namespace PushStars.Core
         /// <summary>Goal reminder dropped when the evening one is closer than this.</summary>
         public const int ReminderMinGapMinutes = 90;
 
+        // ── Duel hour (DuelHour): the daily hour players are gathered for live duels ──
+        /// <summary>Starts at 20:00 local time and lasts an hour; one reminder at the start.</summary>
+        public const int DuelHourStartMinute = 20 * 60;
+        public const int DuelHourMinutes = 60;
+
         // ── Trophies (PvP) — MVP flat values, mirror constants.md / constants.js ──────
         public const int TrophyWin = 25;
         public const int TrophyLoss = 15;   // applied as -15

@@ -1,7 +1,14 @@
 using System;
 using System.Collections;
+using System.Threading.Tasks;
 using PushStars.Core;
 using Unity.Notifications;
+#if UNITY_ANDROID
+using Unity.Notifications.Android;
+#elif UNITY_IOS
+using iOSNotificationCenter = Unity.Notifications.iOS.iOSNotificationCenter;
+using AuthorizationStatus = Unity.Notifications.iOS.AuthorizationStatus;
+#endif
 using UnityEngine;
 using UnityEngine.SceneManagement;
 
@@ -13,10 +20,16 @@ namespace PushStars.Reminders
     /// background, so it always reflects today's progress. The OS permission is asked once, on
     /// Home after the first finished daily goal — never on first launch — and the Settings
     /// notification switch turns everything off. Boots itself; nothing references it.
+    ///
+    /// <para>Also the app's door to the OS permission (<see cref="NotificationAccess"/>): the search
+    /// screen's "notify me" asks through it, and the Android "Duels" channel the server's pushes
+    /// arrive on is registered here.</para>
     /// </summary>
     public sealed class LocalReminders : MonoBehaviour
     {
         private const string ChannelId = "daily";
+        /// <summary>Server pushes ("an opponent is waiting", functions/src/push.js): heads-up on Android.</summary>
+        private const string DuelsChannelId = "duels";
         private const string KeyPermissionAsked = "reminders.permission_asked";
         private static LocalReminders _instance;
         private bool _initialized, _asking;
@@ -36,6 +49,7 @@ namespace PushStars.Reminders
         private IEnumerator Start()
         {
             SceneManager.sceneLoaded += SceneLoaded;
+            NotificationAccess.Granted += PermissionGranted;
 #if !UNITY_EDITOR
             try
             {
@@ -54,7 +68,14 @@ namespace PushStars.Reminders
                 args.AndroidSmallIcon = "icon_small";
                 NotificationCenter.Initialize(args);
                 NotificationCenter.CancelAllDeliveredNotifications();
+#if UNITY_ANDROID
+                AndroidNotificationCenter.RegisterNotificationChannel(new AndroidNotificationChannel(DuelsChannelId,
+                    Localization.Text("Duels"), Localization.Text("When an opponent is waiting for you."), Importance.High));
+#endif
                 _initialized = true;
+                NotificationAccess.Current = CurrentPermission;
+                NotificationAccess.Request = RequestPermission;
+                NotificationAccess.OpenSettings = () => NotificationCenter.OpenNotificationSettings();
             }
             catch (Exception exception) { Debug.LogException(exception, this); }
             if (_initialized)
@@ -69,7 +90,20 @@ namespace PushStars.Reminders
             SceneLoaded(SceneManager.GetActiveScene(), LoadSceneMode.Single);
         }
 
-        private void OnDestroy() => SceneManager.sceneLoaded -= SceneLoaded;
+        private void OnDestroy()
+        {
+            SceneManager.sceneLoaded -= SceneLoaded;
+            NotificationAccess.Granted -= PermissionGranted;
+        }
+
+        /// <summary>Allowed from elsewhere (the search screen's "notify me"): reminders may start too.</summary>
+        private void PermissionGranted()
+        {
+            if (PlayerPrefs.GetInt(KeyPermissionAsked, 0) != 0) return;
+            PlayerPrefs.SetInt(KeyPermissionAsked, 1);
+            PlayerPrefs.Save();
+            Reschedule();
+        }
 
         private void OnApplicationPause(bool paused)
         {
@@ -95,20 +129,60 @@ namespace PushStars.Reminders
         private IEnumerator AskPermission()
         {
             _asking = true;
-            bool granted = true;
-#if !UNITY_EDITOR
-            if (_initialized)
-            {
-                var request = NotificationCenter.RequestPermission();
-                yield return request;
-                granted = request.Status == NotificationsPermissionStatus.Granted;
-            }
-#endif
+            var asked = NotificationAccess.Ask();
+            while (!asked.IsCompleted) yield return null;
+            bool granted = asked.Status == TaskStatus.RanToCompletion && asked.Result;
             PlayerPrefs.SetInt(KeyPermissionAsked, 1);
             PlayerPrefs.Save();
             Analytics.NotificationPermission(granted);
             _asking = false;
             Reschedule();
+            yield break;
+        }
+
+        private static NotificationAccess.State CurrentPermission()
+        {
+#if UNITY_ANDROID && !UNITY_EDITOR
+            switch (AndroidNotificationCenter.UserPermissionToPost)
+            {
+                case PermissionStatus.Allowed: return NotificationAccess.State.Granted;
+                case PermissionStatus.DeniedDontAskAgain:
+                case PermissionStatus.NotificationsBlockedForApp: return NotificationAccess.State.Denied;
+                default: return NotificationAccess.State.Unknown;
+            }
+#elif UNITY_IOS && !UNITY_EDITOR
+            switch (iOSNotificationCenter.GetNotificationSettings().AuthorizationStatus)
+            {
+                case AuthorizationStatus.Authorized:
+                case AuthorizationStatus.Provisional:
+                case AuthorizationStatus.Ephemeral: return NotificationAccess.State.Granted;
+                case AuthorizationStatus.Denied: return NotificationAccess.State.Denied;
+                default: return NotificationAccess.State.Unknown;
+            }
+#else
+            return NotificationAccess.State.Granted;
+#endif
+        }
+
+        private Task<bool> RequestPermission()
+        {
+            var done = new TaskCompletionSource<bool>();
+            StartCoroutine(Request(done));
+            return done.Task;
+        }
+
+        private IEnumerator Request(TaskCompletionSource<bool> done)
+        {
+#if !UNITY_EDITOR
+            if (_initialized)
+            {
+                var request = NotificationCenter.RequestPermission();
+                yield return request;
+                done.TrySetResult(request.Status == NotificationsPermissionStatus.Granted);
+                yield break;
+            }
+#endif
+            done.TrySetResult(true);
             yield break;
         }
 

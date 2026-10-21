@@ -40,7 +40,8 @@ namespace PushStars.Editor
             File.WriteAllText("Logs/live-duel-regression.txt",
                 "PASS: pose codec, protocol validation, lobby + ready + shared start, score/pose streams, " +
                 "reconnect inside the window, forfeit past it, deliberate exit, leaving after the bell, version mismatch, LiveOpponent feed, " +
-                "queue: two searches meet live, lone search -> stranger ghost, absent stranger, exit, lost poll, offline.\n");
+                "queue: two searches meet live, lone search -> stranger ghost, absent stranger, exit, lost poll, offline, " +
+                "open-ended search with a level offer, slower polls, calls, standby leave.\n");
             Debug.Log("[LiveDuelRegression] PASS");
         }
 
@@ -278,9 +279,10 @@ namespace PushStars.Editor
             public readonly Dictionary<string, (LoopbackDuelTransport host, LoopbackDuelTransport guest)> Rooms =
                 new Dictionary<string, (LoopbackDuelTransport, LoopbackDuelTransport)>();
             public readonly List<string> Cancelled = new List<string>();
-            public LiveQueueGhost Ghost;
+            public LiveQueueGhost Ghost, Offer;
             public bool Offline, Push;
-            public int FailPolls, Polls, Ended;
+            public int FailPolls, Polls, Ended, Called;
+            public readonly List<string> Standby = new List<string>();
             public float Now;
 
             public ILiveQueue For(string uid) => new Seat(this, uid);
@@ -299,7 +301,7 @@ namespace PushStars.Editor
                     return Matched[uid];
                 }
                 Waiting[uid] = seat;
-                return new LiveQueueStatus { status = "waiting", ghost = new LiveQueueGhost() };
+                return new LiveQueueStatus { status = "waiting", ghost = Offer ?? new LiveQueueGhost(), called = Called };
             }
 
             // As JsonUtility delivers a reply: the absent ghost present, but empty.
@@ -341,10 +343,11 @@ namespace PushStars.Editor
                     return Task.FromResult(_q.Pair(_uid, seat));
                 }
 
-                public Task<LiveQueueStatus> Leave(int best)
+                public Task<LiveQueueStatus> Leave(int best, bool standby)
                 {
                     if (_q.Matched.TryGetValue(_uid, out var paired)) return Task.FromResult(paired);
                     _q.Waiting.Remove(_uid);
+                    if (standby) _q.Standby.Add(_uid);
                     return Task.FromResult(new LiveQueueStatus { status = "left", ghost = _q.Ghost ?? new LiveQueueGhost() });
                 }
 
@@ -486,7 +489,33 @@ namespace PushStars.Editor
             q = new FakeQueue { Offline = true };
             var offline = new LiveQueueSearch(q.For("alice"), Seat("alice"), 30);
             Run(q, .2f, offline);
-            Require(offline.State == LiveQueueSearch.Result.Fallback && offline.Ghost == null, "Offline search did not fall back.");
+            Require(offline.State == LiveQueueSearch.Result.Fallback && offline.Ghost == null && offline.Unreachable,
+                "Offline search did not fall back.");
+
+            // While few people play the app's search has no end of its own: it keeps the place,
+            // polls less often as it goes, offers a stranger at the player's level from its first
+            // answer, reports calls to standby players, and on taking the offer with "notify me"
+            // on leaves as standby.
+            q = new FakeQueue { Offer = new LiveQueueGhost { uid = "bob", name = "BOB", trophies = 540, repTimes = new[] { 1f, 2f } } };
+            var open = new LiveQueueSearch(q.For("alice"), Seat("alice"), 30, float.PositiveInfinity);
+            Run(q, .2f, open);
+            Require(open.Answered && open.Offer?.name == "BOB" && open.Offer.trophies == 540, "The first answer's offer was not kept.");
+            Run(q, 29.8f, open);
+            int early = q.Polls;
+            q.Called = 1;
+            Run(q, 30f, open);
+            Require(open.State == LiveQueueSearch.Result.Searching && q.Waiting.ContainsKey("alice"), "An open-ended search ended by itself.");
+            Require(q.Polls - early >= 12 && q.Polls - early <= 17, $"A long search did not slow its polling ({q.Polls - early} polls in 30 s).");
+            Require(open.CalledAt > 0f, "A call to standby players was not reported.");
+            open.Cancel(standby: true);
+            Require(open.State == LiveQueueSearch.Result.Cancelled && q.Standby.Contains("alice") && !q.Waiting.ContainsKey("alice"),
+                "Taking the offer with notify on did not leave as standby.");
+            q = new FakeQueue();
+            var plain = new LiveQueueSearch(q.For("alice"), Seat("alice"), 30, float.PositiveInfinity);
+            Run(q, 2f, plain);
+            Require(plain.Answered && plain.Offer == null, "An empty offer was kept.");
+            plain.Cancel();
+            Require(q.Standby.Count == 0, "Cancel without notify left a standby place.");
         }
 
         private static void Require(bool condition, string message)

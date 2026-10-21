@@ -12,7 +12,8 @@ namespace PushStars.UI
     {
         Task<LiveQueueStatus> Enqueue(LiveDuelSeat seat, int best);
         Task<LiveQueueStatus> Poll(LiveDuelSeat seat, int best);
-        Task<LiveQueueStatus> Leave(int best);
+        /// <param name="standby">Left for a recorded fight with "notify me" on: stay callable.</param>
+        Task<LiveQueueStatus> Leave(int best, bool standby);
         /// <summary>Opens the match's room (Photon in the app).</summary>
         Task<LiveDuelLink> Enter(LiveQueueStatus match, LiveDuelSeat seat);
         /// <summary>Releases a match that never started.</summary>
@@ -26,8 +27,10 @@ namespace PushStars.UI
     }
 
     /// <summary>
-    /// One press of "Search opponent" against the live queue: enqueue, poll about once a second for
-    /// <see cref="SearchSec"/> (a pairing another phone makes is usually pushed sooner, through
+    /// One press of "Search opponent" against the live queue: enqueue, poll (every second, slower
+    /// after a while) for up to the search length — <see cref="SearchSec"/>, or open-ended while
+    /// few people play: the player then picks <see cref="Offer"/> or their shadow when they like
+    /// (a pairing another phone makes is usually pushed sooner, through
     /// <see cref="ILiveQueue.Tick"/>), and on a pairing open the match's room and wait — at most
     /// <see cref="RoomSec"/> — for the stranger to be there. Ends in <see cref="Result.Live"/>
     /// (a link both phones are in; the preparation screen's READY check comes next) or <see cref="Result.Fallback"/> (nobody came: the queue place is freed, and
@@ -41,12 +44,24 @@ namespace PushStars.UI
         public enum Result { Searching, Live, Fallback, Cancelled }
 
         public const float SearchSec = 9f, PollSec = 1f, RoomSec = 10f;
+        /// <summary>A long search polls less often: the server keeps the place for 5 s per poll,
+        /// and a pairing reaches the phone through its listener anyway.</summary>
+        public static float PollInterval(float elapsed) => elapsed < 30f ? PollSec : elapsed < 120f ? 2f : 4f;
 
         public Result State { get; private set; } = Result.Searching;
         public LiveDuelLink Link { get; private set; }
         public LiveQueueGhost Ghost { get; private set; }
         public string OpponentName { get; private set; } = "";
         public string MatchId => _match?.matchId;
+        /// <summary>True once the queue answered the first time (with or without an offer).</summary>
+        public bool Answered { get; private set; }
+        /// <summary>The queue could not be reached at all (no network, server down).</summary>
+        public bool Unreachable { get; private set; }
+        /// <summary>A stranger's set at the player's level, offered by the queue's first answer.</summary>
+        public LiveQueueGhost Offer { get; private set; }
+        /// <summary>When the server last called players who asked to be notified (-1: never).</summary>
+        public float CalledAt { get; private set; } = -1f;
+        public float StartedAt => _startedAt;
 
         private enum Step { Enqueue, Wait, Poll, Leave, Enter, Room }
         private readonly ILiveQueue _queue;
@@ -57,12 +72,16 @@ namespace PushStars.UI
         private Task<LiveDuelLink> _enter;
         private LiveQueueStatus _match;
         private float _startedAt = -1f, _nextPoll, _roomUntil;
+        private readonly float _searchSec;
 
-        public LiveQueueSearch(ILiveQueue queue, LiveDuelSeat seat, int best)
+        /// <param name="searchSec">How long to wait before leaving with a fallback;
+        /// <see cref="float.PositiveInfinity"/> searches until <see cref="Cancel"/>.</param>
+        public LiveQueueSearch(ILiveQueue queue, LiveDuelSeat seat, int best, float searchSec = SearchSec)
         {
             _queue = queue ?? throw new ArgumentNullException(nameof(queue));
             _seat = seat ?? new LiveDuelSeat();
             _best = Mathf.Clamp(best, 0, LiveDuelLink.MaxReps);
+            _searchSec = searchSec;
         }
 
         public void Tick(float now)
@@ -90,7 +109,7 @@ namespace PushStars.UI
                     if (_call.IsCompleted) OnStatus(now);
                     return;
                 case Step.Wait:
-                    if (now - _startedAt >= SearchSec) { _step = Step.Leave; _call = Call(() => _queue.Leave(_best)); }
+                    if (now - _startedAt >= _searchSec) { _step = Step.Leave; _call = Call(() => _queue.Leave(_best, false)); }
                     else if (now >= _nextPoll) { _step = Step.Poll; _call = Call(() => _queue.Poll(_seat, _best)); }
                     return;
                 case Step.Enter:
@@ -118,13 +137,20 @@ namespace PushStars.UI
                 // A lost poll keeps the place (the server keeps it a few seconds); anything else
                 // means there is no queue to search right now.
                 if (step == Step.Poll) { _step = Step.Wait; _nextPoll = now + PollSec; }
+                else if (step == Step.Enqueue) { Answered = Unreachable = true; Fallback(null); }
                 else Fallback(null);
                 return;
             }
             if (status.Matched) { TakeMatch(status); return; }
             if (step == Step.Leave) { Fallback(status.HasGhost ? status.ghost : null); return; }
+            if (step == Step.Enqueue)
+            {
+                Answered = true;
+                if (status.HasGhost) Offer = status.ghost;
+            }
+            if (status.called > 0) CalledAt = now;
             _step = Step.Wait;
-            _nextPoll = now + PollSec;
+            _nextPoll = now + PollInterval(now - _startedAt);
         }
 
         private void TakeMatch(LiveQueueStatus status)
@@ -152,13 +178,15 @@ namespace PushStars.UI
             End();
         }
 
-        /// <summary>The player gave up (ВЫЙТИ) — or left the found card before the fight opened.</summary>
-        public void Cancel()
+        /// <summary>The player gave up (ВЫЙТИ), took a recorded fight instead, or left the found card
+        /// before the fight opened. <paramref name="standby"/>: "notify me" is on and the player
+        /// went to a recorded fight — the queue keeps them callable.</summary>
+        public void Cancel(bool standby = false)
         {
             if (State == Result.Cancelled || State == Result.Fallback) return;
             bool queued = _startedAt >= 0f && _match == null;
             State = Result.Cancelled;
-            if (queued) Forget(Call(() => _queue.Leave(_best)));
+            if (queued) Forget(Call(() => _queue.Leave(_best, standby)));
             else if (_step == Step.Enter && Link == null) DiscardWhenOpen(_enter);
             Release();
             End();

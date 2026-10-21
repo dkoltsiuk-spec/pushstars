@@ -3,7 +3,7 @@ using System.Collections.Generic;
 
 namespace PushStars.Core
 {
-    public enum ReminderKind { DailyGoal, StreakSaver }
+    public enum ReminderKind { DailyGoal, StreakSaver, DuelHour }
 
     /// <summary>One local reminder to schedule. Copy is English source text, localized by the caller.</summary>
     public readonly struct PlannedReminder
@@ -19,7 +19,9 @@ namespace PushStars.Core
     /// Which local reminders to keep scheduled, decided from the history alone (no server). The
     /// daily goal reminder comes at the player's habitual hour — the median start of their last
     /// active days — on any day the goal is not done yet. From a 3-day streak, an evening
-    /// "streak is fading" reminder covers a day with no workout. At most two a day, and the whole
+    /// "streak is fading" reminder covers a day with no workout. The duel hour (<see cref="DuelHour"/>)
+    /// is announced at its start, except on a day the player already fought or the streak reminder
+    /// is due that evening anyway; a goal reminder too close to it gives way. At most two a day, and the whole
     /// set is replaced every time the app is opened or closed. See <c>docs/plan/phase-11.5-daily-challenge.md</c>.
     /// </summary>
     public static class ReminderPlanner
@@ -29,6 +31,9 @@ namespace PushStars.Core
         public const string GoalBodyLeft = "Push-ups left to today's goal: {0}. Reward: +{1} Aura.";
         public const string SaverTitle = "Your streak is fading";
         public const string SaverBody = "Days in a row: {0}. One set today keeps it going.";
+        public const string DuelHourTitle = "Duel hour";
+        public const string DuelHourBody = "Players gather for live duels until 21:00. Find an opponent!";
+        public const string DuelHourGoalBody = "Live duels until 21:00. Push-ups to today's goal: {0}.";
 
         /// <summary>Minutes after midnight when the player usually starts; default when there is no history.</summary>
         public static int HabitualMinute(IReadOnlyList<MatchRecord> history, TimeZoneInfo zone = null)
@@ -62,6 +67,7 @@ namespace PushStars.Core
             var plan = new List<PlannedReminder>();
             int habit = HabitualMinute(history, zone), saver = SaverMinute(habit);
             bool trainedToday = today.Progress > 0;
+            int duel = EconomyConfig.DuelHourStartMinute;
             string aura = EconomyConfig.AuraDailyGoal.ToString(System.Globalization.CultureInfo.InvariantCulture);
 
             for (int day = 0; day < EconomyConfig.ReminderDaysAhead; day++)
@@ -79,8 +85,20 @@ namespace PushStars.Core
                     // Too close to the evening one: that one is the more urgent, skip the goal.
                     if ((saverTime - goalTime).TotalMinutes < EconomyConfig.ReminderMinGapMinutes) goalDue = false;
                 }
-                if (!goalDue || goalTime <= localNow.AddMinutes(EconomyConfig.ReminderMinLeadMinutes)) continue;
+                DateTime duelTime = date.AddMinutes(duel);
+                bool duelDue = !(day == 0 && trainedToday) &&
+                               !(saverDue && Math.Abs(saver - duel) < EconomyConfig.ReminderMinGapMinutes);
                 int left = day == 0 ? Math.Max(0, today.Target - today.Progress) : today.Target;
+                if (duelDue && duelTime > localNow.AddMinutes(EconomyConfig.ReminderMinLeadMinutes))
+                {
+                    // A goal reminder near the duel hour rides along with it: one notification, at
+                    // the time that gathers players.
+                    bool merged = goalDue && Math.Abs(duel - habit) < EconomyConfig.ReminderMinGapMinutes;
+                    plan.Add(new PlannedReminder(duelTime, ReminderKind.DuelHour, DuelHourTitle,
+                        merged ? string.Format(DuelHourGoalBody, left) : DuelHourBody));
+                    if (merged || saverDue) goalDue = false;
+                }
+                if (!goalDue || goalTime <= localNow.AddMinutes(EconomyConfig.ReminderMinLeadMinutes)) continue;
                 plan.Add(new PlannedReminder(goalTime, ReminderKind.DailyGoal, GoalTitle,
                     string.Format(day == 0 && trainedToday ? GoalBodyLeft : GoalBodyFresh, left, aura)));
             }

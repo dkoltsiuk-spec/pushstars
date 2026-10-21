@@ -160,6 +160,21 @@ namespace PushStars.Core
         public static void PushOpened(string kind) =>
             Track("push_opened", new Dictionary<string, object> { ["kind"] = kind });
 
+        /// <summary>How a press of "Search opponent" ended: live, stranger (a recorded set at the
+        /// player's level), shadow (own best), assessment or cancel — and after how long.</summary>
+        public static void SearchEnded(string outcome, float seconds, bool notify) =>
+            Track("search_ended", new Dictionary<string, object>
+                { ["outcome"] = outcome, ["seconds"] = Mathf.RoundToInt(seconds), ["notify"] = notify });
+
+        /// <summary>"Notify me when found" was switched on (or the OS said no).</summary>
+        public static void SearchNotify(bool granted) =>
+            Track("search_notify", new Dictionary<string, object> { ["granted"] = granted });
+
+        /// <summary>Another player's search called this one: <paramref name="how"/> is "opened"
+        /// (the app came up on the call) or "banner" (it was already open).</summary>
+        public static void QueueCall(string how) =>
+            Track("queue_call", new Dictionary<string, object> { ["how"] = how });
+
         private static void CheckDailyGoal()
         {
             try

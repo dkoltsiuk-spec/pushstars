@@ -125,7 +125,12 @@ namespace PushStars.UI
             if (_vibrationToggle != null)
                 _vibrationToggle.onValueChanged.AddListener(v => _store.VibrationEnabled = v);
             if (_notificationsToggle != null)
-                _notificationsToggle.onValueChanged.AddListener(v => _store.NotificationsEnabled = v);
+                _notificationsToggle.onValueChanged.AddListener(v =>
+                {
+                    _store.NotificationsEnabled = v;
+                    // Off also stops server pushes ("an opponent is waiting"), not only reminders.
+                    PushStars.Services.PushTokens.SetMuted(!v);
+                });
             if (_heroAuraToggle != null)
                 _heroAuraToggle.onValueChanged.AddListener(v => HeroAura.Enabled = v);
             if (_analyticsToggle != null)

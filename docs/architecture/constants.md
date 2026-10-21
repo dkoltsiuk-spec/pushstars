@@ -282,7 +282,16 @@
 | Допуск репов к увиденному соперником | `+3` (`LIVE_DUEL_REPS_TOLERANCE`) |
 | Трофеи живой дуэли | друг — `0`; очередь `pvp` — `+25 / −15` (`LIVE_DUEL_TROPHIES`) |
 | Очередь: место видно после последнего poll | `5` сек (`LIVE_QUEUE_HEARTBEAT_SEC`); клиент опрашивает раз в `1` с |
-| Очередь: поиск на клиенте | `9` сек, потом выход и фолбэк (`LiveQueueSearch.SearchSec`) |
+| Очередь: поиск на клиенте | без конца, пока игрок сам не выберет бой (сборки до 2026-10-21 — `9` сек, `LiveQueueSearch.SearchSec`); опрос `1` с первые 30 с, `2` с до 2 мин, дальше `4` с (`LiveQueueSearch.PollInterval`) |
+| Очередь: предложение боя на экране поиска | через `4` с после первого ответа (не позже `8` с, сразу без сети) — `SearchOpponentController.OfferDelaySec` |
+| Очередь: соперник «твоего уровня» | лучший сет из сезона в пределах `max(3, 20% × best)` повторов (`LIVE_QUEUE_GHOST_BAND_MIN/PCT`), иначе своя тень |
+| Очередь: «Сообщить, когда найдётся» | место остаётся вызываемым `30` мин (`LIVE_QUEUE_STANDBY_SEC`), во время боя с тенью — нет `150` с (`LIVE_QUEUE_BUSY_SEC`) |
+| Очередь: вызов ждущих | на новый поиск и повторно каждые `45` с (`LIVE_QUEUE_RECALL_SEC`), до `2` игроков за раз (`LIVE_QUEUE_CALLS_PER_SEARCH`) |
+| Пуш-вызов: бюджет | не чаще раза в `180` с (`PUSH_CALL_COOLDOWN_SEC`), до `6` в UTC-сутки (`PUSH_CALLS_PER_DAY`), живёт `60` с (`PUSH_CALL_TTL_SEC`) |
+| Пуш-вызов: клиент реагирует | на вызов не старше `90` с (`SearchOpponentController.CallWindowMs`); баннер висит `30` с |
+| Тёплое подключение Photon во время поиска | `20` с, потом отпускается (`ServerQueue.WarmSec`) |
+| «Сегодня в игре: N» | показывается от `20` игроков (`SearchOpponentController.PlayersTodayMin`), счёт по UTC-дню (`activeDays/{day}`) |
+| Час дуэлей | `20:00–21:00` по местному времени (`EconomyConfig.DuelHourStartMinute/Minutes`), одно напоминание в начале |
 | Очередь: ожидание соперника в комнате | `10` сек (`LiveQueueSearch.RoomSec`) |
 | Очередь: уборка места | через `60` сек после последней записи (`LIVE_QUEUE_ENTRY_TTL_SEC`) |
 | Очередь: неначатый матч истекает | `90` сек (`LIVE_QUEUE_ROOM_TTL_SEC`) |

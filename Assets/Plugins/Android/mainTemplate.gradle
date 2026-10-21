@@ -10,7 +10,7 @@ dependencies {
     implementation 'androidx.credentials:credentials-play-services-auth:1.5.0' // Assets/_Project/Editor/SignInDependencies.xml:10
     implementation 'com.google.android.gms:play-services-base:18.10.0' // Assets/Firebase/Editor/AppDependencies.xml:20
     implementation 'com.google.android.libraries.identity.googleid:googleid:1.1.1' // Assets/_Project/Editor/SignInDependencies.xml:11
-    implementation 'com.google.firebase:firebase-analytics:23.2.0' // Assets/Firebase/Editor/FirestoreDependencies.xml:18
+    implementation 'com.google.firebase:firebase-analytics:23.2.0' // Assets/Firebase/Editor/MessagingDependencies.xml:18
     implementation 'com.google.firebase:firebase-app-unity:13.11.0' // Assets/Firebase/Editor/AppDependencies.xml:25
     implementation 'com.google.firebase:firebase-auth:24.1.0' // Assets/Firebase/Editor/AuthDependencies.xml:16
     implementation 'com.google.firebase:firebase-auth-unity:13.11.0' // Assets/Firebase/Editor/AuthDependencies.xml:23
@@ -19,6 +19,10 @@ dependencies {
     implementation 'com.google.firebase:firebase-crashlytics-unity:13.11.0' // Assets/Firebase/Editor/CrashlyticsDependencies.xml:23
     implementation 'com.google.firebase:firebase-firestore:26.3.0' // Assets/Firebase/Editor/FirestoreDependencies.xml:16
     implementation 'com.google.firebase:firebase-firestore-unity:13.11.0' // Assets/Firebase/Editor/FirestoreDependencies.xml:23
+    implementation 'com.google.firebase:firebase-iid:21.1.0' // Assets/Firebase/Editor/MessagingDependencies.xml:20
+    implementation 'com.google.firebase:firebase-messaging:25.0.2' // Assets/Firebase/Editor/MessagingDependencies.xml:16
+    implementation 'com.google.firebase:firebase-messaging-unity:13.11.0' // Assets/Firebase/Editor/MessagingDependencies.xml:27
+    implementation 'com.google.flatbuffers:flatbuffers-java:1.12.0' // Assets/Firebase/Editor/MessagingDependencies.xml:22
 // Android Resolver Dependencies End
 **DEPS**}
 

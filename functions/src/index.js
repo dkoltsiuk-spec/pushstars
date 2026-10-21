@@ -45,3 +45,4 @@ exports.finishLiveDuel = liveDuel.finishLiveDuel;
 exports.onMatchFinished = liveDuel.onMatchFinished;
 exports.photonAuth = liveDuel.photonAuth;
 exports.cleanupMatchmaking = liveDuel.cleanupMatchmaking;
+exports.registerPushToken = require('./push').registerPushToken;

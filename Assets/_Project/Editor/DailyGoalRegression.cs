@@ -78,14 +78,16 @@ namespace PushStars.Editor
             var noon = new DateTime(2026, 10, 18, 12, 0, 0);
             int Count(List<PlannedReminder> plan, ReminderKind kind) { int n = 0; foreach (var r in plan) if (r.Kind == kind) n++; return n; }
 
-            // No set yet today, 4-day streak: tonight's "fading" plus a goal reminder for each of three days.
+            // No set yet today, 4-day streak: tonight's duel hour and "fading"; the next days' goal
+            // (habitually 19:00) rides along with the 20:00 duel hour.
             var plan = ReminderPlanner.Plan(history, new DailyGoalStatus("2026-10-18", 30, 0), 4, noon, msk);
-            Require(plan.Count == 4 && Count(plan, ReminderKind.StreakSaver) == 1 &&
-                plan[0].LocalTime == noon.Date.AddHours(19) && plan[1].LocalTime == noon.Date.AddHours(21.5),
+            Require(plan.Count == 4 && Count(plan, ReminderKind.StreakSaver) == 1 && Count(plan, ReminderKind.DuelHour) == 3 &&
+                plan[0].LocalTime == noon.Date.AddHours(20) && plan[1].LocalTime == noon.Date.AddHours(21.5) &&
+                plan[2].Body.Contains("goal") && plan[2].Body.Contains("30"),
                 "Untrained-day reminder plan wrong.");
-            // Trained today: no "fading" tonight, one tomorrow; today's goal says what is left.
+            // Trained today: no "fading" and no duel hour tonight, one tomorrow; today's goal says what is left.
             plan = ReminderPlanner.Plan(history, new DailyGoalStatus("2026-10-18", 30, 10), 4, noon, msk);
-            Require(plan.Count == 4 && Count(plan, ReminderKind.StreakSaver) == 1 &&
+            Require(plan.Count == 4 && Count(plan, ReminderKind.StreakSaver) == 1 && Count(plan, ReminderKind.DuelHour) == 2 &&
                 plan[0].Kind == ReminderKind.DailyGoal && plan[0].Body.Contains("left") && plan[0].Body.Contains("20") &&
                 plan.Exists(r => r.Kind == ReminderKind.StreakSaver && r.LocalTime.Date == noon.Date.AddDays(1)),
                 "Trained-day reminder plan wrong.");

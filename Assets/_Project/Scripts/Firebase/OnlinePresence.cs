@@ -8,18 +8,21 @@ using UnityEngine.Networking;
 
 namespace PushStars.Services
 {
-    /// <summary>Foreground players, counted by the server over a 75-second heartbeat window.
+    /// <summary>Foreground players, counted by the server over a 75-second heartbeat window, and
+    /// the players who were in the game today (UTC day, <see cref="Today"/>).
     /// Persists through scene changes. Unknown/offline is null, never a fabricated zero.</summary>
     public sealed class OnlinePresence : MonoBehaviour
     {
         public static OnlinePresence Instance { get; private set; }
         public int? Count { get; private set; }
+        /// <summary>Players in the game today; kept from the last answer while offline.</summary>
+        public int? Today { get; private set; }
         public event Action<int?> Changed;
         private Coroutine _loop;
         private UnityWebRequest _request;
 
         [Serializable] private class Response { public Result result; }
-        [Serializable] private class Result { public int online; }
+        [Serializable] private class Result { public int online = -1, today = -1; }
 
         [RuntimeInitializeOnLoadMethod(RuntimeInitializeLoadType.SubsystemRegistration)]
         private static void ResetStatics() => Instance = null;
@@ -75,6 +78,8 @@ namespace PushStars.Services
                                         var response = JsonUtility.FromJson<Response>(request.downloadHandler.text);
                                         if (response?.result != null && response.result.online >= 0)
                                             count = response.result.online;
+                                        if (response?.result != null && response.result.today >= 0)
+                                            Today = response.result.today;
                                     }
                                     catch (ArgumentException) { /* Invalid response remains unknown. */ }
                                 }

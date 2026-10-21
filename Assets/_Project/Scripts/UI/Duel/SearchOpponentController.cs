@@ -1,4 +1,6 @@
+using System;
 using System.Collections;
+using System.Collections.Generic;
 using TMPro;
 using UnityEngine;
 using UnityEngine.SceneManagement;
@@ -20,14 +22,17 @@ namespace PushStars.UI
     ///     back forward.
     ///   • While open, <see cref="LoadingVsRing"/> spins the dashed VS ring.
     ///
-    /// The spinner is not pure cosmetics — it is the search ladder: with a live transport in the
-    /// build (<see cref="LiveDuelService.Available"/>) the player waits in the random live queue
-    /// for up to <see cref="LiveQueueSearch.SearchSec"/>; two players searching at the same moment
-    /// meet in a ranked live duel. When nobody comes, the opponent is another player's best set
-    /// (handed back by the queue), else the player's own best recording (<see cref="GhostStore"/>).
-    /// Either way the card flips to OPPONENT FOUND and the fight loads. The found-state UI is built
-    /// at runtime from the overlay's own Title label, so the serialized Main scene needs no
-    /// regeneration.
+    /// The spinner is not pure cosmetics — it is the search: with a live transport in the build
+    /// (<see cref="LiveDuelService.Available"/>) the player waits in the random live queue for as
+    /// long as they like, and two players searching at the same time meet in a ranked live duel.
+    /// While few people play, the screen keeps the wait comfortable (<see cref="SearchLobbyView"/>):
+    /// after a few seconds it offers a fight right away — another player's best set at the
+    /// player's level, shown as that player, else the player's own shadow — and "notify me" lets
+    /// the player close the game: the next player who searches calls them with a push
+    /// (functions/src/push.js), and the app opened on that call goes straight back into the search.
+    /// A call that arrives while the app is open on the main screen shows a banner instead.
+    /// The found-state UI is built at runtime from the overlay's own Title label, so the
+    /// serialized Main scene needs no regeneration.
     ///
     /// Lives on a small always-active GameObject so it keeps running while the overlay
     /// itself is toggled on/off.
@@ -53,6 +58,16 @@ namespace PushStars.UI
         [Header("Animation")]
         [SerializeField] private LoadingVsRing _ring;
 
+        /// <summary>The offer card comes up after this long (or at once without a connection).</summary>
+        private const float OfferDelaySec = 4f, OfferLatestSec = 8f;
+        /// <summary>"Players today" shows from this many: a handful reads as an empty game.</summary>
+        private const int PlayersTodayMin = 20;
+        /// <summary>A call older than this is not acted on: the caller has stopped waiting.</summary>
+        private const long CallWindowMs = 90_000;
+        /// <summary>How long "notify me" keeps the player callable after leaving (LIVE_QUEUE_STANDBY_SEC).</summary>
+        private const long StandbyMs = 1_800_000;
+        private const string KeyNotify = "search.notify", KeyStandbyUntil = "queue.standbyUntil", KeyHandledCall = "queue.handledCall";
+
         private bool      _open;
         private Coroutine _mainAnim;
 
@@ -63,6 +78,15 @@ namespace PushStars.UI
         private string _titleOriginalText;
         private TextMeshProUGUI _bossLabel;  // runtime clone of the title showing the boss name
 
+        // ── Slow-launch comfort: offer, "notify me", calls ──
+        private SearchLobbyView _lobby;
+        private bool _notify, _offerTaken, _unreachable, _asking;
+        private LiveQueueGhost _offer;       // a stranger at the player's level; null → own shadow
+        private string _caller;              // the player whose call opened this search
+        private IDisposable _callWatch;
+        private CallBanner _banner;
+        private DuelHourBadge _duelHour;
+
         // Wire in Start (not Awake) so every Button/ExitButton has finished its own Awake,
         // mirroring DuelModeController's ordering safeguard.
         private void Start()
@@ -72,6 +96,11 @@ namespace PushStars.UI
 
             // Default closed — the main screen is visible first.
             if (_overlay != null) _overlay.SetActive(false);
+
+            if (_findButton != null) _duelHour = DuelHourBadge.Attach(_findButton.transform as RectTransform);
+            PushTokens.Received += OnPush;
+            WatchCalls();
+            CheckCall();
         }
 
         /// <summary>Opens the matchmaking overlay; the main screen recedes behind it.</summary>
@@ -94,9 +123,32 @@ namespace PushStars.UI
                 OtaSceneLoader.LoadScene(scene);
                 return;
             }
+            OpenSearch(null);
+        }
+
+        /// <summary>The duel search itself — from the main CTA, or from another player's call
+        /// (whatever mode the main screen has selected: the caller is waiting for a duel).</summary>
+        private void OpenSearch(string caller)
+        {
+            if (_open || _overlay == null) return;
             _open = true;
+            _caller = caller;
+            _banner?.Hide();
 
             SearchScreenAppearance.Ensure(_overlay);
+            if (_lobby == null && (_lobby = SearchLobbyView.Ensure(_overlay)) != null)
+            {
+                _lobby.BellTapped += OnBell;
+                _lobby.OfferTapped += () => _offerTaken = true;
+            }
+            _lobby?.ResetView();
+            _notify = PlayerPrefs.GetInt(KeyNotify, 0) == 1 && new PlayerPrefsSettingsStore().NotificationsEnabled
+                      && NotificationAccess.Current() == NotificationAccess.State.Granted;
+            _offer = null;
+            _offerTaken = _unreachable = false;
+            if (_notify) MarkStandby();
+            RefreshBell();
+
             _overlay.SetActive(true);
             _ring?.SetVisible(true);
             _overlay.GetComponentInChildren<SearchOrbit>(true)?.Play();
@@ -114,10 +166,17 @@ namespace PushStars.UI
             if (!_open || _overlay == null) return;
             _open = false;
 
-            if (_searchRoutine != null) { StopCoroutine(_searchRoutine); _searchRoutine = null; }
-            // Leaving the screen leaves the queue, or the room a stranger is waiting in.
+            if (_searchRoutine != null)
+            {
+                StopCoroutine(_searchRoutine);
+                _searchRoutine = null;
+                Analytics.SearchEnded("cancel", Elapsed(), _notify);
+            }
+            // Leaving the screen leaves the queue (and "notify me" with it), or the room a
+            // stranger is waiting in.
             _liveSearch?.Cancel();
             _liveSearch = null;
+            PlayerPrefs.DeleteKey(KeyStandbyUntil);
             ResetFoundCard();
 
             if (_juicy != null) _juicy.PlayOut(() => { if (_overlay != null) _overlay.SetActive(false); });
@@ -128,41 +187,114 @@ namespace PushStars.UI
 
         // ── Matchmaking: live queue → "OPPONENT FOUND: <имя>" → Fight scene ─────────────
         //
-        // First a real person: someone pressing search at the same moment. Nobody → another
-        // player's best set, else the player's own (a duel against your strongest self, fought in
-        // real time). A player with no recording yet is sent to the level test instead of being
-        // told "nobody found" — the search screen always ends in a set.
+        // First a real person: someone pressing search at the same time. While nobody comes the
+        // search simply goes on — the player can take the offered fight whenever they like: another
+        // player's best set close to their level, else their own (a duel against your strongest
+        // self, fought in real time). A player with no recording yet is sent to the level test
+        // instead of being told "nobody found" — the search screen always ends in a set.
+        private float _searchStarted;
+        private float Elapsed() => Time.realtimeSinceStartup - _searchStarted;
+
         private IEnumerator SearchRoutine()
         {
-            float started = Time.realtimeSinceStartup;
-            LiveQueueGhost stranger = null;
-            if (LiveDuelService.Available && Application.CanStreamedLevelBeLoaded(FightConfig.PreparationSceneName))
+            _searchStarted = Time.realtimeSinceStartup;
+            var ghost = GhostStore.Load();
+            if (!LiveDuelService.Available || !Application.CanStreamedLevelBeLoaded(FightConfig.PreparationSceneName))
             {
-                var search = _liveSearch = LiveDuelService.Search(GhostStore.Load()?.reps ?? LocalProfile.BestReps);
-                while (search.State == LiveQueueSearch.Result.Searching)
-                {
-                    search.Tick(Time.realtimeSinceStartup);
-                    yield return null;
-                }
-                if (search.State == LiveQueueSearch.Result.Live)
-                {
-                    // Both phones are in the room: the preparation screen's READY opens the fight
-                    // once both have pressed it.
-                    ShowFoundCard(search.OpponentName);
-                    yield return new WaitForSeconds(FightConfig.FoundPauseSec);
-                    _liveSearch = null;
-                    _searchRoutine = null;
-                    FightRequest.Live(search.Link, ranked: true);
-                    OtaSceneLoader.LoadScene(FightConfig.PreparationSceneName);
-                    yield break;
-                }
-                _liveSearch = null;
-                stranger = search.Ghost;
+                // No live transport in this build: the ring spins a moment, then the shadow.
+                yield return new WaitForSeconds(FightConfig.SearchDelaySec);
+                yield return FightOffer(ghost);
+                yield break;
             }
-            // The ring always spins a moment, even when the queue answered at once.
-            float rest = FightConfig.SearchDelaySec - (Time.realtimeSinceStartup - started);
-            if (rest > 0f) yield return new WaitForSeconds(rest);
 
+            int best = ghost?.reps ?? LocalProfile.BestReps;
+            LiveQueueSearch search = null;
+            float retryAt = 0f;
+            while (true)
+            {
+                float now = Time.realtimeSinceStartup, elapsed = now - _searchStarted;
+                if (search == null && now >= retryAt) search = _liveSearch = LiveDuelService.Search(best, () => _notify);
+                if (search != null)
+                {
+                    search.Tick(now);
+                    if (search.Offer != null) _offer = search.Offer;
+                    if (search.State == LiveQueueSearch.Result.Live)
+                    {
+                        // Both phones are in the room: the preparation screen's READY opens the
+                        // fight once both have pressed it.
+                        ShowFoundCard(search.OpponentName);
+                        PlayerPrefs.DeleteKey(KeyStandbyUntil);
+                        Analytics.SearchEnded("live", elapsed, _notify);
+                        yield return new WaitForSeconds(FightConfig.FoundPauseSec);
+                        _liveSearch = null;
+                        _searchRoutine = null;
+                        FightRequest.Live(search.Link, ranked: true);
+                        OtaSceneLoader.LoadScene(FightConfig.PreparationSceneName);
+                        yield break;
+                    }
+                    if (search.State == LiveQueueSearch.Result.Fallback)
+                    {
+                        // No queue to reach, or a stranger who paired but never came to the room:
+                        // keep searching — after a pause when the network is out.
+                        _unreachable = search.Unreachable;
+                        search = _liveSearch = null;
+                        retryAt = now + (_unreachable ? 5f : .5f);
+                    }
+                    else if (search.Answered) _unreachable = false;
+                }
+                UpdateStatus(elapsed, search);
+                bool answered = search == null || search.Answered;
+                if (_lobby != null && !_lobby.OfferShown &&
+                    (_unreachable || elapsed >= OfferLatestSec || elapsed >= OfferDelaySec && answered))
+                    ShowOffer(ghost);
+                if (_offerTaken) break;
+                yield return null;
+            }
+
+            // The player took the offered fight. With "notify me" on they stay callable: the queue
+            // keeps their place (not during this fight) and the main screen listens for a call.
+            _liveSearch?.Cancel(standby: _notify);
+            _liveSearch = null;
+            if (_notify) MarkStandby(); else PlayerPrefs.DeleteKey(KeyStandbyUntil);
+            yield return FightOffer(ghost);
+        }
+
+        private void ShowOffer(GhostRecord ghost)
+        {
+            if (_offer != null && _offer.IsValid)
+                // A recorded set, shown as the player it is — their name, best set and trophies.
+                _lobby.ShowOffer("OPPONENT AT YOUR LEVEL", _offer.name,
+                    Localization.Text($"Best set: {_offer.repTimes.Length}"), _offer.trophies, "FIGHT");
+            else if (ghost != null)
+                _lobby.ShowOffer("WHILE WE SEARCH", Localization.Text(FightConfig.GhostOpponentName),
+                    Localization.Text($"Beat your record: {ghost.reps}"), null, "FIGHT");
+            else
+                _lobby.ShowOffer("NO RECORD YET", Localization.Text("Level test"),
+                    Localization.Text("60 seconds, then a duel with your ghost"), null, "START");
+        }
+
+        // Status under the title: how long, and one reason to stay — a call made, the duel hour,
+        // or how many played today (only when that number is not embarrassing).
+        private void UpdateStatus(float elapsed, LiveQueueSearch search)
+        {
+            if (_lobby == null) return;
+            int seconds = Mathf.FloorToInt(elapsed);
+            string time = $"{seconds / 60}:{seconds % 60:00}";
+            string extra = null;
+            var now = DateTime.Now;
+            int? today = OnlinePresence.Instance != null ? OnlinePresence.Instance.Today : null;
+            if (_unreachable) extra = Localization.Text("No connection to the arena");
+            else if (!string.IsNullOrEmpty(_caller) && elapsed < 15f) extra = Localization.Text($"{_caller} is waiting for you!");
+            else if (search != null && search.CalledAt >= 0f && Time.realtimeSinceStartup - search.CalledAt < 40f)
+                extra = Localization.Text("We called a player — waiting");
+            else if (DuelHour.IsOn(now)) extra = Localization.Text($"Duel hour until {DuelHour.EndOf(now):HH:mm}");
+            else if (today.HasValue && today.Value >= PlayersTodayMin)
+                extra = Localization.Text($"{today.Value} players in the game today");
+            _lobby.SetStatus(extra == null ? time : time + "  ·  " + extra);
+        }
+
+        private IEnumerator FightOffer(GhostRecord ghost)
+        {
             if (!Application.CanStreamedLevelBeLoaded(FightConfig.FightSceneName) ||
                 !Application.CanStreamedLevelBeLoaded(FightConfig.PreparationSceneName))
             {
@@ -172,26 +304,28 @@ namespace PushStars.UI
                 _searchRoutine = null;
                 yield break;
             }
+            float elapsed = Elapsed();
 
-            if (stranger != null)
+            if (_offer != null && _offer.IsValid)
             {
-                var record = GhostRecord.From(stranger.repTimes, 0, "stranger");
-                record.clapTimes = stranger.clapTimes ?? System.Array.Empty<float>();
+                var record = GhostRecord.From(_offer.repTimes, 0, "stranger");
+                record.clapTimes = _offer.clapTimes ?? Array.Empty<float>();
                 if (record.IsValid)
                 {
-                    ShowFoundCard($"{stranger.name}  ·  {record.reps}");
+                    ShowFoundCard($"{_offer.name}  ·  {record.reps}");
+                    Analytics.SearchEnded("stranger", elapsed, _notify);
                     yield return new WaitForSeconds(FightConfig.FoundPauseSec);
                     _searchRoutine = null;
-                    FightRequest.StrangerGhost(record, stranger.name);
+                    FightRequest.StrangerGhost(record, _offer.name);
                     OtaSceneLoader.LoadScene(FightConfig.PreparationSceneName);
                     yield break;
                 }
             }
 
-            var ghost = GhostStore.Load();
             if (ghost == null)
             {
                 ShowFoundCard("TAKE AN ASSESSMENT FIRST");
+                Analytics.SearchEnded("assessment", elapsed, _notify);
                 yield return new WaitForSeconds(FightConfig.FoundPauseSec);
                 _searchRoutine = null;
                 FightRequest.LevelTest();
@@ -200,11 +334,139 @@ namespace PushStars.UI
             }
 
             ShowFoundCard($"{FightConfig.GhostOpponentName}  ·  {ghost.reps}");
+            Analytics.SearchEnded("shadow", elapsed, _notify);
             yield return new WaitForSeconds(FightConfig.FoundPauseSec);
 
             _searchRoutine = null;
             FightRequest.Ghost();
             OtaSceneLoader.LoadScene(FightConfig.PreparationSceneName);
+        }
+
+        // ── "Notify me when an opponent is found" ───────────────────────────────────────────
+
+        private void OnBell()
+        {
+            if (_asking) return;
+            if (_notify)
+            {
+                _notify = false;
+                PlayerPrefs.SetInt(KeyNotify, 0);
+                PlayerPrefs.DeleteKey(KeyStandbyUntil);
+                RefreshBell();
+                return;
+            }
+            if (NotificationAccess.Current() == NotificationAccess.State.Denied) { NotificationAccess.OpenSettings(); return; }
+            StartCoroutine(EnableNotify());
+        }
+
+        private IEnumerator EnableNotify()
+        {
+            _asking = true;
+            var ask = NotificationAccess.Ask();
+            while (!ask.IsCompleted) yield return null;
+            _asking = false;
+            bool granted = ask.Status == System.Threading.Tasks.TaskStatus.RanToCompletion && ask.Result;
+            Analytics.SearchNotify(granted);
+            if (granted)
+            {
+                _notify = true;
+                PlayerPrefs.SetInt(KeyNotify, 1);
+                // Switching "notify me" on is an explicit yes to notifications.
+                var settings = new PlayerPrefsSettingsStore();
+                if (!settings.NotificationsEnabled) settings.NotificationsEnabled = true;
+                _ = PushTokens.Enable();
+                MarkStandby();
+            }
+            PlayerPrefs.Save();
+            RefreshBell();
+        }
+
+        private void RefreshBell()
+        {
+            _lobby?.SetBell(_notify ? SearchLobbyView.Bell.On
+                : NotificationAccess.Current() == NotificationAccess.State.Denied ? SearchLobbyView.Bell.Blocked
+                : SearchLobbyView.Bell.Off);
+        }
+
+        private void MarkStandby()
+        {
+            PlayerPrefs.SetString(KeyStandbyUntil, (NowMs() + StandbyMs).ToString());
+            PlayerPrefs.Save();
+            WatchCalls();
+        }
+
+        private static long NowMs() => DateTimeOffset.UtcNow.ToUnixTimeMilliseconds();
+
+        private static bool StandingBy() =>
+            long.TryParse(PlayerPrefs.GetString(KeyStandbyUntil, ""), out long until) && until > NowMs();
+
+        // ── Calls from another player's search ─────────────────────────────────────────────
+
+        /// <summary>The app came up (or back) — maybe on the push: a fresh call opens the search.</summary>
+        private async void CheckCall()
+        {
+            if (!StandingBy()) return;
+            QueueCall call;
+            try { call = await LiveDuelClient.ReadCall(); }
+            catch (Exception e) { Debug.LogWarning("[SearchOpponent] call: " + e.GetBaseException().Message); return; }
+            if (this == null || !Unhandled(call)) return;
+            Handle(call);
+            Analytics.QueueCall("opened");
+            OpenSearch(call.CallerName);
+        }
+
+        /// <summary>While the player stands by, a call arriving with the app open shows a banner.</summary>
+        private void WatchCalls()
+        {
+            if (_callWatch != null || !StandingBy()) return;
+            _callWatch = LiveDuelClient.WatchCall(OnCall);
+        }
+
+        private void OnCall(QueueCall call)
+        {
+            if (this == null || !Unhandled(call)) return;
+            Handle(call);
+            if (_open) return; // searching already: the pairing comes by itself
+            Analytics.QueueCall("banner");
+            ShowBanner(call.CallerName);
+        }
+
+        private void OnPush(string kind, IDictionary<string, string> data, bool opened)
+        {
+            if (kind != "queue" || this == null) return;
+            long.TryParse(data.TryGetValue("at", out var at) ? at : "", out long atMs);
+            var call = new QueueCall(atMs, data.TryGetValue("name", out var name) ? name : "");
+            if (!Unhandled(call)) return;
+            Handle(call);
+            if (_open) return;
+            if (opened) { Analytics.QueueCall("opened"); OpenSearch(call.CallerName); }
+            else { Analytics.QueueCall("banner"); ShowBanner(call.CallerName); }
+        }
+
+        private static bool Unhandled(QueueCall call) =>
+            call.Fresh(NowMs(), CallWindowMs) && long.TryParse(PlayerPrefs.GetString(KeyHandledCall, "0"), out long seen) && call.AtMs > seen;
+
+        private static void Handle(QueueCall call)
+        {
+            PlayerPrefs.SetString(KeyHandledCall, call.AtMs.ToString());
+            PlayerPrefs.Save();
+        }
+
+        private void ShowBanner(string caller)
+        {
+            var parent = _mainContent != null ? _mainContent.parent as RectTransform : transform as RectTransform;
+            if (parent == null) return;
+            EnsureTitleRef();
+            if (_banner == null) _banner = CallBanner.Create(parent, _title != null ? _title.font : null, () => OpenSearch(null));
+            _banner.Show(Localization.Text($"{(string.IsNullOrEmpty(caller) ? "PLAYER" : caller)} is looking for a duel"));
+        }
+
+        private void OnApplicationPause(bool paused)
+        {
+            if (paused) return;
+            // Back from the background: the push may have brought the player here.
+            if (!_open) CheckCall();
+            WatchCalls();
         }
 
         private void ShowFoundCard(string bossName)
@@ -214,6 +476,8 @@ namespace PushStars.UI
 
             _title.text = "OPPONENT FOUND";
             _overlay.GetComponentInChildren<SearchOrbit>(true)?.Found();
+            _lobby?.HideOffer();
+            _lobby?.SetStatus("");
 
             // The boss name is a runtime clone of the title label (inherits the Rubik font and
             // styling), parked under the VS ring.
@@ -283,7 +547,9 @@ namespace PushStars.UI
 
         private void OnDestroy()
         {
-            _liveSearch?.Cancel();
+            _liveSearch?.Cancel(standby: _notify);
+            _callWatch?.Dispose();
+            PushTokens.Received -= OnPush;
             if (_findButton != null) _findButton.onClick.RemoveListener(Show);
             if (_exitButton != null) _exitButton.onClick.RemoveListener(Hide);
         }

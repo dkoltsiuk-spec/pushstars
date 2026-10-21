@@ -12,6 +12,7 @@ function fakeDb(clock) {
     get: async () => snap(p),
     set: async (data, options) => apply(['set', p, data, options]),
     update: async data => apply(['update', p, data]),
+    delete: async () => apply(['delete', p]),
   });
   const snap = p => ({ exists: docs.has(p), id: p.split('/').pop(), ref: ref(p), data: () => copy(docs.get(p)) });
   function apply([op, p, data, options]) {
@@ -67,9 +68,15 @@ function fixture({ secret = 'hook-secret' } = {}) {
   const { db, docs } = fakeDb();
   const firestore = Object.assign(() => db, { Timestamp: { fromMillis: ms => ms } });
   const tokens = { 'good-token': 'alice' };
-  const admin = { firestore, auth: () => ({ verifyIdToken: async t => { if (!tokens[t]) throw new Error('bad'); return { uid: tokens[t] }; } }) };
+  // FCM: sent messages are kept; a token listed in `dead` answers as unregistered.
+  const sent = [], dead = new Set();
+  const messaging = () => ({ send: async m => {
+    if (dead.has(m.token)) throw Object.assign(new Error('gone'), { errorInfo: { code: 'messaging/registration-token-not-registered' } });
+    sent.push(m); return 'id';
+  } });
+  const admin = { firestore, messaging, auth: () => ({ verifyIdToken: async t => { if (!tokens[t]) throw new Error('bad'); return { uid: tokens[t] }; } }) };
   class HttpsError extends Error { constructor(code, message) { super(message); this.code = code; } }
-  const functions = { region: () => functions, logger: { info() {} }, https: { HttpsError, onCall: fn => fn, onRequest: fn => fn }, pubsub: { schedule: () => ({ timeZone: () => ({ onRun: fn => fn }) }) } };
+  const functions = { region: () => functions, logger: { info() {}, warn() {} }, https: { HttpsError, onCall: fn => fn, onRequest: fn => fn }, pubsub: { schedule: () => ({ timeZone: () => ({ onRun: fn => fn }) }) } };
   const src = path.join(__dirname, '../src');
   for (const key of Object.keys(require.cache)) if (key.startsWith(src)) delete require.cache[key];
   const load = Module._load;
@@ -79,13 +86,13 @@ function fixture({ secret = 'hook-secret' } = {}) {
     if (request === 'firebase-functions/v1') return functions;
     return load.call(this, request, parent, ...rest);
   };
-  let live;
-  try { live = require('../src/liveDuel'); } finally { Module._load = load; }
+  let live, push;
+  try { live = require('../src/liveDuel'); push = require('../src/push'); } finally { Module._load = load; }
   Date.now = () => now;
   process.env.PHOTON_WEBHOOK_SECRET = secret;
   const as = uid => ({ auth: { uid } });
   return {
-    live, docs, as,
+    live, push, docs, as, sent, dead,
     advance: ms => { now += ms; },
     restore: () => { Date.now = realNow; },
     seedUser: (uid, data) => docs.set(`users/${uid}`, { displayName: uid.toUpperCase(), totalReps: 0, trophies: 0, ...data }),
@@ -415,5 +422,96 @@ test('an abandoned pairing does not trap the next search; cleanup clears queue p
     assert.equal((await f.live.pollLiveDuel({}, f.as('alice'))).status, 'waiting');
     assert.equal((await f.live.enqueueLiveDuel({}, f.as('carol'))).opponentUid, 'alice');
     await assert.rejects(f.live.enqueueLiveDuel({}, {}), e => e.code === 'unauthenticated');
+  } finally { f.restore(); }
+});
+
+test('"notify me": a searcher who left is called by the next search, within budget, and answers into a live duel', async () => {
+  const f = fixture();
+  try {
+    f.seedUser('alice'); f.seedUser('bob'); f.seedUser('carol');
+    await f.push.registerPushToken({ token: 'tok-alice', platform: 'ios', lang: 'ru' }, f.as('alice'));
+    const first = await f.live.enqueueLiveDuel({ best: 30, notify: true }, f.as('alice'));
+    assert.equal(first.status, 'waiting'); assert.equal(first.called, 0, 'nobody to call');
+    // Alice takes the recorded fight offered meanwhile: her place stays, but not during that fight.
+    const left = await f.live.leaveLiveDuel({ standby: true, ghost: false, best: 30 }, f.as('alice'));
+    assert.equal(left.status, 'left'); assert.equal(left.ghost, null);
+    assert.equal(f.docs.get('liveDuelQueue/alice').waitUntilMs, 0);
+    f.advance(1000);
+    assert.equal((await f.live.enqueueLiveDuel({ best: 28 }, f.as('bob'))).called, 0, 'alice is mid-fight');
+    f.advance(150000);
+    const recall = await f.live.pollLiveDuel({ best: 28 }, f.as('bob'));
+    assert.equal(recall.status, 'waiting'); assert.equal(recall.called, 1);
+    assert.equal(f.sent.length, 1);
+    assert.equal(f.sent[0].token, 'tok-alice'); assert.match(f.sent[0].notification.title, /Соперник/);
+    assert.match(f.sent[0].notification.body, /BOB/); assert.equal(f.sent[0].data.kind, 'queue');
+    assert.equal(f.sent[0].android.notification.channelId, 'duels');
+    const called = f.docs.get('liveDuelQueue/alice');
+    assert.equal(called.callerName, 'BOB'); assert.ok(called.calledAtMs > 0);
+    f.advance(10000);
+    assert.equal((await f.live.pollLiveDuel({ best: 28 }, f.as('bob'))).called, 0, 'not every poll calls');
+    f.advance(40000);
+    assert.equal((await f.live.pollLiveDuel({ best: 28 }, f.as('bob'))).called, 0, 'one call per cooldown');
+    assert.equal(f.sent.length, 1);
+    // Alice opens the app on the push and searches: bob is still there.
+    const alice = await f.live.enqueueLiveDuel({ best: 30, notify: true }, f.as('alice'));
+    assert.equal(alice.status, 'matched'); assert.equal(alice.opponentUid, 'bob'); assert.equal(alice.host, false);
+    assert.equal(f.docs.get('liveDuelQueue/alice').standbyUntilMs, 0, 'a pairing ends the standby');
+    // Cancelling a search (no standby asked) frees the place for good.
+    await f.live.enqueueLiveDuel({ notify: true }, f.as('carol'));
+    await f.live.leaveLiveDuel({ ghost: false }, f.as('carol'));
+    assert.equal(f.docs.has('liveDuelQueue/carol'), false);
+  } finally { f.restore(); }
+});
+
+test('calls respect the daily budget and standby expiry; a dead token is forgotten; an empty token unregisters', async () => {
+  const f = fixture();
+  try {
+    f.seedUser('alice'); f.seedUser('bob'); f.seedUser('dora');
+    await f.push.registerPushToken({ token: 'tok-alice', platform: 'android', lang: 'xx' }, f.as('alice'));
+    assert.equal(f.docs.get('pushTokens/alice').lang, 'en', 'unknown languages fall back to English');
+    for (let i = 0; i < 8; i++) {
+      await f.live.enqueueLiveDuel({ notify: true }, f.as('alice'));
+      f.advance(6000);                                   // alice put the phone away
+      await f.live.enqueueLiveDuel({}, f.as('bob'));
+      await f.live.leaveLiveDuel({ ghost: false }, f.as('bob'));
+      f.advance(181000);
+    }
+    assert.equal(f.sent.length, 6, 'PUSH_CALLS_PER_DAY');
+    assert.match(f.sent[0].notification.title, /Opponent found/);
+    // Standby lapses after LIVE_QUEUE_STANDBY_SEC; cleanup then removes the place.
+    f.advance(24 * 3600 * 1000);
+    await f.live.enqueueLiveDuel({ notify: true }, f.as('alice'));
+    f.advance(1801000);
+    await f.live.enqueueLiveDuel({}, f.as('bob'));
+    assert.equal(f.sent.length, 6, 'a lapsed standby is not called');
+    await f.live.leaveLiveDuel({ ghost: false }, f.as('bob'));
+    assert.equal((await f.live.sweep()).dequeued, 1);
+    // An uninstalled app: FCM says the token is gone, the server forgets it.
+    await f.push.registerPushToken({ token: 'tok-dora', platform: 'ios', lang: 'pt-BR' }, f.as('dora'));
+    f.dead.add('tok-dora');
+    await f.live.enqueueLiveDuel({ notify: true }, f.as('dora'));
+    f.advance(6000);
+    assert.equal((await f.live.enqueueLiveDuel({}, f.as('bob'))).called, 0);
+    assert.equal(f.docs.has('pushTokens/dora'), false);
+    await f.push.registerPushToken({ token: '' }, f.as('alice'));
+    assert.equal(f.docs.has('pushTokens/alice'), false);
+    await assert.rejects(f.push.registerPushToken({ token: 'x' }, {}), e => e.code === 'unauthenticated');
+  } finally { f.restore(); }
+});
+
+test("a fresh search offers a stranger only at the player's level", async () => {
+  const f = fixture();
+  try {
+    f.seedUser('alice');
+    const players = `seasons/${seasonId()}/players`;
+    f.docs.set(`${players}/bob`, { uid: 'bob', displayName: 'BOB', standing: '1', trophies: 540, bestTimes: times(27) });
+    f.docs.set(`${players}/zed`, { uid: 'zed', displayName: 'ZED', standing: '2', trophies: 900, bestTimes: times(12) });
+    const near = await f.live.enqueueLiveDuel({ best: 30 }, f.as('alice'));
+    assert.equal(near.ghost.uid, 'bob'); assert.equal(near.ghost.trophies, 540); assert.equal(near.ghost.repTimes.length, 27);
+    await f.live.leaveLiveDuel({ ghost: false }, f.as('alice'));
+    assert.equal((await f.live.enqueueLiveDuel({ best: 45 }, f.as('alice'))).ghost, null, 'nobody within the band');
+    await f.live.leaveLiveDuel({ ghost: false }, f.as('alice'));
+    assert.equal((await f.live.enqueueLiveDuel({ best: 0 }, f.as('alice'))).ghost, null, 'no level yet');
+    assert.equal((await f.live.pollLiveDuel({ best: 30 }, f.as('alice'))).ghost, undefined, 'polls carry no offer');
   } finally { f.restore(); }
 });

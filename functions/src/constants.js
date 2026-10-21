@@ -25,6 +25,20 @@ module.exports = {
   LIVE_QUEUE_ROOM_TTL_SEC: 90,        // a queue match nobody started expires
   LIVE_QUEUE_POOL: 10,                // waiting places read per pairing attempt
   LIVE_QUEUE_GHOST_POOL: 50,          // season rows read to find a stranger's ghost after a miss
+  // A stranger's set offered while searching must be close to the player's own best:
+  // within max(BAND_MIN, BAND_PCT × best) reps, otherwise the phone offers its own shadow.
+  LIVE_QUEUE_GHOST_BAND_MIN: 3,
+  LIVE_QUEUE_GHOST_BAND_PCT: 0.2,
+  // "Notify me when found" (low-online launch): a searcher who allowed notifications stays
+  // callable after leaving the screen; another player's search sends them a push.
+  LIVE_QUEUE_STANDBY_SEC: 1800,       // how long a searcher who left stays callable
+  LIVE_QUEUE_BUSY_SEC: 150,           // left for a recorded fight: not called while it runs
+  LIVE_QUEUE_RECALL_SEC: 45,          // a searcher calls standby players again this often
+  LIVE_QUEUE_CALLS_PER_SEARCH: 2,     // standby players called at once
+  LIVE_QUEUE_STANDBY_POOL: 20,        // standby places read per call
+  PUSH_CALL_COOLDOWN_SEC: 180,        // one call per player per 3 minutes
+  PUSH_CALLS_PER_DAY: 6,              // and at most this many a (UTC) day
+  PUSH_CALL_TTL_SEC: 60,              // a call not delivered within a minute is dropped
   GHOST_MAX_FILE_BYTES: 204800, // 200 KB
   LEADERBOARD_CACHE_SEC: 60,
 

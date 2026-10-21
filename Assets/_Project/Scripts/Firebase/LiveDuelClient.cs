@@ -23,11 +23,14 @@ namespace PushStars.Services
         public bool Settled => state == "settled";
     }
 
-    /// <summary>Another player's best set, handed back when the random queue found nobody.</summary>
+    /// <summary>Another player's best set: offered with the first answer of a search (close to
+    /// the player's level), or handed back when an old-style search found nobody.</summary>
     [Serializable] public sealed class LiveQueueGhost
     {
         public string uid, name;
+        public int trophies;
         public float[] repTimes, clapTimes;
+        public bool IsValid => repTimes != null && repTimes.Length > 0;
     }
     /// <summary>Where a search in the random queue stands (enqueueLiveDuel / pollLiveDuel /
     /// leaveLiveDuel): "waiting", "matched" (a ranked live duel with a stranger, room named) or
@@ -37,11 +40,22 @@ namespace PushStars.Services
         public string status, matchId, roomName, mode, opponentUid, opponentName;
         public bool host;
         public int opponentHero, opponentGender;
+        /// <summary>Players who asked to be notified and were just called for this search.</summary>
+        public int called;
         public long serverTimeMs;
         public LiveQueueGhost ghost;
         public bool Matched => status == "matched" && !string.IsNullOrEmpty(matchId) && !string.IsNullOrEmpty(roomName);
         // JsonUtility never leaves a nested field null: an absent ghost arrives empty.
-        public bool HasGhost => ghost != null && ghost.repTimes != null && ghost.repTimes.Length > 0;
+        public bool HasGhost => ghost != null && ghost.IsValid;
+    }
+
+    /// <summary>Another player's search called this one (functions/src/liveDuel.js callStandby).</summary>
+    public readonly struct QueueCall
+    {
+        public readonly long AtMs;
+        public readonly string CallerName;
+        public QueueCall(long atMs, string callerName) { AtMs = atMs; CallerName = callerName ?? ""; }
+        public bool Fresh(long nowMs, long windowMs) => AtMs > 0 && nowMs - AtMs < windowMs;
     }
 
     /// <summary>
@@ -60,7 +74,8 @@ namespace PushStars.Services
             public string matchId; public float[] repTimes, clapTimes; public float durationSec;
             public int opponentReps; public bool opponentLeft;
         }
-        [Serializable] private sealed class QueueRequest { public int hero, gender, best; public string country; }
+        [Serializable] private sealed class QueueRequest { public int hero, gender, best; public string country; public bool notify; }
+        [Serializable] private sealed class LeaveRequest { public int best; public bool standby, ghost; }
         [Serializable] private sealed class Empty { }
 
         public static string Uid => LeagueClient.Uid;
@@ -90,22 +105,65 @@ namespace PushStars.Services
                 new CodeRequest { code = code, hero = hero, gender = gender, country = country ?? "" }, Uid);
         }
 
-        /// <summary>Starts a search in the random queue; pairs at once with anyone already waiting.</summary>
-        public static async Task<LiveQueueStatus> Enqueue(int hero, int gender, string country, int best)
+        /// <summary>Starts a search in the random queue; pairs at once with anyone already waiting.
+        /// <paramref name="notify"/>: the player allowed a push when someone else searches later.
+        /// While waiting, the answer offers a stranger's set at the player's level (<c>ghost</c>).</summary>
+        public static async Task<LiveQueueStatus> Enqueue(int hero, int gender, string country, int best, bool notify)
         {
             await FirebaseAuthService.EnsureReadyAsync();
             return await LeagueClient.Call<QueueRequest, LiveQueueStatus>("enqueueLiveDuel",
-                new QueueRequest { hero = hero, gender = gender, country = country ?? "", best = best }, Uid, QueueRegion);
+                new QueueRequest { hero = hero, gender = gender, country = country ?? "", best = best, notify = notify }, Uid, QueueRegion);
         }
 
         /// <summary>Keeps the place in the queue, and pairs or reports the pairing.</summary>
-        public static Task<LiveQueueStatus> Poll(int hero, int gender, string country, int best) =>
+        public static Task<LiveQueueStatus> Poll(int hero, int gender, string country, int best, bool notify) =>
             LeagueClient.Call<QueueRequest, LiveQueueStatus>("pollLiveDuel",
-                new QueueRequest { hero = hero, gender = gender, country = country ?? "", best = best }, Uid, QueueRegion);
+                new QueueRequest { hero = hero, gender = gender, country = country ?? "", best = best, notify = notify }, Uid, QueueRegion);
 
-        /// <summary>Stops searching. A pairing made in the last moment comes back as "matched".</summary>
-        public static Task<LiveQueueStatus> LeaveQueue(int best) =>
-            LeagueClient.Call<QueueRequest, LiveQueueStatus>("leaveLiveDuel", new QueueRequest { best = best }, Uid, QueueRegion);
+        /// <summary>Stops searching. A pairing made in the last moment comes back as "matched".
+        /// <paramref name="standby"/>: left for a recorded fight with "notify me" on — the place
+        /// stays callable afterwards.</summary>
+        public static Task<LiveQueueStatus> LeaveQueue(int best, bool standby) =>
+            LeagueClient.Call<LeaveRequest, LiveQueueStatus>("leaveLiveDuel",
+                new LeaveRequest { best = best, standby = standby, ghost = false }, Uid, QueueRegion);
+
+        /// <summary>Whether another player's search called this one lately (the push may have
+        /// opened the app, or been missed): read from the server, never the offline cache.</summary>
+        public static async Task<QueueCall> ReadCall()
+        {
+            await FirebaseAuthService.EnsureReadyAsync();
+            string uid = Uid;
+            if (string.IsNullOrEmpty(uid) || !ServiceLocator.TryGet<FirestoreService>(out var fs) || fs.Db == null) return default;
+            var snapshot = await fs.Db.Collection("liveDuelQueue").Document(uid).GetSnapshotAsync(Source.Server);
+            return CallOf(snapshot);
+        }
+
+        /// <summary>Listens to this player's queue place for calls while the app is open on the
+        /// main screen; null when Firestore is not up. Dispose to stop.</summary>
+        public static IDisposable WatchCall(Action<QueueCall> called)
+        {
+            string uid = Uid;
+            if (string.IsNullOrEmpty(uid) || !ServiceLocator.TryGet<FirestoreService>(out var fs) || fs.Db == null) return null;
+            try
+            {
+                var registration = fs.Db.Collection("liveDuelQueue").Document(uid).Listen(snapshot =>
+                {
+                    if (snapshot == null || snapshot.Metadata.IsFromCache) return;
+                    var call = CallOf(snapshot);
+                    if (call.AtMs > 0) called?.Invoke(call);
+                });
+                return new Watch(registration);
+            }
+            catch (Exception e) { UnityEngine.Debug.LogWarning("[LiveQueue] watch call: " + e.Message); return null; }
+        }
+
+        private static QueueCall CallOf(DocumentSnapshot snapshot)
+        {
+            if (snapshot == null || !snapshot.Exists) return default;
+            var place = snapshot.ToDictionary();
+            if (Text(place, "state") != "waiting") return default;
+            return new QueueCall(Number(place, "calledAtMs"), Text(place, "callerName"));
+        }
 
         /// <summary>
         /// Listens to this player's own place in the queue (liveDuelQueue/{uid}, firestore.rules)

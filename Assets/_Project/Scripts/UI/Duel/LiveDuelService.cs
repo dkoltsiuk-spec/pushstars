@@ -56,36 +56,44 @@ namespace PushStars.UI
             return link;
         }
 
-        /// <summary>A search in the random live queue (the main screen's "Search opponent").
-        /// <paramref name="best"/> is the player's best set: the stranger's ghost handed back on a
-        /// miss is picked near it.</summary>
-        public static LiveQueueSearch Search(int best) => new LiveQueueSearch(new ServerQueue(), LocalSeat(), best);
+        /// <summary>A search in the random live queue (the main screen's "Search opponent"), open
+        /// until the player picks another fight or leaves. <paramref name="best"/> is the player's
+        /// best set: the stranger's set offered meanwhile is picked near it. <paramref name="notify"/>
+        /// is read on every call: "notify me" may be switched on while the search runs.</summary>
+        public static LiveQueueSearch Search(int best, Func<bool> notify) =>
+            new LiveQueueSearch(new ServerQueue(notify), LocalSeat(), best, float.PositiveInfinity);
 
         /// <summary>
         /// The server's queue for one search. While the search waits it connects to Photon ahead
         /// of the room (name server, sign-in, master — the slow part of entering), and listens to
         /// its own place so a pairing the other phone makes arrives at once instead of on the
-        /// next poll.
+        /// next poll. The warm connection is dropped after <see cref="WarmSec"/>: an open-ended
+        /// search would hold a Photon CCU for minutes; a later pairing simply connects then.
         /// </summary>
         private sealed class ServerQueue : ILiveQueue
         {
+            private const float WarmSec = 20f;
+            private readonly Func<bool> _notify;
+            private float _warmSince = -1f;
             private Task<IDuelTransport> _warm;
             private IDuelTransport _warmed;      // connected ahead, not yet handed to a room
             private IDisposable _watch;
             private LiveQueueStatus _pushed;
             private bool _ended;
 
+            public ServerQueue(Func<bool> notify) { _notify = notify ?? (() => false); }
+
             public async Task<LiveQueueStatus> Enqueue(LiveDuelSeat seat, int best)
             {
-                _warm ??= Warm();
-                var status = await LiveDuelClient.Enqueue(seat.Hero, seat.Gender, seat.Country, best);
+                if (_warm == null) { _warm = Warm(); _warmSince = Time.realtimeSinceStartup; }
+                var status = await LiveDuelClient.Enqueue(seat.Hero, seat.Gender, seat.Country, best, _notify());
                 if (!_ended && _watch == null && status != null && status.status == "waiting")
                     _watch = LiveDuelClient.WatchQueue(status.serverTimeMs, match => Interlocked.Exchange(ref _pushed, match));
                 return status;
             }
 
-            public Task<LiveQueueStatus> Poll(LiveDuelSeat seat, int best) => LiveDuelClient.Poll(seat.Hero, seat.Gender, seat.Country, best);
-            public Task<LiveQueueStatus> Leave(int best) => LiveDuelClient.LeaveQueue(best);
+            public Task<LiveQueueStatus> Poll(LiveDuelSeat seat, int best) => LiveDuelClient.Poll(seat.Hero, seat.Gender, seat.Country, best, _notify());
+            public Task<LiveQueueStatus> Leave(int best, bool standby) => LiveDuelClient.LeaveQueue(best, standby);
 
             public async Task<LiveDuelLink> Enter(LiveQueueStatus match, LiveDuelSeat seat)
             {
@@ -99,6 +107,13 @@ namespace PushStars.UI
             public LiveQueueStatus Tick()
             {
                 _warmed?.Service();
+                if (_warmed != null && _warm.IsCompleted && Time.realtimeSinceStartup - _warmSince > WarmSec)
+                {
+                    // Nobody came while it was warm: let the CCU go; Enter connects afresh.
+                    _warmed.Close();
+                    _warmed = null;
+                    _warm = null;
+                }
                 return Interlocked.Exchange(ref _pushed, null);
             }
 

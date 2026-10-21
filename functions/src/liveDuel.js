@@ -14,6 +14,11 @@
 //   enqueueLiveDuel → start searching; pairs at once with anyone already waiting
 //   pollLiveDuel    → still here (keeps the place) — and pairs, or reports the pairing
 //   leaveLiveDuel   → stop searching; hands back another player's best set to fight instead
+// While nobody is online the search never times out on its own. A searcher who allowed
+// notifications ("notify me", data.notify) stays callable for LIVE_QUEUE_STANDBY_SEC after
+// leaving the screen: another player's search sends them a push (push.js) and the caller sees
+// `called`. The first answer of a fresh search also offers a stranger's best set close to the
+// player's level (`ghost`), fought as a recorded duel while the search runs.
 // A queue match is mode 'pvp' (ranked trophies, LIVE_DUEL_TROPHIES.pvp) and otherwise runs
 // start / finish / webhook exactly like a friend duel.
 //
@@ -25,6 +30,7 @@ const C = require('./constants');
 const R = require('./liveDuelRules');
 const { cleanClapTimes } = require('./clapTimes');
 const { seasonAt } = require('./league');
+const { callPlayer } = require('./push');
 const db = admin.firestore();
 const { Timestamp } = admin.firestore;
 
@@ -146,12 +152,14 @@ function queueTicket(entry, now) {
 
 async function search(uid, data, fresh) {
   const me = look(data);
-  const best = Number.isInteger(data?.best) ? Math.max(0, Math.min(C.MAX_REPS_PER_MATCH, data.best)) : 0;
+  const best = bestOf(data);
+  const notify = data?.notify === true;
   // Read alongside the transaction: the name is needed only when this call makes the pairing.
   const profile = db.doc(`users/${uid}`).get();
   profile.catch(() => {}); // a call that returns before reading it must not leave it unhandled
   const nameNow = async () => { const p = await profile; return nameOf(p.exists ? p.data() : null); };
-  return db.runTransaction(async tx => {
+  let seat = null, recall = false;
+  const result = await db.runTransaction(async tx => {
     const now = Date.now();
     const mine = await tx.get(queueRef(uid));
     const pool = await tx.get(db.collection('liveDuelQueue').where('waitUntilMs', '>', now).limit(C.LIVE_QUEUE_POOL));
@@ -161,11 +169,17 @@ async function search(uid, data, fresh) {
       && (!fresh || now - mine.data().matchedAtMs < C.LIVE_QUEUE_HEARTBEAT_SEC * 1000);
     if (paired) return queueTicket(mine.data(), now);
     const name = await nameNow();
-    const seat = { uid, name, hero: me.hero, gender: me.gender, country: me.country, best };
+    seat = { uid, name, hero: me.hero, gender: me.gender, country: me.country, best };
     const other = pool.docs.map(d => d.data()).find(e => e.uid !== uid && e.state === 'waiting');
     if (!other) {
-      tx.set(queueRef(uid), { ...seat, state: 'waiting', enqueuedAtMs: fresh || !mine.exists ? now : mine.data().enqueuedAtMs || now,
-        waitUntilMs: now + C.LIVE_QUEUE_HEARTBEAT_SEC * 1000, expiresAtMs: now + C.LIVE_QUEUE_ENTRY_TTL_SEC * 1000,
+      const was = mine.exists && mine.data().state === 'waiting' ? mine.data() : {};
+      // Standby players are called on a fresh search and again every LIVE_QUEUE_RECALL_SEC.
+      recall = fresh || now - (was.callsMadeAtMs || 0) >= C.LIVE_QUEUE_RECALL_SEC * 1000;
+      const standbyUntilMs = notify ? now + C.LIVE_QUEUE_STANDBY_SEC * 1000 : 0;
+      tx.set(queueRef(uid), { ...seat, state: 'waiting', enqueuedAtMs: fresh || !mine.exists ? now : was.enqueuedAtMs || now,
+        waitUntilMs: now + C.LIVE_QUEUE_HEARTBEAT_SEC * 1000, standbyUntilMs, standbyFromMs: now,
+        expiresAtMs: Math.max(now + C.LIVE_QUEUE_ENTRY_TTL_SEC * 1000, standbyUntilMs),
+        callsMadeAtMs: recall ? now : was.callsMadeAtMs || 0, calledAtMs: 0, callerName: '',
         matchId: '', role: '', opponent: null });
       return { status: 'waiting', serverTimeMs: now };
     }
@@ -179,13 +193,44 @@ async function search(uid, data, fresh) {
       startedAtMs: 0, results: {}, room: { joins: {}, leaves: {}, closedAtMs: 0 },
     });
     const opponentOf = s => ({ uid: s.uid, name: s.name, hero: s.hero, gender: s.gender });
+    // A pairing ends both searches, and with them both players' standby.
     const matched = { state: 'matched', matchId: id, roomName: R.roomName(id), matchedAtMs: now, waitUntilMs: 0,
-      expiresAtMs: now + C.LIVE_QUEUE_ENTRY_TTL_SEC * 1000 };
+      standbyUntilMs: 0, expiresAtMs: now + C.LIVE_QUEUE_ENTRY_TTL_SEC * 1000 };
     tx.set(queueRef(other.uid), { ...other, ...matched, role: 'host', opponent: opponentOf(seat) });
     const own = { ...seat, ...matched, enqueuedAtMs: now, role: 'guest', opponent: opponentOf(other) };
     tx.set(queueRef(uid), own);
     return queueTicket(own, now);
   });
+  if (result.status !== 'waiting') return result;
+  // Nobody online: call players who asked to be notified, and (once per search) offer a
+  // stranger's set at the player's level to fight while waiting.
+  const [called, ghost] = await Promise.all([
+    recall ? callStandby(seat).catch(e => { functions.logger.warn('call standby: ' + e.message); return 0; }) : 0,
+    fresh ? ghostFor(uid, best, true).catch(() => null) : null,
+  ]);
+  return { ...result, called, ...(fresh ? { ghost } : {}) };
+}
+
+const bestOf = data => Number.isInteger(data?.best) ? Math.max(0, Math.min(C.MAX_REPS_PER_MATCH, data.best)) : 0;
+
+// Standby players: searched earlier, allowed notifications, left the screen (not polling), not
+// in a recorded fight right now. The nearest in level are called first; each push is budgeted
+// in push.js. A called place carries the caller's name, so the phone that opens on the push
+// (or is already open) knows to search at once.
+async function callStandby(caller) {
+  const now = Date.now();
+  const snap = await db.collection('liveDuelQueue').where('standbyUntilMs', '>', now).limit(C.LIVE_QUEUE_STANDBY_POOL).get();
+  const candidates = snap.docs.map(d => d.data())
+    .filter(e => e.uid !== caller.uid && e.state === 'waiting' && (e.waitUntilMs || 0) <= now && (e.standbyFromMs || 0) <= now)
+    .sort((a, b) => Math.abs((a.best || 0) - caller.best) - Math.abs((b.best || 0) - caller.best));
+  let called = 0;
+  for (const e of candidates) {
+    if (called >= C.LIVE_QUEUE_CALLS_PER_SEARCH) break;
+    if (!await callPlayer(e.uid, 'queue', { name: caller.name }, now)) continue;
+    called++;
+    await queueRef(e.uid).update({ calledAtMs: now, callerName: caller.name }).catch(() => {});
+  }
+  return called;
 }
 
 exports.enqueueLiveDuel = functions.region(...QUEUE_REGIONS).https.onCall(async (data, context) => search(uidOf(context), data, true));
@@ -194,32 +239,43 @@ exports.pollLiveDuel = functions.region(...QUEUE_REGIONS).https.onCall(async (da
 // Stops searching. Paired in the last moment: the match stands and the phone takes it (the
 // other phone is already on its way to the room). Otherwise the place is freed and another
 // player's best set — the nearest in reps — comes back to fight instead, when there is one.
+// `standby`: the player left for a recorded fight with "notify me" on — the place stays callable
+// (not during the fight itself) instead of being freed. Builds that pick their opponent while
+// searching pass `ghost: false`.
 exports.leaveLiveDuel = functions.region(...QUEUE_REGIONS).https.onCall(async (data, context) => {
   const uid = uidOf(context);
   const left = await db.runTransaction(async tx => {
     const now = Date.now();
     const mine = await tx.get(queueRef(uid));
     if (mine.exists && mine.data().state === 'matched') return queueTicket(mine.data(), now);
-    if (mine.exists) tx.delete(queueRef(uid));
+    if (!mine.exists) return null;
+    if (data?.standby === true && mine.data().standbyUntilMs > now)
+      tx.update(queueRef(uid), { waitUntilMs: 0, standbyFromMs: now + C.LIVE_QUEUE_BUSY_SEC * 1000 });
+    else tx.delete(queueRef(uid));
     return null;
   });
   if (left) return left;
-  const best = Number.isInteger(data?.best) ? data.best : 0;
-  return { status: 'left', ghost: await ghostFor(uid, best), serverTimeMs: Date.now() };
+  const ghost = data?.ghost === false ? null : await ghostFor(uid, Number.isInteger(data?.best) ? data.best : 0);
+  return { status: 'left', ghost, serverTimeMs: Date.now() };
 });
 
 // Another player's best ranked set from this season's table, close to the player's own level.
 // A few nearest candidates take turns, so the same stranger does not answer every search.
-async function ghostFor(uid, best) {
+// `near`: only a set within the level band (LIVE_QUEUE_GHOST_BAND_*) — offered as an opponent
+// while searching; nothing that close means the phone offers the player's own shadow instead.
+async function ghostFor(uid, best, near = false) {
+  if (near && best <= 0) return null;
   const season = seasonAt(Date.now());
   const rows = await db.collection(`seasons/${season.id}/players`).orderBy('standing').limit(C.LIVE_QUEUE_GHOST_POOL).get();
+  const band = Math.max(C.LIVE_QUEUE_GHOST_BAND_MIN, Math.ceil(best * C.LIVE_QUEUE_GHOST_BAND_PCT));
   const candidates = rows.docs.map(d => d.data())
     .filter(row => row.uid !== uid && Array.isArray(row.bestTimes) && row.bestTimes.length > 0)
+    .filter(row => !near || Math.abs(row.bestTimes.length - best) <= band)
     .sort((a, b) => Math.abs(a.bestTimes.length - best) - Math.abs(b.bestTimes.length - best))
     .slice(0, 3);
   if (!candidates.length) return null;
   const pick = candidates[crypto.randomInt(candidates.length)];
-  return { uid: pick.uid, name: String(pick.displayName || 'PLAYER').slice(0, 20),
+  return { uid: pick.uid, name: String(pick.displayName || 'PLAYER').slice(0, 20), trophies: pick.trophies || 0,
     repTimes: pick.bestTimes, clapTimes: pick.bestClapTimes || [] };
 }
 
