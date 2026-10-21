@@ -47,6 +47,13 @@ cp -f "$DEST/PackageResources/MediaPipe/$MODEL_FALLBACK" "Assets/StreamingAssets
 if [ -n "${GOOGLE_SERVICE_INFO_PLIST_B64:-}" ]; then
   echo "[prebuild] writing REAL GoogleService-Info.plist from env var..."
   echo "$GOOGLE_SERVICE_INFO_PLIST_B64" | base64 --decode > "Assets/GoogleService-Info.plist"
+  # A plist downloaded before Google sign-in was enabled has no CLIENT_ID: the build links,
+  # but the Google button fails at once on device. Refresh the env var from Firebase.
+  if ! grep -q "<key>CLIENT_ID</key>" "Assets/GoogleService-Info.plist" \
+     || ! grep -q "<key>REVERSED_CLIENT_ID</key>" "Assets/GoogleService-Info.plist"; then
+    echo "[prebuild] ERROR: GOOGLE_SERVICE_INFO_PLIST_B64 has no CLIENT_ID/REVERSED_CLIENT_ID — Google sign-in would not work. Re-download GoogleService-Info.plist from Firebase and update the env var." >&2
+    exit 1
+  fi
 elif [ ! -f "Assets/GoogleService-Info.plist" ]; then
   echo "[prebuild] writing placeholder GoogleService-Info.plist..."
   cat > "Assets/GoogleService-Info.plist" <<'PLIST'
