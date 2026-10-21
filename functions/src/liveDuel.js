@@ -38,6 +38,9 @@ const validMatch = id => typeof id === 'string' && R.MATCH_ID.test(id);
 // A queue match has no code; only a friend duel's code document needs reading or freeing.
 const codeOf = (tx, match) => match.code ? tx.get(codeRef(match.code)) : null;
 const queueRef = uid => db.doc(`liveDuelQueue/${uid}`);
+// The queue is called a few times a second while two phones look for each other: it runs next to
+// Firestore (eur3), not an ocean away. us-central1 stays for builds that still call it there.
+const QUEUE_REGIONS = ['us-central1', 'europe-west1'];
 
 function look(data) {
   const hero = Number.isInteger(data?.hero) && data.hero >= 0 && data.hero <= 999 ? data.hero : 0;
@@ -128,7 +131,10 @@ exports.joinLiveDuel = functions.https.onCall(async (data, context) => {
 // liveDuelQueue/{uid}: one place per player. A waiting place is visible to others only while
 // its phone keeps polling (waitUntilMs, one range query, no composite index); a phone that died
 // mid-search drops out within LIVE_QUEUE_HEARTBEAT_SEC. Pairing happens in a transaction that
-// reads both places, so two phones pairing each other at once commit only one match.
+// reads both places, so two phones pairing each other at once commit only one match. A waiting
+// phone also listens to its own place (firestore.rules: read only your own), so it learns of a
+// pairing the moment it is written rather than on its next poll — the place carries everything
+// the poll would have answered.
 
 function queueTicket(entry, now) {
   return {
@@ -141,8 +147,10 @@ function queueTicket(entry, now) {
 async function search(uid, data, fresh) {
   const me = look(data);
   const best = Number.isInteger(data?.best) ? Math.max(0, Math.min(C.MAX_REPS_PER_MATCH, data.best)) : 0;
-  const profile = await db.doc(`users/${uid}`).get();
-  const name = nameOf(profile.exists ? profile.data() : null);
+  // Read alongside the transaction: the name is needed only when this call makes the pairing.
+  const profile = db.doc(`users/${uid}`).get();
+  profile.catch(() => {}); // a call that returns before reading it must not leave it unhandled
+  const nameNow = async () => { const p = await profile; return nameOf(p.exists ? p.data() : null); };
   return db.runTransaction(async tx => {
     const now = Date.now();
     const mine = await tx.get(queueRef(uid));
@@ -152,6 +160,7 @@ async function search(uid, data, fresh) {
     const paired = mine.exists && mine.data().state === 'matched'
       && (!fresh || now - mine.data().matchedAtMs < C.LIVE_QUEUE_HEARTBEAT_SEC * 1000);
     if (paired) return queueTicket(mine.data(), now);
+    const name = await nameNow();
     const seat = { uid, name, hero: me.hero, gender: me.gender, country: me.country, best };
     const other = pool.docs.map(d => d.data()).find(e => e.uid !== uid && e.state === 'waiting');
     if (!other) {
@@ -170,7 +179,8 @@ async function search(uid, data, fresh) {
       startedAtMs: 0, results: {}, room: { joins: {}, leaves: {}, closedAtMs: 0 },
     });
     const opponentOf = s => ({ uid: s.uid, name: s.name, hero: s.hero, gender: s.gender });
-    const matched = { state: 'matched', matchId: id, matchedAtMs: now, waitUntilMs: 0, expiresAtMs: now + C.LIVE_QUEUE_ENTRY_TTL_SEC * 1000 };
+    const matched = { state: 'matched', matchId: id, roomName: R.roomName(id), matchedAtMs: now, waitUntilMs: 0,
+      expiresAtMs: now + C.LIVE_QUEUE_ENTRY_TTL_SEC * 1000 };
     tx.set(queueRef(other.uid), { ...other, ...matched, role: 'host', opponent: opponentOf(seat) });
     const own = { ...seat, ...matched, enqueuedAtMs: now, role: 'guest', opponent: opponentOf(other) };
     tx.set(queueRef(uid), own);
@@ -178,13 +188,13 @@ async function search(uid, data, fresh) {
   });
 }
 
-exports.enqueueLiveDuel = functions.https.onCall(async (data, context) => search(uidOf(context), data, true));
-exports.pollLiveDuel = functions.https.onCall(async (data, context) => search(uidOf(context), data, false));
+exports.enqueueLiveDuel = functions.region(...QUEUE_REGIONS).https.onCall(async (data, context) => search(uidOf(context), data, true));
+exports.pollLiveDuel = functions.region(...QUEUE_REGIONS).https.onCall(async (data, context) => search(uidOf(context), data, false));
 
 // Stops searching. Paired in the last moment: the match stands and the phone takes it (the
 // other phone is already on its way to the room). Otherwise the place is freed and another
 // player's best set — the nearest in reps — comes back to fight instead, when there is one.
-exports.leaveLiveDuel = functions.https.onCall(async (data, context) => {
+exports.leaveLiveDuel = functions.region(...QUEUE_REGIONS).https.onCall(async (data, context) => {
   const uid = uidOf(context);
   const left = await db.runTransaction(async tx => {
     const now = Date.now();

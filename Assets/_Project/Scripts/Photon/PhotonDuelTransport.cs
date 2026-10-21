@@ -18,6 +18,10 @@ namespace PushStars.Photon
     /// (constants.md), EmptyRoomTtl 0 so the room closes — and the webhook fires — as soon as both
     /// have gone.</para>
     ///
+    /// <para><b>Ahead of the room.</b> The random queue calls <see cref="Connect"/> as the search
+    /// starts, so name server, sign-in and master are done by the time a pairing names the room;
+    /// <see cref="Open"/> then only joins it.</para>
+    ///
     /// <para><b>Reconnect.</b> A dropped connection is retried every couple of seconds with
     /// ReconnectAndRejoin (same actor, inside the TTL), falling back to a fresh connect and a
     /// rejoin by name. Past <see cref="GiveUpSec"/> the transport closes; the duel itself decides
@@ -76,17 +80,27 @@ namespace PushStars.Photon
             _client.AddCallbackTarget(this);
         }
 
-        public void Open(string roomName, string userId, string authToken)
+        public void Connect(string userId, string authToken)
         {
             if (Status != DuelLinkStatus.Idle) return;
-            _room = roomName; _userId = userId; _token = authToken; _wantRoom = true;
+            _userId = userId; _token = authToken;
             Status = DuelLinkStatus.Connecting;
             _lastServiceTick = Environment.TickCount;
             _keepAlive = new Timer(KeepAlive, null, 100, 100);
-            lock (_peerLock) Connect();
+            lock (_peerLock) ConnectToServer();
         }
 
-        private void Connect()
+        public void Open(string roomName, string userId, string authToken)
+        {
+            if (_wantRoom || Status == DuelLinkStatus.Closed) return;
+            _room = roomName; _wantRoom = true;
+            if (Status == DuelLinkStatus.Idle) { Connect(userId, authToken); return; }
+            // Connected ahead: the room is all that is left — now if the master is there already,
+            // otherwise OnConnectedToMaster takes it when it is.
+            lock (_peerLock) if (_client.State == ClientState.ConnectedToMasterServer) OnConnectedToMaster();
+        }
+
+        private void ConnectToServer()
         {
             var auth = new AuthenticationValues(_userId);
             if (_config.customAuth)
@@ -127,7 +141,7 @@ namespace PushStars.Photon
                 _nextRetry = now + RetryEverySec;
                 if (_everJoined && !_rejoinByName && _client.ReconnectAndRejoin()) return;
                 _rejoinByName = _everJoined;
-                Connect();
+                ConnectToServer();
             }
         }
 

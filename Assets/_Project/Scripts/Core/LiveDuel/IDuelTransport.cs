@@ -29,7 +29,13 @@ namespace PushStars.Core
 
         event Action<byte, byte[]> Received;
 
-        /// <summary>Connect and enter the named room, creating it if the other seat has not yet.</summary>
+        /// <summary>Connect ahead of knowing the room (the random queue does while it searches), so
+        /// a later <see cref="Open"/> only has the room left to enter. Pump it with
+        /// <see cref="Service"/> meanwhile; <see cref="Close"/> it if no room comes.</summary>
+        void Connect(string userId, string authToken);
+
+        /// <summary>Connect (unless <see cref="Connect"/> already has) and enter the named room,
+        /// creating it if the other seat has not yet.</summary>
         void Open(string roomName, string userId, string authToken);
 
         void Send(byte code, byte[] payload, bool reliable);

@@ -45,6 +45,13 @@ service cloud.firestore {
       }
     }
 
+    // Live-duel queue place — a searching phone listens to its own (a pairing arrives at once
+    // instead of on the next poll); written only by the queue's Cloud Functions.
+    match /liveDuelQueue/{uid} {
+      allow read: if request.auth != null && uid == request.auth.uid;
+      allow write: if false;
+    }
+
     match /rankedSessions/{id} {
       allow read, write: if false;
     }

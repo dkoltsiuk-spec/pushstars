@@ -69,7 +69,7 @@ function fixture({ secret = 'hook-secret' } = {}) {
   const tokens = { 'good-token': 'alice' };
   const admin = { firestore, auth: () => ({ verifyIdToken: async t => { if (!tokens[t]) throw new Error('bad'); return { uid: tokens[t] }; } }) };
   class HttpsError extends Error { constructor(code, message) { super(message); this.code = code; } }
-  const functions = { logger: { info() {} }, https: { HttpsError, onCall: fn => fn, onRequest: fn => fn }, pubsub: { schedule: () => ({ timeZone: () => ({ onRun: fn => fn }) }) } };
+  const functions = { region: () => functions, logger: { info() {} }, https: { HttpsError, onCall: fn => fn, onRequest: fn => fn }, pubsub: { schedule: () => ({ timeZone: () => ({ onRun: fn => fn }) }) } };
   const src = path.join(__dirname, '../src');
   for (const key of Object.keys(require.cache)) if (key.startsWith(src)) delete require.cache[key];
   const load = Module._load;
@@ -331,6 +331,10 @@ test('two players searching at the same moment are paired into one ranked live d
     assert.equal(bob.status, 'matched'); assert.equal(bob.host, false, 'the one who found the waiting player is the guest');
     assert.equal(bob.opponentName, 'ALICE'); assert.equal(bob.opponentHero, 5); assert.equal(bob.opponentGender, 1);
     assert.equal(bob.roomName, `pd_${bob.matchId}`); assert.equal(bob.mode, 'pvp');
+    // The waiting phone hears of it through its own place, which says everything the poll would.
+    const place = f.docs.get('liveDuelQueue/alice');
+    assert.equal(place.state, 'matched'); assert.equal(place.matchId, bob.matchId); assert.equal(place.roomName, bob.roomName);
+    assert.equal(place.role, 'host'); assert.equal(place.opponent.name, 'BOB'); assert.equal(place.opponent.hero, 2);
     f.advance(800);
     const alice = await f.live.pollLiveDuel({ hero: 5, gender: 1 }, f.as('alice'));
     assert.equal(alice.status, 'matched'); assert.equal(alice.host, true); assert.equal(alice.matchId, bob.matchId);

@@ -17,11 +17,18 @@ namespace PushStars.UI
         Task<LiveDuelLink> Enter(LiveQueueStatus match, LiveDuelSeat seat);
         /// <summary>Releases a match that never started.</summary>
         void Cancel(string matchId);
+        /// <summary>Every frame of the search: pumps what the queue keeps open meanwhile (the room
+        /// connection it warms up for <see cref="Enter"/>) and hands over a pairing the server
+        /// pushed before the next poll would have found it — null when there is none.</summary>
+        LiveQueueStatus Tick();
+        /// <summary>The search is over: stop listening, and drop a warmed-up connection no room used.</summary>
+        void End();
     }
 
     /// <summary>
     /// One press of "Search opponent" against the live queue: enqueue, poll about once a second for
-    /// <see cref="SearchSec"/>, and on a pairing open the match's room and wait — at most
+    /// <see cref="SearchSec"/> (a pairing another phone makes is usually pushed sooner, through
+    /// <see cref="ILiveQueue.Tick"/>), and on a pairing open the match's room and wait — at most
     /// <see cref="RoomSec"/> — for the stranger to be there. Ends in <see cref="Result.Live"/>
     /// (a link both phones are in; the preparation screen's READY check comes next) or <see cref="Result.Fallback"/> (nobody came: the queue place is freed, and
     /// <see cref="Ghost"/> is a stranger's best set when the season has one).
@@ -67,6 +74,16 @@ namespace PushStars.UI
                 _step = Step.Enqueue;
                 _call = Call(() => _queue.Enqueue(_seat, _best));
             }
+            LiveQueueStatus pushed = null;
+            try { pushed = _queue.Tick(); }
+            catch (Exception e) { Warn("tick", e); }
+            if ((_step == Step.Wait || _step == Step.Poll) && pushed != null && pushed.Matched)
+            {
+                // Paired by the other phone's call: no need to wait for our own poll (its answer,
+                // still on the way, says the same and is dropped).
+                TakeMatch(pushed);
+                return;
+            }
             switch (_step)
             {
                 case Step.Enqueue: case Step.Poll: case Step.Leave:
@@ -104,17 +121,18 @@ namespace PushStars.UI
                 else Fallback(null);
                 return;
             }
-            if (status.Matched)
-            {
-                _match = status;
-                OpponentName = status.opponentName ?? "";
-                _step = Step.Enter;
-                _enter = Call(() => _queue.Enter(status, _seat));
-                return;
-            }
+            if (status.Matched) { TakeMatch(status); return; }
             if (step == Step.Leave) { Fallback(status.HasGhost ? status.ghost : null); return; }
             _step = Step.Wait;
             _nextPoll = now + PollSec;
+        }
+
+        private void TakeMatch(LiveQueueStatus status)
+        {
+            _match = status;
+            OpponentName = status.opponentName ?? "";
+            _step = Step.Enter;
+            _enter = Call(() => _queue.Enter(status, _seat));
         }
 
         /// <summary>Both phones are in the match's room and have introduced themselves.
@@ -131,6 +149,7 @@ namespace PushStars.UI
             if (peer == null || !link.PeerPresent) return;
             if (!string.IsNullOrEmpty(peer.Name)) OpponentName = peer.Name;
             State = Result.Live;
+            End();
         }
 
         /// <summary>The player gave up (ВЫЙТИ) — or left the found card before the fight opened.</summary>
@@ -142,6 +161,7 @@ namespace PushStars.UI
             if (queued) Forget(Call(() => _queue.Leave(_best)));
             else if (_step == Step.Enter && Link == null) DiscardWhenOpen(_enter);
             Release();
+            End();
         }
 
         private void Abandon()
@@ -161,6 +181,13 @@ namespace PushStars.UI
         {
             Ghost = ghost;
             State = Result.Fallback;
+            End();
+        }
+
+        private void End()
+        {
+            try { _queue.End(); }
+            catch (Exception e) { Warn("end", e); }
         }
 
         private static Task<T> Call<T>(Func<Task<T>> call)

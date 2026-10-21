@@ -39,6 +39,9 @@ namespace PushStars.Core
 
         public void AdvanceClock(int ms) => _room.ClockMs = unchecked(_room.ClockMs + ms);
 
+        public void Connect(string userId, string authToken) => Connected = true;
+        public bool Connected { get; private set; }
+
         public void Open(string roomName, string userId, string authToken)
         {
             OpenedRoom = roomName; _opened = true;

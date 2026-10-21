@@ -1,3 +1,5 @@
+using System;
+using System.Threading;
 using System.Threading.Tasks;
 using PushStars.Core;
 using PushStars.Services;
@@ -41,11 +43,14 @@ namespace PushStars.UI
         private static Task<LiveDuelLink> Enter(LiveDuelTicket ticket, bool host, LiveDuelSeat seat) =>
             Enter(ticket.matchId, ticket.roomName, host, seat);
 
-        private static async Task<LiveDuelLink> Enter(string matchId, string roomName, bool host, LiveDuelSeat seat)
+        /// <param name="connected">A transport already connected ahead of the room (the queue's
+        /// warm-up); a fresh one when null.</param>
+        private static async Task<LiveDuelLink> Enter(string matchId, string roomName, bool host, LiveDuelSeat seat,
+            IDuelTransport connected = null)
         {
             string token = await LiveDuelClient.IdToken();
             seat.Uid = LiveDuelClient.Uid ?? seat.Uid;
-            var link = new LiveDuelLink(DuelTransports.Create(), matchId, roomName, host, seat);
+            var link = new LiveDuelLink(connected ?? DuelTransports.Create(), matchId, roomName, host, seat);
             link.Open(token, Time.realtimeSinceStartup);
             LiveDuelLink.SetActive(link);
             return link;
@@ -56,13 +61,71 @@ namespace PushStars.UI
         /// miss is picked near it.</summary>
         public static LiveQueueSearch Search(int best) => new LiveQueueSearch(new ServerQueue(), LocalSeat(), best);
 
+        /// <summary>
+        /// The server's queue for one search. While the search waits it connects to Photon ahead
+        /// of the room (name server, sign-in, master — the slow part of entering), and listens to
+        /// its own place so a pairing the other phone makes arrives at once instead of on the
+        /// next poll.
+        /// </summary>
         private sealed class ServerQueue : ILiveQueue
         {
-            public Task<LiveQueueStatus> Enqueue(LiveDuelSeat seat, int best) => LiveDuelClient.Enqueue(seat.Hero, seat.Gender, seat.Country, best);
+            private Task<IDuelTransport> _warm;
+            private IDuelTransport _warmed;      // connected ahead, not yet handed to a room
+            private IDisposable _watch;
+            private LiveQueueStatus _pushed;
+            private bool _ended;
+
+            public async Task<LiveQueueStatus> Enqueue(LiveDuelSeat seat, int best)
+            {
+                _warm ??= Warm();
+                var status = await LiveDuelClient.Enqueue(seat.Hero, seat.Gender, seat.Country, best);
+                if (!_ended && _watch == null && status != null && status.status == "waiting")
+                    _watch = LiveDuelClient.WatchQueue(status.serverTimeMs, match => Interlocked.Exchange(ref _pushed, match));
+                return status;
+            }
+
             public Task<LiveQueueStatus> Poll(LiveDuelSeat seat, int best) => LiveDuelClient.Poll(seat.Hero, seat.Gender, seat.Country, best);
             public Task<LiveQueueStatus> Leave(int best) => LiveDuelClient.LeaveQueue(best);
-            public Task<LiveDuelLink> Enter(LiveQueueStatus match, LiveDuelSeat seat) =>
-                LiveDuelService.Enter(match.matchId, match.roomName, match.host, seat);
+
+            public async Task<LiveDuelLink> Enter(LiveQueueStatus match, LiveDuelSeat seat)
+            {
+                var connected = _warm != null ? await _warm : null;
+                _warmed = null;                  // the room's link pumps it from here
+                if (connected != null && connected.Status == DuelLinkStatus.Closed) connected = null;
+                try { return await LiveDuelService.Enter(match.matchId, match.roomName, match.host, seat, connected); }
+                catch (Exception) { connected?.Close(); throw; }
+            }
+
+            public LiveQueueStatus Tick()
+            {
+                _warmed?.Service();
+                return Interlocked.Exchange(ref _pushed, null);
+            }
+
+            public void End()
+            {
+                if (_ended) return;
+                _ended = true;
+                _watch?.Dispose();
+                _watch = null;
+                var unused = _warmed;
+                _warmed = null;
+                unused?.Close();
+            }
+
+            private async Task<IDuelTransport> Warm()
+            {
+                try
+                {
+                    string token = await LiveDuelClient.IdToken();
+                    if (_ended) return null;
+                    var transport = DuelTransports.Create();
+                    transport?.Connect(LiveDuelClient.Uid ?? "", token);
+                    return _warmed = transport;
+                }
+                catch (Exception e) { Debug.LogWarning("[LiveQueue] warm-up: " + e.Message); return null; }
+            }
+
             public async void Cancel(string matchId)
             {
                 try { await LiveDuelClient.Cancel(matchId); }

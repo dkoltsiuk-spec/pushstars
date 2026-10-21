@@ -279,8 +279,8 @@ namespace PushStars.Editor
                 new Dictionary<string, (LoopbackDuelTransport, LoopbackDuelTransport)>();
             public readonly List<string> Cancelled = new List<string>();
             public LiveQueueGhost Ghost;
-            public bool Offline;
-            public int FailPolls, Polls;
+            public bool Offline, Push;
+            public int FailPolls, Polls, Ended;
             public float Now;
 
             public ILiveQueue For(string uid) => new Seat(this, uid);
@@ -314,7 +314,18 @@ namespace PushStars.Editor
             {
                 private readonly FakeQueue _q;
                 private readonly string _uid;
+                private string _pushed;
                 public Seat(FakeQueue q, string uid) { _q = q; _uid = uid; }
+
+                // The listener on the player's own place: a pairing arrives once, as soon as it exists.
+                public LiveQueueStatus Tick()
+                {
+                    if (!_q.Push || !_q.Matched.TryGetValue(_uid, out var paired) || paired.matchId == _pushed) return null;
+                    _pushed = paired.matchId;
+                    return paired;
+                }
+
+                public void End() => _q.Ended++;
 
                 public Task<LiveQueueStatus> Enqueue(LiveDuelSeat seat, int best)
                 {
@@ -384,6 +395,7 @@ namespace PushStars.Editor
                 "Queue pair is not one room with the waiting player hosting.");
             Require(alice.OpponentName == "BOB" && bob.OpponentName == "ALICE" && bob.Link.Peer.Hero == 7, "Queue opponents not introduced.");
             Require(q.Cancelled.Count == 0, "A met pair cancelled its match.");
+            Require(q.Ended == 2, $"A search that met did not end its queue once ({q.Ended}).");
             Require(!alice.Link.Local.Ready && !bob.Link.Local.Ready, "READY belongs to the preparation screen, not the search.");
             FightRequest.Live(bob.Link, ranked: true);
             Require(FightRequest.IsLiveDuel && FightRequest.IsRankedLive && FightRequest.Mode == FightMode.Ghost, "Queue duel request is not ranked live.");
@@ -443,12 +455,25 @@ namespace PushStars.Editor
             Require(stay.State == LiveQueueSearch.Result.Live && stay.OpponentName == "CAROL", "Searcher did not meet the next player.");
             stay.Link.Leave(); carol.Link.Leave();
 
+            // The waiting phone hears of the pairing through its place, without polling for it.
+            q = new FakeQueue { Push = true };
+            var heard = new LiveQueueSearch(q.For("alice"), Seat("alice"), 30);
+            Run(q, .3f, heard);
+            int polls = q.Polls;
+            var finder = new LiveQueueSearch(q.For("bob"), Seat("bob"), 30);
+            Run(q, .1f, heard, finder);
+            Require(heard.Link != null && q.Polls == polls, $"A pushed pairing waited for the next poll ({q.Polls - polls} polls).");
+            Run(q, .5f, heard, finder);
+            Require(heard.State == LiveQueueSearch.Result.Live && finder.State == LiveQueueSearch.Result.Live, "A pushed pairing did not meet live.");
+            heard.Link.Leave(); finder.Link.Leave();
+
             // Exit while still alone in the queue frees the place.
             q = new FakeQueue();
             var gone = new LiveQueueSearch(q.For("alice"), Seat("alice"), 30);
             Run(q, 2f, gone);
             gone.Cancel();
             Require(gone.State == LiveQueueSearch.Result.Cancelled && !q.Waiting.ContainsKey("alice"), "Exit left the place in the queue.");
+            Require(q.Ended == 1, "Exit did not end the queue (warm connection, listener).");
 
             // A lost poll keeps searching; no network at all falls back at once.
             q = new FakeQueue { FailPolls = 2 };

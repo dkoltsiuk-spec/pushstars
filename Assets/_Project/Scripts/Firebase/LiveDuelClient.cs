@@ -1,6 +1,8 @@
 using System;
+using System.Collections.Generic;
 using System.Threading.Tasks;
 using Firebase.Auth;
+using Firebase.Firestore;
 using PushStars.Core;
 
 namespace PushStars.Services
@@ -63,6 +65,10 @@ namespace PushStars.Services
 
         public static string Uid => LeagueClient.Uid;
 
+        /// <summary>Where the queue's functions run: next to Firestore (eur3), so the several
+        /// calls a search makes do not each cross an ocean.</summary>
+        private const string QueueRegion = "europe-west1";
+
         public static async Task<LiveDuelTicket> Create(int hero, int gender, string country)
         {
             await FirebaseAuthService.EnsureReadyAsync();
@@ -89,17 +95,73 @@ namespace PushStars.Services
         {
             await FirebaseAuthService.EnsureReadyAsync();
             return await LeagueClient.Call<QueueRequest, LiveQueueStatus>("enqueueLiveDuel",
-                new QueueRequest { hero = hero, gender = gender, country = country ?? "", best = best }, Uid);
+                new QueueRequest { hero = hero, gender = gender, country = country ?? "", best = best }, Uid, QueueRegion);
         }
 
         /// <summary>Keeps the place in the queue, and pairs or reports the pairing.</summary>
         public static Task<LiveQueueStatus> Poll(int hero, int gender, string country, int best) =>
             LeagueClient.Call<QueueRequest, LiveQueueStatus>("pollLiveDuel",
-                new QueueRequest { hero = hero, gender = gender, country = country ?? "", best = best }, Uid);
+                new QueueRequest { hero = hero, gender = gender, country = country ?? "", best = best }, Uid, QueueRegion);
 
         /// <summary>Stops searching. A pairing made in the last moment comes back as "matched".</summary>
         public static Task<LiveQueueStatus> LeaveQueue(int best) =>
-            LeagueClient.Call<QueueRequest, LiveQueueStatus>("leaveLiveDuel", new QueueRequest { best = best }, Uid);
+            LeagueClient.Call<QueueRequest, LiveQueueStatus>("leaveLiveDuel", new QueueRequest { best = best }, Uid, QueueRegion);
+
+        /// <summary>
+        /// Listens to this player's own place in the queue (liveDuelQueue/{uid}, firestore.rules)
+        /// and reports a pairing the moment another phone's call writes it, so the waiting phone
+        /// need not learn of it on its next poll. Only answers from the server count — the offline
+        /// cache may still hold a pairing from an earlier search. Null when Firestore is not up
+        /// (the polls still find the pairing); dispose to stop.
+        /// </summary>
+        public static IDisposable WatchQueue(long sinceServerMs, Action<LiveQueueStatus> matched)
+        {
+            string uid = Uid;
+            if (string.IsNullOrEmpty(uid) || !ServiceLocator.TryGet<FirestoreService>(out var fs) || fs.Db == null) return null;
+            try
+            {
+                var registration = fs.Db.Collection("liveDuelQueue").Document(uid).Listen(snapshot =>
+                {
+                    if (snapshot == null || !snapshot.Exists || snapshot.Metadata.IsFromCache) return;
+                    var status = FromPlace(snapshot.ToDictionary(), sinceServerMs);
+                    if (status != null) matched?.Invoke(status);
+                });
+                return new Watch(registration);
+            }
+            catch (Exception e) { UnityEngine.Debug.LogWarning("[LiveQueue] watch: " + e.Message); return null; }
+        }
+
+        private sealed class Watch : IDisposable
+        {
+            private ListenerRegistration _registration;
+            public Watch(ListenerRegistration registration) { _registration = registration; }
+            public void Dispose() { _registration?.Stop(); _registration = null; }
+        }
+
+        /// <summary>A matched place as the poll would have answered it (functions/src/liveDuel.js
+        /// queueTicket). A pairing older than the search (minus clock slack) is not this search's.</summary>
+        private static LiveQueueStatus FromPlace(IDictionary<string, object> place, long sinceServerMs)
+        {
+            if (Text(place, "state") != "matched" || Number(place, "matchedAtMs") < sinceServerMs - 2000) return null;
+            var opponent = place.TryGetValue("opponent", out var o) ? o as IDictionary<string, object> : null;
+            var status = new LiveQueueStatus
+            {
+                status = "matched", matchId = Text(place, "matchId"), roomName = Text(place, "roomName"), mode = "pvp",
+                host = Text(place, "role") == "host", opponentUid = Text(opponent, "uid"), opponentName = Text(opponent, "name"),
+                opponentHero = (int)Number(opponent, "hero"), opponentGender = (int)Number(opponent, "gender"),
+                serverTimeMs = Number(place, "matchedAtMs"), ghost = new LiveQueueGhost()
+            };
+            return status.Matched ? status : null;
+        }
+
+        private static string Text(IDictionary<string, object> d, string key) =>
+            d != null && d.TryGetValue(key, out var v) && v is string text ? text : "";
+
+        private static long Number(IDictionary<string, object> d, string key)
+        {
+            if (d == null || !d.TryGetValue(key, out var v) || v == null) return 0;
+            try { return Convert.ToInt64(v); } catch (Exception) { return 0; }
+        }
 
         public static Task Cancel(string matchId) =>
             LeagueClient.Call<MatchRequest, Empty>("cancelLiveDuel", new MatchRequest { matchId = matchId }, Uid);

@@ -166,7 +166,9 @@ namespace PushStars.Services
             File.WriteAllText(temp, JsonUtility.ToJson(box));
             if (File.Exists(OutboxPath)) File.Replace(temp, OutboxPath, null); else File.Move(temp, OutboxPath);
         }
-        public static async Task<TResponse> Call<TRequest, TResponse>(string method, TRequest data, string uid) where TResponse : class
+        /// <summary>Calls a callable function. <paramref name="region"/> is where it is deployed:
+        /// most live in us-central1; the live queue also runs next to Firestore in europe-west1.</summary>
+        public static async Task<TResponse> Call<TRequest, TResponse>(string method, TRequest data, string uid, string region = "us-central1") where TResponse : class
         {
             if (string.IsNullOrEmpty(uid) || Uid != uid) throw new InvalidOperationException("Sign in to the same account to continue.");
             if (!ServiceLocator.TryGet<FirebaseService>(out var firebase) || !firebase.IsReady)
@@ -177,7 +179,7 @@ namespace PushStars.Services
             if (await Task.WhenAny(tokenTask, Task.Delay(12000)) != tokenTask) throw new TimeoutException("Sign-in timed out.");
             var token = await tokenTask;
             if (Uid != uid) throw new InvalidOperationException("Account changed.");
-            using (var request = new UnityWebRequest($"https://us-central1-{firebase.App.Options.ProjectId}.cloudfunctions.net/{method}", "POST"))
+            using (var request = new UnityWebRequest($"https://{region}-{firebase.App.Options.ProjectId}.cloudfunctions.net/{method}", "POST"))
             {
                 request.uploadHandler = new UploadHandlerRaw(Encoding.UTF8.GetBytes(JsonUtility.ToJson(new Envelope<TRequest> { data = data })));
                 request.downloadHandler = new DownloadHandlerBuffer();
