@@ -1,8 +1,8 @@
 using System;
 using System.Collections;
 using System.Net.Mail;
+using System.Threading.Tasks;
 using Cysharp.Threading.Tasks;
-using Firebase;
 using Firebase.Auth;
 using PushStars.Core;
 using PushStars.Services;
@@ -13,31 +13,42 @@ using UnityEngine.UI;
 
 namespace PushStars.UI
 {
-    /// <summary>Built on the existing settings root so authored scenes need no regeneration.</summary>
+    /// <summary>
+    /// Account flows for Settings. Apple and Google go straight to the system window and link to
+    /// the current guest; the bottom sheet only asks when the account already belongs to another
+    /// profile, confirms sign-out, and hosts the email form. Built on the existing settings root
+    /// so authored scenes need no regeneration.
+    /// </summary>
     public sealed class SettingsAuthDialog : MonoBehaviour
     {
+        private const string MainSceneName = "Main";
+        private const string BootSceneName = "Boot";
+
+        private ProfileSettingsActions _owner;
         private GameObject _root;
         private RectTransform _card, _safe;
         private TMP_FontAsset _font;
         private AuthDialogStyle _style;
         private CanvasGroup _group;
         private Image _providerBadge;
-        private Sprite _appleBadge, _googleBadge;
+        private Sprite _appleBadge, _googleBadge, _emailBadge;
         private Sprite _primaryPlate, _secondaryPlate;
         private TextMeshProUGUI _emailCaption, _passwordCaption;
         private Button _handle;
-        private float _sheetHeight, _shown;
+        private float _sheetHeight, _shown, _target;
         private Coroutine _transition;
         private bool _hasStatus;
-        private TextMeshProUGUI _title, _detail, _status, _primaryLabel, _modeLabel;
+        private TextMeshProUGUI _title, _detail, _status, _primaryLabel;
         private TMP_InputField _email, _password;
-        private Button _primary, _mode, _reset, _cancel;
-        private string _provider;
-        private bool _register, _busy;
+        private Button _primary, _reset, _cancel;
+        private bool _emailForm, _busy;
+        private Func<Task> _confirm;
+        private Action _back;
         public bool IsBusy => _busy;
 
         public void Build(ProfileSettingsActions owner)
         {
+            _owner = owner;
             _style = Resources.Load<AuthDialogStyle>("AuthDialogStyle");
             if (_style == null) throw new InvalidOperationException("AuthDialogStyle resource is missing.");
             _font = _style.Regular;
@@ -45,6 +56,7 @@ namespace PushStars.UI
             _secondaryPlate = SlicePlate(_style.Secondary);
             _appleBadge = owner.Apple.image.sprite;
             _googleBadge = owner.Google.image.sprite;
+            _emailBadge = owner.Email.image.sprite;
             var root = Rect(transform, "AccountDialog", 0, 0, 0, 0);
             Stretch(root);
             _root = root.gameObject;
@@ -59,7 +71,7 @@ namespace PushStars.UI
             _safe = Rect(root, "SafeArea", 0, 0, 0, 0);
             Stretch(_safe);
             _safe.gameObject.AddComponent<SafeAreaFitter>();
-            _card = Rect(_safe, "Card", 0, 0, 390, 566);
+            _card = Rect(_safe, "Card", 0, 0, 390, 400);
             _card.anchorMin = _card.anchorMax = _card.pivot = new Vector2(.5f, 0);
             var background = _card.gameObject.AddComponent<Image>();
             background.sprite = _style.Sheet;
@@ -83,83 +95,166 @@ namespace PushStars.UI
             _handle = handle.gameObject.AddComponent<Button>();
             _handle.onClick.AddListener(Close);
             _title = Text(_card, "Title", 20, 47, 350, 36, 25, true);
-            _detail = Text(_card, "Detail", 30, 95, 330, 52, 15);
+            _detail = Text(_card, "Detail", 30, 152, 330, 60, 15);
             _detail.color = new Color32(193, 221, 255, 255);
-            _providerBadge = Rect(_card, "ProviderBadge", 147, 99, 96, 52).gameObject.AddComponent<Image>();
+            _providerBadge = Rect(_card, "ProviderBadge", 147, 92, 96, 52).gameObject.AddComponent<Image>();
             _providerBadge.preserveAspect = true; _providerBadge.raycastTarget = false;
-            _emailCaption = Text(_card, "EmailCaption", 28, 149, 330, 22, 14);
+            _emailCaption = Text(_card, "EmailCaption", 28, 96, 330, 22, 14);
             _emailCaption.text = "Email address"; _emailCaption.alignment = TextAlignmentOptions.MidlineLeft;
-            _passwordCaption = Text(_card, "PasswordCaption", 28, 226, 330, 22, 14);
+            _passwordCaption = Text(_card, "PasswordCaption", 28, 176, 330, 22, 14);
             _passwordCaption.text = "Password"; _passwordCaption.alignment = TextAlignmentOptions.MidlineLeft;
-            _email = Input("EmailAddress", "you@example.com", 174, false);
-            _password = Input("Password", "Enter password", 251, true);
-            _status = Text(_card, "Status", 28, 310, 334, 54, 14);
+            _email = Input("EmailAddress", "you@example.com", 121, false);
+            _password = Input("Password", "Enter password", 201, true);
+            _status = Text(_card, "Status", 28, 258, 334, 44, 14);
             _status.color = new Color32(255, 235, 160, 255);
-            _primary = ActionButton("Continue", 376, out _primaryLabel, 226, 82, 55, true);
-            _mode = ActionButton("Mode", 440, out _modeLabel, 316, 37, 49);
-            _reset = ActionButton("ResetPassword", 503, out var resetLabel, 190, 25, 38);
+            _primary = ActionButton("Continue", 262, out _primaryLabel, 226, 82, 55, true);
+            _reset = ActionButton("ResetPassword", 330, out var resetLabel, 190, 25, 38);
             resetLabel.text = "Forgot password?";
-            _cancel = ActionButton("Cancel", 503, out var cancelLabel, 133, 232, 38);
+            _cancel = ActionButton("Cancel", 330, out var cancelLabel, 133, 232, 38);
             cancelLabel.text = "CANCEL";
-            _primary.onClick.AddListener(() => Run(false).Forget());
-            _mode.onClick.AddListener(() => { _register = !_register; Refresh(); });
-            _reset.onClick.AddListener(() => Run(true).Forget());
-            _cancel.onClick.AddListener(Close);
+            _primary.onClick.AddListener(() => (_emailForm ? SubmitEmail(false) : RunConfirm()).Forget());
+            _reset.onClick.AddListener(() => SubmitEmail(true).Forget());
+            _cancel.onClick.AddListener(Back);
             _root.SetActive(false);
         }
 
-        public void Show(string provider)
+        /// <summary>Apple or Google: system window first, a question only on an account collision.</summary>
+        public async UniTaskVoid Connect(string provider)
         {
             if (_busy) return;
-            _provider = provider;
-            _register = false;
+#if UNITY_EDITOR || (!UNITY_IOS && !UNITY_ANDROID)
+            _owner.ShowNotice("Apple and Google sign-in are available in the mobile app. Use Email here.");
+#else
+            SetBusy(true);
+            // Let the busy state paint before Firebase enters its native dependency check.
+            await UniTask.Yield();
+            try
+            {
+                var auth = await FirebaseAuthService.EnsureReadyAsync();
+                await UniTask.SwitchToMainThread();
+                var switchAccount = await auth.LinkProviderAsync(provider);
+                await UniTask.SwitchToMainThread();
+                if (this == null) return;
+                if (switchAccount == null) Linked(provider);
+                else AskSwitch(provider, switchAccount, null);
+            }
+            catch (Exception exception)
+            {
+                await UniTask.SwitchToMainThread();
+                if (this != null && !IsCancel(exception)) _owner.ShowNotice(ErrorMessage(exception));
+            }
+            finally
+            {
+                await UniTask.SwitchToMainThread();
+                if (this != null) SetBusy(false);
+            }
+#endif
+        }
+
+        public void ShowEmail()
+        {
+            if (_busy) return;
             _email.text = "";
             _password.text = "";
+            ShowEmailForm(true);
+        }
+
+        public void AskSignOut(string provider)
+        {
+            if (_busy) return;
+            ShowConfirm(provider, "SIGN OUT?",
+                "You'll keep playing as a guest on this phone.\nSign in again any time.", "SIGN OUT",
+                () =>
+                {
+                    if (ServiceLocator.TryGet<FirebaseAuthService>(out var auth)) auth.SignOut();
+                    // Boot re-initializes services and starts a fresh guest session.
+                    SceneManager.LoadScene(BootSceneName, LoadSceneMode.Single);
+                    return Task.CompletedTask;
+                }, null);
+        }
+
+        private void AskSwitch(string provider, Func<Task> switchAccount, Action back)
+        {
+            string detail = provider == "apple.com"
+                ? "This Apple ID is already linked to another profile.\nSwitch to it on this phone?"
+                : provider == "google.com"
+                    ? "This Google account is already linked to another profile.\nSwitch to it on this phone?"
+                    : "This email is already linked to another profile.\nSwitch to it on this phone?";
+            ShowConfirm(provider, "SWITCH ACCOUNT?", detail, "SWITCH", async () =>
+            {
+                await switchAccount();
+                await UniTask.SwitchToMainThread();
+                // Rebind repositories/presenters to the chosen UID; do not reuse the guest view.
+                SceneManager.LoadScene(MainSceneName, LoadSceneMode.Single);
+            }, back);
+        }
+
+        private void Linked(string provider)
+        {
+            _owner.RefreshAccount();
+            _owner.ShowNotice(provider == "apple.com" ? "Signed in with Apple."
+                : provider == "google.com" ? "Signed in with Google." : "Signed in with email.");
+        }
+
+        private void ShowEmailForm(bool open)
+        {
+            _emailForm = true;
+            _confirm = null;
+            _back = null;
+            _title.text = "EMAIL";
+            _primaryLabel.text = "CONTINUE";
+            _status.text = "";
+            SetMode();
+            if (open) Open();
+        }
+
+        private void ShowConfirm(string provider, string title, string detail, string action, Func<Task> confirm, Action back)
+        {
+            bool opening = !_root.activeSelf || _target < 1; // closed, or still sliding away
+            _emailForm = false;
+            _confirm = confirm;
+            _back = back;
+            _providerBadge.sprite = provider == "apple.com" ? _appleBadge : provider == "google.com" ? _googleBadge : _emailBadge;
+            _title.text = title;
+            _detail.text = detail;
+            _primaryLabel.text = action;
+            _status.text = "";
+            SetMode();
+            if (opening) Open();
+        }
+
+        private void SetMode()
+        {
+            _email.gameObject.SetActive(_emailForm);
+            _password.gameObject.SetActive(_emailForm);
+            _emailCaption.gameObject.SetActive(_emailForm);
+            _passwordCaption.gameObject.SetActive(_emailForm);
+            _reset.gameObject.SetActive(_emailForm);
+            _providerBadge.gameObject.SetActive(!_emailForm);
+            _detail.gameObject.SetActive(!_emailForm);
+            LayoutContent();
+        }
+
+        private void Open()
+        {
             _root.SetActive(true);
             _root.transform.SetAsLastSibling();
-            Refresh();
             _shown = 0;
             FitSheet();
             Animate(1);
         }
 
-        private void Refresh()
-        {
-            bool email = _provider == "password";
-            _title.text = email ? (_register ? "CREATE ACCOUNT" : "EMAIL SIGN IN")
-                : (_provider == "apple.com" ? "APPLE ID" : "GOOGLE");
-            _email.gameObject.SetActive(email);
-            _password.gameObject.SetActive(email);
-            _emailCaption.gameObject.SetActive(email);
-            _passwordCaption.gameObject.SetActive(email);
-            _providerBadge.gameObject.SetActive(!email);
-            _providerBadge.sprite = _provider == "apple.com" ? _appleBadge : _googleBadge;
-            _reset.gameObject.SetActive(email);
-            _primaryLabel.text = _register ? (email ? "CREATE ACCOUNT" : "SAVE PROGRESS") : "SIGN IN";
-            _modeLabel.text = _register ? "USE EXISTING ACCOUNT" : (email ? "CREATE ACCOUNT" : "SAVE CURRENT PROGRESS");
-            _detail.text = _register
-                ? "Keep your current profile and cloud progress\nby linking this account."
-                : "Load your saved cloud profile.\nGuest progress won't be merged.";
-            _status.text = "";
-            if (ServiceLocator.TryGet<FirebaseAuthService>(out var auth) && !auth.IsAnonymous)
-                _status.text = "Signed in" + (string.IsNullOrEmpty(auth.Email) ? "." : " as " + auth.Email);
-            LayoutContent();
-        }
-
         private void LayoutContent()
         {
-            bool email = _provider == "password";
             _hasStatus = !string.IsNullOrEmpty(_status.text);
-            float messageSpace = _hasStatus ? 58 : 0;
+            float messageSpace = _hasStatus ? 46 : 0;
             _status.gameObject.SetActive(_hasStatus);
-            _sheetHeight = (email ? 508 : 432) + messageSpace;
+            _sheetHeight = (_emailForm ? 388 : 346) + messageSpace;
             _card.sizeDelta = new Vector2(390, _sheetHeight);
-            Place(_detail.rectTransform, 30, email ? 94 : 169, 330, 52);
-            Place(_status.rectTransform, 28, email ? 310 : 230, 334, 54);
-            Place((RectTransform)_primary.transform, 82, (email ? 318 : 240) + messageSpace, 226, 55);
-            Place((RectTransform)_mode.transform, 37, (email ? 382 : 305) + messageSpace, 316, 49);
-            Place((RectTransform)_reset.transform, 25, 445 + messageSpace, 190, 38);
-            Place((RectTransform)_cancel.transform, email ? 232 : 128, (email ? 445 : 367) + messageSpace, 133, 38);
+            Place(_status.rectTransform, 28, _emailForm ? 258 : 214, 334, 44);
+            Place((RectTransform)_primary.transform, 82, (_emailForm ? 262 : 220) + messageSpace, 226, 55);
+            Place((RectTransform)_reset.transform, 25, 330 + messageSpace, 190, 38);
+            Place((RectTransform)_cancel.transform, _emailForm ? 232 : 128, (_emailForm ? 330 : 288) + messageSpace, 133, 38);
         }
 
         public void Close()
@@ -167,60 +262,73 @@ namespace PushStars.UI
             if (_busy) return;
             _password.text = "";
             _email.text = "";
+            _confirm = null;
+            _back = null;
             Animate(0);
         }
 
-        private async UniTask Run(bool reset)
+        private void Back()
         {
             if (_busy) return;
-#if UNITY_EDITOR || (!UNITY_IOS && !UNITY_ANDROID)
-            if (_provider != "password")
-            {
-                _status.text = "Apple and Google sign-in are available in the mobile app. Use Email here.";
-                return;
-            }
-#endif
-            string email = _email.text.Trim();
-            string password = _password.text;
-            if (_provider == "password")
-            {
-                string error = ValidateEmail(email, password, _register, reset);
-                if (error != null) { _status.text = error; return; }
-            }
+            if (_back != null) _back();
+            else Close();
+        }
+
+        private async UniTask RunConfirm()
+        {
+            if (_busy || _confirm == null) return;
             SetBusy(true);
             _status.text = "Connecting...";
-            // Let the busy state paint before Firebase enters its native dependency check.
+            await UniTask.Yield();
+            try
+            {
+                await _confirm();
+            }
+            catch (Exception exception)
+            {
+                await UniTask.SwitchToMainThread();
+                if (this != null) _status.text = IsCancel(exception) ? "" : ErrorMessage(exception);
+            }
+            finally
+            {
+                await UniTask.SwitchToMainThread();
+                if (this != null) SetBusy(false);
+            }
+        }
+
+        private async UniTask SubmitEmail(bool reset)
+        {
+            if (_busy) return;
+            string email = _email.text.Trim();
+            string password = _password.text;
+            string error = ValidateEmail(email, password, true, reset);
+            if (error != null) { _status.text = error; return; }
+            SetBusy(true);
+            _status.text = "Connecting...";
             await UniTask.Yield();
             try
             {
                 var auth = await FirebaseAuthService.EnsureReadyAsync();
                 await UniTask.SwitchToMainThread();
                 if (this == null) return;
-                string previousUid = auth.Uid;
                 if (reset)
                 {
                     await auth.SendPasswordResetAsync(email);
+                    await UniTask.SwitchToMainThread();
+                    if (this != null) _status.text = "If this email has an account, a password reset link has been sent.";
+                    return;
                 }
-                else if (_provider == "password")
-                {
-                    if (_register) await auth.RegisterEmailAsync(email, password);
-                    else await auth.SignInEmailAsync(email, password);
-                }
-                else
-                {
-                    _status.text = "Complete sign-in in the system window...";
-                    await auth.ConnectProviderAsync(_provider, _register);
-                }
+                var switchAccount = await auth.LinkEmailAsync(email, password);
                 await UniTask.SwitchToMainThread();
                 if (this == null) return;
-                _password.text = "";
-                _status.text = reset ? "If this email has an account, a password reset link has been sent."
-                    : "Signed in successfully.";
-                if (!reset && previousUid != auth.Uid)
+                if (switchAccount == null)
                 {
-                    // Rebind repositories/presenters to the chosen UID; do not reuse the guest view.
-                    SceneManager.LoadScene("Main", LoadSceneMode.Single);
+                    _password.text = "";
+                    SetBusy(false);
+                    Close();
+                    Linked("password");
                 }
+                else AskSwitch("password", switchAccount, () => ShowEmailForm(false));
             }
             catch (Exception exception)
             {
@@ -233,6 +341,13 @@ namespace PushStars.UI
                 await UniTask.SwitchToMainThread();
                 if (this != null) SetBusy(false);
             }
+        }
+
+        private static bool IsCancel(Exception exception)
+        {
+            if (exception is AggregateException aggregate) exception = aggregate.GetBaseException();
+            return exception is OperationCanceledException
+                || FirebaseAuthService.AuthErrorOf(exception) == AuthError.Cancelled;
         }
 
         public static string ValidateEmail(string email, string password, bool register, bool reset)
@@ -252,9 +367,10 @@ namespace PushStars.UI
         {
             if (exception is AggregateException aggregate) exception = aggregate.GetBaseException();
             if (exception is OperationCanceledException) return "Sign-in cancelled.";
-            if (exception is FirebaseException firebase)
+            var code = FirebaseAuthService.AuthErrorOf(exception);
+            if (code.HasValue)
             {
-                switch ((AuthError)firebase.ErrorCode)
+                switch (code.Value)
                 {
                     case AuthError.EmailAlreadyInUse:
                     case AuthError.CredentialAlreadyInUse:
@@ -285,9 +401,10 @@ namespace PushStars.UI
         private void SetBusy(bool busy)
         {
             _busy = busy;
-            _primary.interactable = _mode.interactable = _reset.interactable = _cancel.interactable = !busy;
+            _primary.interactable = _reset.interactable = _cancel.interactable = !busy;
             _handle.interactable = !busy;
             _email.interactable = _password.interactable = !busy;
+            _owner.SetAccountInteractable(!busy);
         }
 
         private void Update()
@@ -312,6 +429,7 @@ namespace PushStars.UI
 
         private void Animate(float target)
         {
+            _target = target;
             if (_transition != null) StopCoroutine(_transition);
             _transition = StartCoroutine(Slide(target));
         }

@@ -1,6 +1,7 @@
 using System;
 using System.Linq;
 using System.Threading.Tasks;
+using Firebase;
 using Firebase.Auth;
 using PushStars.Core;
 using UnityEngine;
@@ -19,7 +20,17 @@ namespace PushStars.Services
         public string Uid => _auth?.CurrentUser?.UserId;
         public bool IsSignedIn => !string.IsNullOrEmpty(Uid);
         public bool IsAnonymous => _auth?.CurrentUser?.IsAnonymous ?? true;
-        public string Email => _auth?.CurrentUser?.Email;
+        // A guest that just linked Google or Apple may carry the address only on the provider entry.
+        public string Email
+        {
+            get
+            {
+                var user = _auth?.CurrentUser;
+                if (user == null) return null;
+                return !string.IsNullOrEmpty(user.Email) ? user.Email
+                    : user.ProviderData.Select(p => p.Email).FirstOrDefault(e => !string.IsNullOrEmpty(e));
+            }
+        }
         public bool HasProvider(string id) => _auth?.CurrentUser?.ProviderData.Any(p => p.ProviderId == id) == true;
 
         [RuntimeInitializeOnLoadMethod(RuntimeInitializeLoadType.SubsystemRegistration)]
@@ -76,21 +87,19 @@ namespace PushStars.Services
             Debug.Log($"[Auth] Signed in anonymously. uid={Uid}");
         }
 
-        public async Task RegisterEmailAsync(string email, string password)
-        {
-            using (var credential = EmailAuthProvider.GetCredential(email.Trim(), password))
-                await ConnectCredentialAsync(credential, true);
-        }
-
-        public async Task SignInEmailAsync(string email, string password)
-        {
-            await _auth.SignInWithEmailAndPasswordAsync(email.Trim(), password);
-        }
+        /// <summary>The sign-in method shown in Settings: Apple, then Google, then email.</summary>
+        public string PrimaryProvider => new[] { "apple.com", "google.com", "password" }.FirstOrDefault(HasProvider);
 
         public Task SendPasswordResetAsync(string email) => _auth.SendPasswordResetEmailAsync(email.Trim());
 
-        public async Task ConnectProviderAsync(string providerId, bool saveProgress)
+        /// <summary>
+        /// Links Apple or Google to the current guest so its UID stays. Returns null once linked.
+        /// When the account already belongs to another profile, returns the switch to that profile
+        /// instead of running it: switching UID never happens without the player's confirmation.
+        /// </summary>
+        public async Task<Func<Task>> LinkProviderAsync(string providerId)
         {
+            var user = _auth?.CurrentUser ?? throw new InvalidOperationException("Connection unavailable. Please try again.");
 #if UNITY_ANDROID && !UNITY_EDITOR
             if (providerId == "apple.com")
             {
@@ -100,31 +109,74 @@ namespace PushStars.Services
                     ProviderId = providerId,
                     Scopes = new System.Collections.Generic.List<string> { "email", "name" }
                 });
-                if (saveProgress && HasProvider(providerId))
-                    await _auth.CurrentUser.ReauthenticateWithProviderAsync(provider);
-                else if (saveProgress)
-                    await _auth.CurrentUser.LinkWithProviderAsync(provider);
-                else
-                    await _auth.SignInWithProviderAsync(provider);
-                return;
+                try { await user.LinkWithProviderAsync(provider); return null; }
+                catch (Exception e) when (IsTaken(e))
+                {
+                    var updated = (e as FirebaseAccountLinkException)?.UserInfo?.UpdatedCredential;
+                    if (updated != null && updated.IsValid()) return () => SignInAsync(updated);
+                    return () => _auth.SignInWithProviderAsync(provider);
+                }
             }
 #endif
-            using (var credential = await NativeSignIn.GetCredentialAsync(providerId))
+            var credential = await NativeSignIn.GetCredentialAsync(providerId);
+            try
             {
-                if (saveProgress && HasProvider(providerId))
-                    await _auth.CurrentUser.ReauthenticateAsync(credential);
-                else
-                    await ConnectCredentialAsync(credential, saveProgress);
+                await user.LinkWithCredentialAsync(credential);
+                credential.Dispose();
+                return null;
+            }
+            catch (Exception e) when (IsTaken(e))
+            {
+                // Apple's nonce makes the first credential single-use; Firebase hands back a fresh one.
+                var updated = (e as FirebaseAccountLinkException)?.UserInfo?.UpdatedCredential;
+                if (updated == null || !updated.IsValid()) return () => SignInAsync(credential);
+                credential.Dispose();
+                return () => SignInAsync(updated);
+            }
+            catch
+            {
+                credential.Dispose();
+                throw;
             }
         }
 
-        private async Task ConnectCredentialAsync(Credential credential, bool saveProgress)
+        /// <summary>Email counterpart of <see cref="LinkProviderAsync"/>: a new email becomes this
+        /// guest's account; a registered one returns the switch, which checks the password.</summary>
+        public async Task<Func<Task>> LinkEmailAsync(string email, string password)
         {
-            // Never fall back to sign-in on a link collision: that would silently switch UID.
-            if (saveProgress)
-                await _auth.CurrentUser.LinkWithCredentialAsync(credential);
-            else
-                await _auth.SignInWithCredentialAsync(credential);
+            var user = _auth?.CurrentUser ?? throw new InvalidOperationException("Connection unavailable. Please try again.");
+            email = email.Trim();
+            using (var credential = EmailAuthProvider.GetCredential(email, password))
+            {
+                try { await user.LinkWithCredentialAsync(credential); return null; }
+                catch (Exception e) when (IsTaken(e))
+                {
+                    return () => _auth.SignInWithEmailAndPasswordAsync(email, password);
+                }
+            }
+        }
+
+        /// <summary>Leaves the account; Boot then starts a fresh guest session.</summary>
+        public void SignOut() => _auth?.SignOut();
+
+        private async Task SignInAsync(Credential credential)
+        {
+            using (credential) await _auth.SignInWithCredentialAsync(credential);
+        }
+
+        private static bool IsTaken(Exception e)
+        {
+            var code = AuthErrorOf(e);
+            return code == AuthError.CredentialAlreadyInUse || code == AuthError.EmailAlreadyInUse;
+        }
+
+        /// <summary>Link collisions arrive as FirebaseAccountLinkException, which is not a FirebaseException.</summary>
+        public static AuthError? AuthErrorOf(Exception e)
+        {
+            if (e is AggregateException aggregate) e = aggregate.GetBaseException();
+            if (e is FirebaseAccountLinkException link) return (AuthError)link.ErrorCode;
+            if (e is FirebaseException firebase) return (AuthError)firebase.ErrorCode;
+            return null;
         }
 
         /// <summary>

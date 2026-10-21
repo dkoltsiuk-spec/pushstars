@@ -1,5 +1,8 @@
 using System.Collections;
+using System.Collections.Generic;
+using Cysharp.Threading.Tasks;
 using PushStars.Core;
+using PushStars.Services;
 using TMPro;
 using UnityEngine;
 using UnityEngine.UI;
@@ -20,6 +23,12 @@ namespace PushStars.UI
         private Coroutine _noticeRoutine;
         private SettingsAuthDialog _authDialog;
         private GameObject _languageDialog;
+        private readonly List<GameObject> _guestOnly = new List<GameObject>();
+        private GameObject _accountCard;
+        private Image _accountIcon;
+        private TextMeshProUGUI _accountName, _accountEmail;
+        private Button _signOut;
+        private string _accountProvider;
 
         private void Start()
         {
@@ -28,9 +37,11 @@ namespace PushStars.UI
             Language.onClick.AddListener(ShowLanguagePicker);
             _authDialog = gameObject.AddComponent<SettingsAuthDialog>();
             _authDialog.Build(this);
-            Apple.onClick.AddListener(() => _authDialog.Show("apple.com"));
-            Google.onClick.AddListener(() => _authDialog.Show("google.com"));
-            Email.onClick.AddListener(() => _authDialog.Show("password"));
+            Apple.onClick.AddListener(() => _authDialog.Connect("apple.com").Forget());
+            Google.onClick.AddListener(() => _authDialog.Connect("google.com").Forget());
+            Email.onClick.AddListener(_authDialog.ShowEmail);
+            BuildAccountCard();
+            RefreshAccount();
             Privacy.onClick.AddListener(() => ShowNotice("The published privacy policy link has not been configured yet."));
             Support.onClick.AddListener(() => ShowNotice("Support contact has not been configured yet."));
             ExternalMusic.SetIsOnWithoutNotify(GameAudio.KeepExternalMusic);
@@ -58,6 +69,7 @@ namespace PushStars.UI
             Localization.LanguageChanged += RefreshLanguage;
             RefreshLanguage();
             for (int i = 0; i < Switches.Length; i++) DrawSwitch(i);
+            RefreshAccount();
         }
 
         private void OnDisable()
@@ -148,6 +160,105 @@ namespace PushStars.UI
             if (plate == null || plate.sprite == null) return;
             plate.type = Image.Type.Sliced; plate.preserveAspect = false; plate.fillCenter = true;
             plate.pixelsPerUnitMultiplier = plate.sprite.rect.height / plate.sprite.pixelsPerUnit * 100f / height;
+        }
+
+        /// <summary>Guest: the three sign-in buttons. Signed in: one card with the method used,
+        /// a check, the account email and SIGN OUT, in the same slot.</summary>
+        public void RefreshAccount()
+        {
+            if (_accountCard == null) return;
+            string provider = ServiceLocator.TryGet<FirebaseAuthService>(out var auth) && !auth.IsAnonymous
+                ? auth.PrimaryProvider : null;
+            bool signedIn = provider != null;
+            foreach (var guestOnly in _guestOnly) guestOnly.SetActive(!signedIn);
+            _accountCard.SetActive(signedIn);
+            if (!signedIn) return;
+            _accountProvider = provider;
+            _accountIcon.sprite = provider == "apple.com" ? Apple.image.sprite
+                : provider == "google.com" ? Google.image.sprite : Email.image.sprite;
+            _accountName.text = provider == "apple.com" ? "APPLE ID" : provider == "google.com" ? "GOOGLE" : "EMAIL";
+            _accountEmail.text = MaskEmail(auth.Email);
+        }
+
+        public void SetAccountInteractable(bool interactable)
+        {
+            Apple.interactable = Google.interactable = Email.interactable = interactable;
+            if (_signOut != null) _signOut.interactable = interactable;
+        }
+
+        private void BuildAccountCard()
+        {
+            var slot = Apple.transform.parent;
+            _guestOnly.Add(Apple.gameObject); _guestOnly.Add(Google.gameObject); _guestOnly.Add(Email.gameObject);
+            for (int i = 0; i < 3; i++)
+            {
+                var label = slot.Find("ProviderLabel" + i);
+                if (label != null) _guestOnly.Add(label.gameObject);
+            }
+            var round = Notice.transform.parent.GetComponent<Image>().sprite;
+            // Same slot as the provider row and its captions; drop-shadow card like the match rows.
+            var card = Rect(slot, "AccountCard", 20, 104, 350, 88);
+            var shadow = card.gameObject.AddComponent<Image>();
+            shadow.sprite = round; shadow.type = Image.Type.Sliced; shadow.color = Color.black; shadow.raycastTarget = false;
+            var face = Rect(card, "Card", 2, 2, 344, 82).gameObject.AddComponent<Image>();
+            face.sprite = round; face.type = Image.Type.Sliced; face.color = new Color32(30, 56, 133, 255); face.raycastTarget = false;
+            _accountIcon = Rect(card, "Provider", 12, 17, 76, 54).gameObject.AddComponent<Image>();
+            _accountIcon.preserveAspect = true; _accountIcon.raycastTarget = false;
+            var check = Rect(card, "Check", 98, 18, 24, 24).gameObject.AddComponent<Image>();
+            check.sprite = OnSprite; check.preserveAspect = true; check.raycastTarget = false;
+            var providerCaption = slot.Find("ProviderLabel1");
+            TextMeshProUGUI captionSource = providerCaption != null ? providerCaption.GetComponent<TextMeshProUGUI>() : null;
+            if (captionSource == null) captionSource = LanguageLabel;
+            _accountName = Instantiate(captionSource, card);
+            _accountName.name = "Method";
+            Place(_accountName.rectTransform, 128, 17, 110, 26);
+            _accountName.alignment = TextAlignmentOptions.MidlineLeft;
+            _accountName.enableAutoSizing = true; _accountName.fontSizeMin = 12; _accountName.fontSizeMax = 18;
+            _accountEmail = Instantiate(captionSource, card);
+            _accountEmail.name = "AccountEmail";
+            Place(_accountEmail.rectTransform, 98, 48, 140, 22);
+            _accountEmail.font = Notice.font; _accountEmail.fontSharedMaterial = Notice.font.material;
+            _accountEmail.color = new Color32(181, 199, 248, 255);
+            _accountEmail.alignment = TextAlignmentOptions.MidlineLeft;
+            _accountEmail.enableAutoSizing = true; _accountEmail.fontSizeMin = 10; _accountEmail.fontSizeMax = 13;
+            _accountEmail.overflowMode = TextOverflowModes.Ellipsis;
+            _signOut = Instantiate(Language, card);
+            _signOut.name = "SignOut";
+            Place((RectTransform)_signOut.transform, 240, 23, 98, 42);
+            FitSlantPlate(_signOut.image, 42);
+            var signOutLabel = _signOut.GetComponentInChildren<TextMeshProUGUI>();
+            signOutLabel.text = "SIGN OUT";
+            signOutLabel.enableAutoSizing = true; signOutLabel.fontSizeMin = 10; signOutLabel.fontSizeMax = 14;
+            signOutLabel.rectTransform.anchorMin = Vector2.zero; signOutLabel.rectTransform.anchorMax = Vector2.one;
+            signOutLabel.rectTransform.offsetMin = new Vector2(8, 4); signOutLabel.rectTransform.offsetMax = new Vector2(-8, -4);
+            _signOut.onClick.RemoveAllListeners();
+            _signOut.onClick.AddListener(() => _authDialog.AskSignOut(_accountProvider));
+            _accountCard = card.gameObject;
+            _accountCard.SetActive(false);
+        }
+
+        // Apple's private relay addresses are long and meaningless; any address shows as a***@domain.
+        private static string MaskEmail(string email)
+        {
+            if (string.IsNullOrEmpty(email)) return "";
+            int at = email.IndexOf('@');
+            return at <= 0 ? email : email[0] + "***" + email.Substring(at);
+        }
+
+        private static RectTransform Rect(Transform parent, string name, float x, float y, float width, float height)
+        {
+            var go = new GameObject(name, typeof(RectTransform));
+            go.layer = parent.gameObject.layer;
+            var rect = (RectTransform)go.transform; rect.SetParent(parent, false);
+            rect.anchorMin = rect.anchorMax = rect.pivot = new Vector2(0, 1);
+            Place(rect, x, y, width, height);
+            return rect;
+        }
+
+        private static void Place(RectTransform rect, float x, float y, float width, float height)
+        {
+            rect.anchorMin = rect.anchorMax = rect.pivot = new Vector2(0, 1);
+            rect.anchoredPosition = new Vector2(x, -y); rect.sizeDelta = new Vector2(width, height);
         }
 
         private void DrawSwitch(int i)
