@@ -3,8 +3,9 @@ const admin = require('./admin');
 const { defaultProfile } = require('./profileDefaults');
 const C = require('./constants');
 const { cleanClapTimes } = require('./clapTimes');
+const rules = require('./progressRules');
 const db = admin.firestore();
-const { Timestamp } = admin.firestore;
+const { Timestamp } = require('firebase-admin/firestore');
 const MAX_TROPHIES = 999999999;
 const LEAGUES = ['bronze', 'silver', 'gold', 'diamond'];
 const fail = (code, message) => { throw new functions.https.HttpsError(code, message); };
@@ -252,6 +253,30 @@ exports.cancelRankedMatch = functions.https.onCall(async (data, context) => {
       if (user.exists && user.data().activeRankedId === id) tx.update(userRef, { activeRankedUntil: 0, activeRankedId: '' });
     }
     return { status: 'ok' };
+  });
+});
+
+// The league shows the trophies the phone shows. They are earned on the phone, so the server checks
+// what it can (progressRules): the total is bounded by the wins in the workout history sent with it,
+// and the history cannot grow faster than workouts can be done since the last accepted copy.
+exports.syncLeagueTrophies = functions.https.onCall(async (data, context) => {
+  const uid = uidOf(context);
+  let summary;
+  try { summary = rules.inspectWorkoutSave(data?.workouts); }
+  catch (e) { throw e instanceof rules.RuleError ? new functions.https.HttpsError(e.code, e.message) : e; }
+  return db.runTransaction(async tx => {
+    const now = Date.now(), season = seasonAt(now), userRef = db.doc(`users/${uid}`);
+    const [user, meta] = await tx.getAll(userRef, seasonRef(season));
+    const p = user.exists ? user.data() : defaultProfile();
+    const previous = p.leagueSync;
+    try { rules.checkPace(previous, summary, previous ? (now - previous.atMs) / 1000 : 0); }
+    catch (e) { throw new functions.https.HttpsError(e.code, e.message); }
+    const trophies = Math.min(MAX_TROPHIES, summary.trophies);
+    const next = { ...p, trophies, rank: leagueFor(trophies), leagueSync: { workouts: summary.workouts, atMs: now } };
+    ensureSeason(tx, meta, season);
+    tx.set(userRef, next);
+    tx.set(playerRef(season, uid), entry(uid, next));
+    return { trophies, league: next.rank };
   });
 });
 

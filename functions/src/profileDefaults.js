@@ -1,5 +1,4 @@
-const admin = require('./admin');
-const { FieldValue } = admin.firestore;
+const { FieldValue } = require('firebase-admin/firestore');
 
 // The canonical default profile document. Shared by onUserCreated (Auth trigger) and
 // ensureProfile (callable backfill), so the schema lives in exactly one place.

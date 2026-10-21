@@ -95,3 +95,16 @@ test('ghost sets must be consistent and bounded', () => {
   assert.throws(() => rules.inspectGhost(pack({ reps: 3, repTimes: [1] })), e => e.code === 'invalid-argument');
   assert.throws(() => rules.inspectGhost(pack({ reps: 99, repTimes: Array(99).fill(1) })), e => e.code === 'out-of-range');
 });
+
+test('the league reads trophies from the workout ledger alone, bounded by its wins', () => {
+  const workouts = JSON.parse(JSON.parse(fixtureJson).workouts);
+  const summary = rules.inspectWorkoutSave(pack(workouts));
+  assert.equal(summary.trophies, 163);
+  assert.equal(summary.workouts, 2);
+  workouts.Trophies = summary.trophiesWon + 501;
+  assert.throws(() => rules.inspectWorkoutSave(pack(workouts)), e => e.code === 'out-of-range');
+  workouts.Trophies = 0;
+  workouts.Workouts[1].TrophyDelta = 999;
+  assert.throws(() => rules.inspectWorkoutSave(pack(workouts)), e => e.code === 'out-of-range');
+  assert.throws(() => rules.inspectWorkoutSave(''), e => e.code === 'invalid-argument');
+});

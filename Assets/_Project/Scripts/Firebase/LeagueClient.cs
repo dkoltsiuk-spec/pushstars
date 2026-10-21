@@ -7,6 +7,7 @@ using Firebase.Auth;
 using PushStars.Core;
 using UnityEngine;
 using UnityEngine.Networking;
+using UnityEngine.SceneManagement;
 
 namespace PushStars.Services
 {
@@ -49,7 +50,8 @@ namespace PushStars.Services
         public LeagueCallException(string status, string message) : base(message) { Status = status; }
     }
 
-    /// <summary>Cloud rankings are separate from the device workout ledger. Never uploads local trophy totals.</summary>
+    /// <summary>The league table shows the trophies this phone shows: <see cref="SyncTrophies"/> sends the
+    /// workout ledger, and the server checks the total against the wins in it (functions/src/league.js).</summary>
     public static class LeagueClient
     {
         [Serializable] private sealed class Envelope<T> { public T data; }
@@ -62,6 +64,12 @@ namespace PushStars.Services
         [Serializable] public sealed class PendingResult { public string id, uid; public float[] repTimes, clapTimes; public float durationSec; }
         [Serializable] private sealed class Outbox { public List<PendingResult> items = new List<PendingResult>(); }
         [Serializable] private sealed class Empty { }
+        [Serializable] private sealed class TrophyRequest { public string workouts; }
+        [Serializable] private sealed class TrophyResponse { public int trophies; public string league; }
+        private const string TrophiesSentKey = "league.trophies_sent", TrophiesRefusedKey = "league.trophies_refused";
+        private const float TrophyDebounceSec = 2f, TrophyRetrySec = 30f;
+        private static Task _trophies;
+        private static float _trophiesDueAt = -1;
         public static RankedSession PreparedSession;
         public static string LastSyncError { get; private set; }
         private static Task _flush;
@@ -72,7 +80,69 @@ namespace PushStars.Services
         private static string OutboxPath => Path.Combine(Application.persistentDataPath, "ranked-results-v1.json");
 
         [RuntimeInitializeOnLoadMethod(RuntimeInitializeLoadType.SubsystemRegistration)]
-        private static void Reset() { PreparedSession = null; _cached = null; _cacheUid = null; _flush = null; LastSyncError = null; }
+        private static void Reset() { PreparedSession = null; _cached = null; _cacheUid = null; _flush = null; LastSyncError = null; _trophies = null; _trophiesDueAt = -1; }
+
+        [RuntimeInitializeOnLoadMethod(RuntimeInitializeLoadType.AfterSceneLoad)]
+        private static void CreateTrophyRunner()
+        {
+            var go = new GameObject("LeagueTrophySync") { hideFlags = HideFlags.HideAndDontSave };
+            UnityEngine.Object.DontDestroyOnLoad(go);
+            go.AddComponent<TrophyRunner>();
+            ProgressEvents.Changed += ScheduleTrophies;
+            SceneManager.sceneLoaded -= OnSceneLoaded;
+            SceneManager.sceneLoaded += OnSceneLoaded;
+            ScheduleTrophies();
+        }
+        // Back on Main after a fight (or a restored save) the table catches up.
+        private static void OnSceneLoaded(Scene scene, LoadSceneMode mode) { if (scene.name == "Main") ScheduleTrophies(); }
+        private static void ScheduleTrophies() => _trophiesDueAt = Time.realtimeSinceStartup + TrophyDebounceSec;
+
+        /// <summary>Sends this phone's trophies to the league table if they changed since the last
+        /// accepted copy. Never throws: offline it retries later, a refused copy waits for the next change.</summary>
+        public static Task SyncTrophies()
+        {
+            if (_trophies == null || _trophies.IsCompleted) _trophies = SendTrophies();
+            return _trophies;
+        }
+        private static async Task SendTrophies()
+        {
+            _trophiesDueAt = -1;
+            try
+            {
+                // Never starts Firebase itself: Boot (or the League screen) does, and this waits for it.
+                string uid = Uid;
+                if (string.IsNullOrEmpty(uid)) { _trophiesDueAt = Time.realtimeSinceStartup + TrophyRetrySec; return; }
+                string mark = uid + ":" + LocalProfile.Trophies;
+                if (mark == PlayerPrefs.GetString(TrophiesSentKey, "") || mark == PlayerPrefs.GetString(TrophiesRefusedKey, "")) return;
+                var request = new TrophyRequest { workouts = ProgressCodec.Pack(LocalProfile.ExportSave()) };
+                try
+                {
+                    var accepted = await Call<TrophyRequest, TrophyResponse>("syncLeagueTrophies", request, uid);
+                    PlayerPrefs.SetString(TrophiesSentKey, mark);
+                    _cached = null;
+                    Debug.Log($"[League] Trophies sent: {accepted.trophies} ({accepted.league}).");
+                }
+                catch (LeagueCallException e) when (e.Permanent || e.Status == "OUT_OF_RANGE")
+                {
+                    // The same copy cannot pass; the next trophy change tries again.
+                    PlayerPrefs.SetString(TrophiesRefusedKey, mark);
+                    Debug.LogWarning($"[League] Trophies refused ({e.Status}): {e.Message}");
+                }
+                PlayerPrefs.Save();
+            }
+            catch (Exception e)
+            {
+                _trophiesDueAt = Time.realtimeSinceStartup + TrophyRetrySec;
+                Debug.LogWarning("[League] Trophies not sent, will retry: " + e.Message);
+            }
+        }
+        private sealed class TrophyRunner : MonoBehaviour
+        {
+            private void Update()
+            {
+                if (_trophiesDueAt > 0 && Time.realtimeSinceStartup >= _trophiesDueAt) _ = SyncTrophies();
+            }
+        }
 
         public static async Task<LeaguePage> GetPage(string cursor = "", string seasonId = "", string league = "", bool force = false)
         {

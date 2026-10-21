@@ -9,7 +9,8 @@
 //     rep, Aura and gems per workout and receipt);
 //  3. pace — the workout count, which bounds everything else, cannot grow faster than workouts
 //     can be done, measured on the server's clock since the previous save.
-// The league never reads this copy: trophies stay server-authoritative (league.js).
+// The league reads trophies through the same evidence (inspectWorkoutSave, league.js), from the
+// workout ledger alone, so guests are ranked too.
 const zlib = require('zlib');
 const { MAX_REPS_PER_MATCH, XP_PER_REP } = require('./constants');
 
@@ -180,6 +181,13 @@ function checkEvidence(s) {
   if (s.bossCleared < 0 || s.bossCleared > Math.min(64, w)) tooMuch('More bosses than fights.');
 }
 
+/** The workout ledger alone (the league's trophies): the same parse, trophies bounded by its wins. */
+function inspectWorkoutSave(packed) {
+  const s = inspectWorkouts(unpack(packed, LIMITS.PACKED_SNAPSHOT_CHARS));
+  if (s.trophies > s.trophiesWon + ALLOWANCE.TROPHIES) tooMuch('More trophies than workouts.');
+  return s;
+}
+
 /** The workout count cannot grow faster than workouts can be done. */
 function checkPace(previous, next, elapsedSec) {
   if (!previous) return; // first copy: bounded by evidence alone (saves from before cloud saves)
@@ -197,4 +205,4 @@ function inspectGhost(packed) {
   return { reps };
 }
 
-module.exports = { LIMITS, RuleError, inspectSnapshot, inspectGhost, checkEvidence, checkPace };
+module.exports = { LIMITS, RuleError, inspectSnapshot, inspectWorkoutSave, inspectGhost, checkEvidence, checkPace };

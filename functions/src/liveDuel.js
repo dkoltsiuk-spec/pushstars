@@ -29,7 +29,7 @@ const admin = require('./admin');
 const C = require('./constants');
 const R = require('./liveDuelRules');
 const { cleanClapTimes } = require('./clapTimes');
-const { seasonAt } = require('./league');
+const { seasonAt, entry } = require('./league');
 const { callPlayer } = require('./push');
 const db = admin.firestore();
 const { Timestamp } = admin.firestore;
@@ -377,6 +377,8 @@ async function settleInto(tx, ref, match, force) {
       update.winRate = update.totalWins / (update.totalWins + update.totalLosses);
     }
     tx.set(snap.ref || db.doc(`users/${uid}`), update, { merge: true });
+    // The league table shows the new total at once (the phone's next sync then confirms its own).
+    if (update.trophies !== undefined) tx.set(db.doc(`seasons/${seasonAt(now).id}/players/${uid}`), entry(uid, { ...p, ...update }));
   });
   const [a, b] = [match.hostUid, match.guestUid];
   tx.update(ref, {

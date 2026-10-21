@@ -84,7 +84,7 @@ namespace PushStars.UI
             {
                 await FirebaseAuthService.EnsureReadyAsync();
                 if (this == null || !isActiveAndEnabled || version != _generation) return;
-                if (!more) await LeagueClient.FlushPending();
+                if (!more) { await LeagueClient.FlushPending(); await LeagueClient.SyncTrophies(); }
                 if (this == null || !isActiveAndEnabled || version != _generation) return;
                 var page = await LeagueClient.GetPage(cursor, requestedSeason, requestedLeague, force);
                 if (this == null || !isActiveAndEnabled || version != _generation) return;

@@ -360,6 +360,9 @@ test('two players searching at the same moment are paired into one ranked live d
     const result = await finish(f, 'bob', bob.matchId, 24, { opponentReps: 31 });
     assert.equal(result.won, false); assert.equal(result.trophyDelta, 0, 'bob had no trophies to lose');
     assert.equal(f.docs.get('users/alice').trophies, 25);
+    // The league table follows at once, not only the profile.
+    const row = [...f.docs.entries()].find(([k]) => /^seasons\/[^/]+\/players\/alice$/.test(k))?.[1];
+    assert.equal(row?.trophies, 25); assert.equal(row.league, 'bronze');
     assert.equal(f.docs.get(`matches/live_${bob.matchId}`).mode, 'pvp');
   } finally { f.restore(); }
 });

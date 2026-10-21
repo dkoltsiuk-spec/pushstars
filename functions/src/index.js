@@ -26,6 +26,7 @@ exports.beginRankedMatch = league.beginRankedMatch;
 exports.startRankedMatch = league.startRankedMatch;
 exports.finishRankedMatch = league.finishRankedMatch;
 exports.cancelRankedMatch = league.cancelRankedMatch;
+exports.syncLeagueTrophies = league.syncLeagueTrophies;
 exports.rotateLeagueSeason = league.rotateLeagueSeason;
 const botRecordings = require('./botRecordings');
 exports.getBotRecorderAccess = botRecordings.getBotRecorderAccess;
