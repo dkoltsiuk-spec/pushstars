@@ -476,8 +476,8 @@ test('"notify me": a phone put away right after searching is paired, never comes
     f.advance(1000);
     const bob = await f.live.enqueueLiveDuel({ best: 28 }, f.as('bob'));
     assert.equal(bob.status, 'matched'); assert.equal(f.sent.length, 0);
-    // Bob waits in the room alone, gives up and searches again before his cancel lands.
-    await f.hook({ Type: 'Join', GameId: bob.roomName, UserId: 'bob', ActorNr: 1 });
+    // Bob opens the room (Photon reports no Join for the first one in), waits alone, gives up
+    // and searches again before his cancel lands.
     f.advance(10000);
     assert.equal((await f.live.enqueueLiveDuel({ best: 28 }, f.as('bob'))).called, 0, 'alice is still paired');
     await f.live.cancelLiveDuel({ matchId: bob.matchId }, f.as('bob'));
@@ -502,6 +502,29 @@ test('"notify me": a phone put away right after searching is paired, never comes
     await f.live.cancelLiveDuel({ matchId: late.matchId }, f.as('carol'));
     assert.equal(f.docs.has('liveDuelQueue/bob'), false); assert.equal(f.docs.has('liveDuelQueue/carol'), false);
     assert.equal(carol.status, 'waiting');
+  } finally { f.restore(); }
+});
+
+test('"notify me": the one who opened the room was there, so a cancel never calls them back', async () => {
+  const f = fixture();
+  try {
+    f.seedUser('alice'); f.seedUser('bob');
+    await f.push.registerPushToken({ token: 'tok-alice', platform: 'ios', lang: 'ru' }, f.as('alice'));
+    await f.live.enqueueLiveDuel({ notify: true }, f.as('alice'));
+    const bob = await f.live.enqueueLiveDuel({}, f.as('bob'));
+    // Alice opens the room (no Join for her), bob joins, then bob leaves the found card.
+    await f.hook({ Type: 'Join', GameId: bob.roomName, UserId: 'bob', ActorNr: 2 });
+    await f.live.cancelLiveDuel({ matchId: bob.matchId }, f.as('bob'));
+    assert.equal(f.docs.has('liveDuelQueue/alice'), false, 'alice was in the room: no standby');
+    // A leave of hers proves the same.
+    await f.live.enqueueLiveDuel({ notify: true }, f.as('alice'));
+    const again = await f.live.enqueueLiveDuel({}, f.as('bob'));
+    await f.hook({ Type: 'LeaveRequest', GameId: again.roomName, UserId: 'alice', ActorNr: 1, IsInactive: true }, undefined, '/leave');
+    await f.live.cancelLiveDuel({ matchId: again.matchId }, f.as('bob'));
+    assert.equal(f.docs.has('liveDuelQueue/alice'), false);
+    f.advance(1000);
+    assert.equal((await f.live.enqueueLiveDuel({}, f.as('bob'))).called, 0);
+    assert.equal(f.sent.length, 0);
   } finally { f.restore(); }
 });
 

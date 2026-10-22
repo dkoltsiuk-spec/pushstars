@@ -222,10 +222,19 @@ const bestOf = data => Number.isInteger(data?.best) ? Math.max(0, Math.min(C.MAX
 // "notify me" on — callable at once, so the search that is still waiting for them sends the push.
 // Null when the place should simply go: no standby held, the player was in the room, or the duel ran.
 function standbyAgain(place, match, now) {
-  if (!((place.heldStandbyUntilMs || 0) > now) || !match || match.startedAtMs || match.room?.joins?.[place.uid]) return null;
+  if (!((place.heldStandbyUntilMs || 0) > now) || !match || match.startedAtMs || wasInRoom(match, place.uid)) return null;
   return { ...place, state: 'waiting', waitUntilMs: 0, standbyUntilMs: place.heldStandbyUntilMs, standbyFromMs: now,
     expiresAtMs: place.heldStandbyUntilMs, heldStandbyUntilMs: 0, calledAtMs: 0, callerName: '',
     matchId: '', roomName: '', matchedAtMs: 0, role: '', opponent: null };
+}
+
+// Photon reports a Join only for the second phone in a room — the one who opens it never shows
+// up in `joins`. So the other player's join also proves this one was there (they made the room),
+// and so does any leave of theirs.
+function wasInRoom(match, uid) {
+  const other = uid === match.hostUid ? match.guestUid : match.hostUid;
+  const room = match.room || {};
+  return Boolean(room.joins?.[uid] || room.leaves?.[uid] || (other && room.joins?.[other]));
 }
 
 // Standby players: searched earlier, allowed notifications, left the screen (not polling), not
@@ -241,7 +250,9 @@ async function callStandby(caller) {
   let called = 0;
   for (const e of candidates) {
     if (called >= C.LIVE_QUEUE_CALLS_PER_SEARCH) break;
-    if (!await callPlayer(e.uid, 'queue', { name: caller.name }, now)) continue;
+    const sent = await callPlayer(e.uid, 'queue', { name: caller.name }, now);
+    functions.logger.info('queue call', { caller: caller.uid.slice(0, 6), callee: e.uid.slice(0, 6), sent });
+    if (!sent) continue;
     called++;
     await queueRef(e.uid).update({ calledAtMs: now, callerName: caller.name }).catch(() => {});
   }
@@ -318,6 +329,7 @@ exports.cancelLiveDuel = functions.https.onCall(async (data, context) => {
       if (!place.exists || place.data().matchId !== data.matchId) continue;
       const again = place.id !== uid ? standbyAgain(place.data(), match, now) : null;
       if (again) { tx.set(place.ref, again); restored = true; } else tx.delete(place.ref);
+      if (again) functions.logger.info('queue standby again', { uid: place.id.slice(0, 6), match: data.matchId.slice(0, 6) });
     }
     // The one cancelling is usually searching again by now; if their new search got here first,
     // it calls the restored player on its next poll rather than LIVE_QUEUE_RECALL_SEC later.

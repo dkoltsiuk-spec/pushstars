@@ -74,7 +74,7 @@ async function callPlayer(uid, kind, vars, now = Date.now()) {
     tx.update(ref, { lastCalledAtMs: now, callsDay: day, callsCount: count + 1 });
     return t;
   });
-  if (!target) return false;
+  if (!target) { functions.logger.info('push skipped', { uid: uid.slice(0, 6), why: 'no token or budget' }); return false; }
   try {
     await admin.messaging().send(message(target.token, target.lang, kind, vars, now));
     return true;
