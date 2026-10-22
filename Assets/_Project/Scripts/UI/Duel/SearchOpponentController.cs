@@ -30,7 +30,8 @@ namespace PushStars.UI
     /// player's level, shown as that player, else the player's own shadow — and "notify me" lets
     /// the player close the game: the next player who searches calls them with a push
     /// (functions/src/push.js), and the app opened on that call goes straight back into the search.
-    /// A call that arrives while the app is open on the main screen shows a callout above START instead.
+    /// A call that arrives while the app is open on the main screen shows a callout above START instead,
+    /// and so does anyone searching right now (the server's lobby) for every player on the main screen.
     /// The found-state UI is built at runtime from the overlay's own Title label, so the
     /// serialized Main scene needs no regeneration.
     ///
@@ -87,6 +88,12 @@ namespace PushStars.UI
         private CallBanner _banner;
         private DuelHourBadge _duelHour;
 
+        // ── Someone searching right now (the server's lobby), shown to every main screen ──
+        private IDisposable _lobbyWatch;
+        private string _lobbyUid;            // the search whose callout was shown (once per search)
+        private long _lobbySince = -1, _lobbyUntil;
+        private bool _bannerFromLobby;
+
         // Wire in Start (not Awake) so every Button/ExitButton has finished its own Awake,
         // mirroring DuelModeController's ordering safeguard.
         private void Start()
@@ -101,6 +108,13 @@ namespace PushStars.UI
             PushTokens.Received += OnPush;
             WatchCalls();
             CheckCall();
+            StartCoroutine(WatchLobby());
+        }
+
+        // A lobby callout goes once its search has stopped refreshing (the phone that searched died).
+        private void Update()
+        {
+            if (_bannerFromLobby && CallBanner.Showing && NowMs() > _lobbyUntil) HideLobbyBanner();
         }
 
         /// <summary>Opens the matchmaking overlay; the main screen recedes behind it.</summary>
@@ -452,8 +466,47 @@ namespace PushStars.UI
             PlayerPrefs.Save();
         }
 
+        // ── Someone is searching right now ────────────────────────────────────────────────
+
+        /// <summary>Listens to the lobby once Firestore is up: anyone searching with nobody to pair
+        /// with shows above START, so a player who is just in the game joins that fight — no "notify
+        /// me" needed. The callout's FIGHT opens the search, which pairs with them at once.</summary>
+        private IEnumerator WatchLobby()
+        {
+            while (_lobbyWatch == null)
+            {
+                _lobbyWatch = LiveDuelClient.WatchLobby(OnLobby);
+                if (_lobbyWatch == null) yield return new WaitForSecondsRealtime(2f);
+            }
+        }
+
+        private void OnLobby(LobbySearch search)
+        {
+            if (this == null) return;
+            if (search == null || !search.Live(NowMs()) || search.Uid == LiveDuelClient.Uid)
+            {
+                if (_bannerFromLobby) HideLobbyBanner();
+                return;
+            }
+            _lobbyUntil = search.UntilMs;
+            // Once per search: its refreshes do not bring a dismissed callout back.
+            if (_open || (search.Uid == _lobbyUid && search.SinceMs == _lobbySince)) return;
+            _lobbyUid = search.Uid;
+            _lobbySince = search.SinceMs;
+            Analytics.QueueCall("lobby");
+            ShowBanner(search.Name);
+            _bannerFromLobby = true;
+        }
+
+        private void HideLobbyBanner()
+        {
+            _bannerFromLobby = false;
+            _banner?.Hide();
+        }
+
         private void ShowBanner(string caller)
         {
+            _bannerFromLobby = false;
             if (_findButton == null) return;
             EnsureTitleRef();
             if (_banner == null)
@@ -550,6 +603,7 @@ namespace PushStars.UI
         {
             _liveSearch?.Cancel(standby: _notify, busy: false);
             _callWatch?.Dispose();
+            _lobbyWatch?.Dispose();
             PushTokens.Received -= OnPush;
             if (_findButton != null) _findButton.onClick.RemoveListener(Show);
             if (_exitButton != null) _exitButton.onClick.RemoveListener(Hide);

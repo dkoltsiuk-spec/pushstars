@@ -576,6 +576,34 @@ test('"notify me": leaving the search for the main screen keeps the player calla
   } finally { f.restore(); }
 });
 
+test('the lobby shows a lone search to main screens until it pairs or leaves', async () => {
+  const f = fixture();
+  try {
+    f.seedUser('alice'); f.seedUser('bob'); f.seedUser('carol');
+    await f.live.enqueueLiveDuel({ best: 30 }, f.as('alice'));
+    const lobby = f.docs.get('liveDuelLobby/now');
+    assert.equal(lobby.uid, 'alice'); assert.equal(lobby.name, 'ALICE'); assert.equal(lobby.best, 30);
+    assert.equal(lobby.untilMs, Date.now() + 20000); const since = lobby.sinceMs;
+    // Polls refresh it only halfway through its life, and keep the search's start.
+    f.advance(4000);
+    await f.live.pollLiveDuel({ best: 30 }, f.as('alice'));
+    assert.equal(f.docs.get('liveDuelLobby/now').untilMs, since + 20000, 'not every poll writes');
+    f.advance(7000);
+    await f.live.pollLiveDuel({ best: 30 }, f.as('alice'));
+    assert.equal(f.docs.get('liveDuelLobby/now').untilMs, Date.now() + 20000);
+    assert.equal(f.docs.get('liveDuelLobby/now').sinceMs, since);
+    // Bob was on the main screen, saw it and tapped: the pairing clears the lobby.
+    assert.equal((await f.live.enqueueLiveDuel({}, f.as('bob'))).opponentUid, 'alice');
+    assert.equal(f.docs.has('liveDuelLobby/now'), false);
+    // Leaving clears one's own search, never someone else's.
+    await f.live.enqueueLiveDuel({}, f.as('carol'));
+    await f.live.leaveLiveDuel({ ghost: false }, f.as('alice'));
+    assert.equal(f.docs.get('liveDuelLobby/now').uid, 'carol');
+    await f.live.leaveLiveDuel({ ghost: false }, f.as('carol'));
+    assert.equal(f.docs.has('liveDuelLobby/now'), false);
+  } finally { f.restore(); }
+});
+
 test('calls respect the daily budget and standby expiry; a dead token is forgotten; an empty token unregisters', async () => {
   const f = fixture();
   try {

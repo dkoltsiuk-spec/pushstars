@@ -36,6 +36,7 @@ module.exports = {
   LIVE_QUEUE_RECALL_SEC: 45,          // a searcher calls standby players again this often
   LIVE_QUEUE_CALLS_PER_SEARCH: 2,     // standby players called at once
   LIVE_QUEUE_STANDBY_POOL: 20,        // standby places read per call
+  LIVE_QUEUE_LOBBY_SEC: 20,           // main screens show a search this long past its last refresh
   PUSH_CALL_COOLDOWN_SEC: 180,        // one call per player per 3 minutes
   PUSH_CALLS_PER_DAY: 6,              // and at most this many a (UTC) day
   PUSH_CALL_TTL_SEC: 60,              // a call not delivered within a minute is dropped

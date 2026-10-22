@@ -158,7 +158,7 @@ async function search(uid, data, fresh) {
   const profile = db.doc(`users/${uid}`).get();
   profile.catch(() => {}); // a call that returns before reading it must not leave it unhandled
   const nameNow = async () => { const p = await profile; return nameOf(p.exists ? p.data() : null); };
-  let seat = null, recall = false;
+  let seat = null, recall = false, lobby = null, pairedWith = '';
   const result = await db.runTransaction(async tx => {
     const now = Date.now();
     const mine = await tx.get(queueRef(uid));
@@ -176,11 +176,18 @@ async function search(uid, data, fresh) {
       // Standby players are called on a fresh search and again every LIVE_QUEUE_RECALL_SEC.
       recall = fresh || now - (was.callsMadeAtMs || 0) >= C.LIVE_QUEUE_RECALL_SEC * 1000;
       const standbyUntilMs = notify ? now + C.LIVE_QUEUE_STANDBY_SEC * 1000 : 0;
-      tx.set(queueRef(uid), { ...seat, state: 'waiting', enqueuedAtMs: fresh || !mine.exists ? now : was.enqueuedAtMs || now,
+      const enqueuedAtMs = fresh || !mine.exists ? now : was.enqueuedAtMs || now;
+      // Main screens show this search (the lobby): refreshed halfway through its life, not every poll.
+      let lobbyUntilMs = was.lobbyUntilMs || 0;
+      if (fresh || now >= lobbyUntilMs - C.LIVE_QUEUE_LOBBY_SEC * 500) {
+        lobbyUntilMs = now + C.LIVE_QUEUE_LOBBY_SEC * 1000;
+        lobby = { uid, name, best, sinceMs: enqueuedAtMs, untilMs: lobbyUntilMs };
+      }
+      tx.set(queueRef(uid), { ...seat, state: 'waiting', enqueuedAtMs,
         waitUntilMs: now + C.LIVE_QUEUE_HEARTBEAT_SEC * 1000, standbyUntilMs, standbyFromMs: now,
         expiresAtMs: Math.max(now + C.LIVE_QUEUE_ENTRY_TTL_SEC * 1000, standbyUntilMs),
         callsMadeAtMs: recall ? now : was.callsMadeAtMs || 0, calledAtMs: 0, callerName: '',
-        matchId: '', role: '', opponent: null });
+        lobbyUntilMs, matchId: '', role: '', opponent: null });
       return { status: 'waiting', serverTimeMs: now };
     }
     // The one who waited hosts (names the shared start); the one who found them is the guest.
@@ -203,19 +210,34 @@ async function search(uid, data, fresh) {
     const own = { ...seat, ...matched, heldStandbyUntilMs: notify ? now + C.LIVE_QUEUE_STANDBY_SEC * 1000 : 0,
       enqueuedAtMs: now, role: 'guest', opponent: opponentOf(other) };
     tx.set(queueRef(uid), own);
+    pairedWith = other.uid;
     return queueTicket(own, now);
   });
+  if (pairedWith) await clearLobby([uid, pairedWith]);
   if (result.status !== 'waiting') return result;
-  // Nobody online: call players who asked to be notified, and (once per search) offer a
-  // stranger's set at the player's level to fight while waiting.
+  // Nobody online: show the search on main screens, call players who asked to be notified, and
+  // (once per search) offer a stranger's set at the player's level to fight while waiting.
   const [called, ghost] = await Promise.all([
     recall ? callStandby(seat).catch(e => { functions.logger.warn('call standby: ' + e.message); return 0; }) : 0,
     fresh ? ghostFor(uid, best, true).catch(() => null) : null,
+    lobby ? lobbyRef.set(lobby).catch(e => functions.logger.warn('lobby: ' + e.message)) : null,
   ]);
   return { ...result, called, ...(fresh ? { ghost } : {}) };
 }
 
 const bestOf = data => Number.isInteger(data?.best) ? Math.max(0, Math.min(C.MAX_REPS_PER_MATCH, data.best)) : 0;
+
+// The lobby: one document every main screen listens to (firestore.rules: read only) — who is
+// searching right now with nobody to pair with, until when. Main screens show it above START as
+// "{name} is looking for a duel", so a player who is just in the game is drawn into that fight.
+// The search refreshes it while it waits; a pairing or a leave clears it.
+const lobbyRef = db.doc('liveDuelLobby/now');
+async function clearLobby(uids) {
+  await db.runTransaction(async tx => {
+    const snap = await tx.get(lobbyRef);
+    if (snap.exists && uids.includes(snap.data().uid)) tx.delete(lobbyRef);
+  }).catch(e => functions.logger.warn('lobby clear: ' + e.message));
+}
 
 // A paired place whose player never came to the match's room (the phone was put away right
 // after searching, before its place dropped out of the pool) goes back to standby when they had
@@ -279,6 +301,7 @@ exports.leaveLiveDuel = functions.region(...QUEUE_REGIONS).https.onCall(async (d
     else tx.delete(queueRef(uid));
     return null;
   });
+  await clearLobby([uid]);
   if (left) return left;
   const ghost = data?.ghost === false ? null : await ghostFor(uid, Number.isInteger(data?.best) ? data.best : 0);
   return { status: 'left', ghost, serverTimeMs: Date.now() };

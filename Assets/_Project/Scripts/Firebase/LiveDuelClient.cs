@@ -58,6 +58,17 @@ namespace PushStars.Services
         public bool Fresh(long nowMs, long windowMs) => AtMs > 0 && nowMs - AtMs < windowMs;
     }
 
+    /// <summary>Who is searching for a live duel right now with nobody to pair with (the server's
+    /// lobby, liveDuelLobby/now): main screens show it above START.</summary>
+    public sealed class LobbySearch
+    {
+        public readonly string Uid, Name;
+        public readonly long SinceMs, UntilMs;
+        public LobbySearch(string uid, string name, long sinceMs, long untilMs)
+        { Uid = uid ?? ""; Name = name ?? ""; SinceMs = sinceMs; UntilMs = untilMs; }
+        public bool Live(long nowMs) => !string.IsNullOrEmpty(Uid) && UntilMs > nowMs;
+    }
+
     /// <summary>
     /// Server side of a live duel (functions/src/liveDuel.js): the six-digit code, the match both
     /// phones are bound to, and the result. The Photon room only carries the duel; whether it
@@ -155,6 +166,26 @@ namespace PushStars.Services
                 return new Watch(registration);
             }
             catch (Exception e) { UnityEngine.Debug.LogWarning("[LiveQueue] watch call: " + e.Message); return null; }
+        }
+
+        /// <summary>Listens to the lobby — whoever is searching right now — for the main screen;
+        /// null (no search) once it is cleared. Null when Firestore is not up yet. Dispose to stop.</summary>
+        public static IDisposable WatchLobby(Action<LobbySearch> changed)
+        {
+            if (string.IsNullOrEmpty(Uid) || !ServiceLocator.TryGet<FirestoreService>(out var fs) || fs.Db == null) return null;
+            try
+            {
+                var registration = fs.Db.Collection("liveDuelLobby").Document("now").Listen(snapshot =>
+                {
+                    if (snapshot == null || snapshot.Metadata.IsFromCache) return;
+                    if (!snapshot.Exists) { changed?.Invoke(null); return; }
+                    var lobby = snapshot.ToDictionary();
+                    changed?.Invoke(new LobbySearch(Text(lobby, "uid"), Text(lobby, "name"),
+                        Number(lobby, "sinceMs"), Number(lobby, "untilMs")));
+                });
+                return new Watch(registration);
+            }
+            catch (Exception e) { UnityEngine.Debug.LogWarning("[LiveQueue] watch lobby: " + e.Message); return null; }
         }
 
         private static QueueCall CallOf(DocumentSnapshot snapshot)
