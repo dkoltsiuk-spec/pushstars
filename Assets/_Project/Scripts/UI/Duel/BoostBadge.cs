@@ -16,6 +16,9 @@ namespace PushStars.UI
         private static readonly Color32 Ink = new Color32(18, 12, 34, 255), Plate = new Color32(122, 52, 232, 255),
             Shine = new Color32(255, 255, 255, 46), Counter = new Color32(238, 44, 64, 255);
 
+        /// <summary>The badge is drawn at 92×44 and shown at this scale.</summary>
+        private const float Size = .85f;
+
         private CanvasGroup _group;
         private GameObject _counter;
         private TextMeshProUGUI _count;
@@ -27,8 +30,8 @@ namespace PushStars.UI
             var font = button.GetComponentInChildren<TextMeshProUGUI>(true);
             var root = ArenaUi.Rect(button.transform, "BoostBadge", new Vector2(92, 44), Vector2.zero);
             root.anchorMin = root.anchorMax = new Vector2(1, 1);
-            root.anchoredPosition = new Vector2(-34, 2);
-            root.localRotation = Quaternion.Euler(0, 0, 7);
+            root.anchoredPosition = new Vector2(-16, 0);
+            root.localScale = Vector3.one * Size;
             var badge = root.gameObject.AddComponent<BoostBadge>();
             badge._group = root.gameObject.AddComponent<CanvasGroup>();
             badge._group.blocksRaycasts = false;
@@ -44,7 +47,7 @@ namespace PushStars.UI
                 var icon = ArenaUi.Rect(root, "Aura", new Vector2(34, 34), new Vector2(-24, 1)).gameObject.AddComponent<Image>();
                 icon.sprite = aura; icon.preserveAspect = true; icon.raycastTarget = false;
             }
-            var label = ArenaUi.Label(root, "Label", "x2", new Vector2(52, 40), new Vector2(aura != null ? 15 : 0, 2), 27);
+            var label = ArenaUi.Label(root, "Label", "x2", new Vector2(52, 40), new Vector2(aura != null ? 15 : 0, 1), 25);
             Letter(label, font);
 
             badge._counter = ArenaUi.Rect(root, "Counter", new Vector2(24, 24), new Vector2(44, 20)).gameObject;
@@ -62,10 +65,15 @@ namespace PushStars.UI
             shape.Radius = radius; shape.color = color; shape.raycastTarget = false;
         }
 
-        /// <summary>The BATTLE label's own lettering: same font, same thick dark outline.</summary>
+        /// <summary>The BATTLE label's font with only a thin dark outline: the button's own heavy
+        /// outline made the small badge read as a blob.</summary>
         private static void Letter(TextMeshProUGUI label, TextMeshProUGUI source)
         {
-            if (source != null) { label.font = source.font; label.fontSharedMaterial = source.fontSharedMaterial; }
+            if (source != null && source.font != null) { label.font = source.font; label.fontSharedMaterial = source.font.material; }
+            label.outlineWidth = .09f;
+            label.outlineColor = Ink;
+            // Thinner strokes than the bold face: shrink the glyphs a touch inside their outline.
+            label.fontMaterial.SetFloat(ShaderUtilities.ID_FaceDilate, -.14f);
             label.color = Color.white;
             label.alignment = TextAlignmentOptions.Center;
             label.textWrappingMode = TextWrappingModes.NoWrap;
@@ -85,7 +93,7 @@ namespace PushStars.UI
         private void Update()
         {
             Refresh();
-            if (_shown > 0) transform.localScale = Vector3.one * (1f + .045f * Mathf.Sin(Time.unscaledTime * 3f));
+            if (_shown > 0) transform.localScale = Vector3.one * Size * (1f + .04f * Mathf.Sin(Time.unscaledTime * 3f));
         }
     }
 }

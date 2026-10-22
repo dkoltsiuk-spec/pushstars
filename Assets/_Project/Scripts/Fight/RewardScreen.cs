@@ -984,7 +984,7 @@ namespace PushStars.Fight
                     var arena = ArenaCatalog.Get(prize.BonusId);
                     title = "JACKPOT!"; amount = arena?.Title.ToUpperInvariant() ?? "NEW ARENA"; note = "Arena unlocked";
                     top = new Color32(222, 28, 96, 255); bottom = new Color32(128, 8, 72, 255); glow = new Color32(255, 196, 96, 185);
-                    BonusArena(arena?.Home, new Vector2(260, 150));
+                    BonusArena(arena?.Home, new Vector2(244, 140));
                     break;
             }
             Set(PrizeTitle, title);
@@ -1084,17 +1084,44 @@ namespace PushStars.Fight
         }
 
         /// <summary>The jackpot arena as a rounded, landscape crop of its home art, like its card.</summary>
+        /// <summary>The jackpot arena framed like a trophy: drop shadow, black keyline, a bevelled gold
+        /// frame with a shine on its top edge, the art inside its own keyline and a red NEW ARENA ribbon.</summary>
         private void BonusArena(Sprite home, Vector2 size)
         {
             if (home == null) return;
-            var mask = ArenaUi.Rect(_bonusArt, "Arena", size, Vector2.zero);
+            var ink = new Color32(18, 12, 34, 255);
+            var frame = ArenaUi.Rect(_bonusArt, "ArenaFrame", size + new Vector2(30, 30), Vector2.zero);
+            FrameLayer(frame, "Shadow", size + new Vector2(32, 32), new Vector2(0, -9), 24, new Color32(0, 0, 0, 95));
+            FrameLayer(frame, "Keyline", size + new Vector2(30, 30), Vector2.zero, 24, ink);
+            FrameLayer(frame, "GoldDark", size + new Vector2(23, 23), Vector2.zero, 20, new Color32(206, 116, 0, 255));
+            FrameLayer(frame, "Gold", size + new Vector2(23, 18), new Vector2(0, 2.5f), 19, new Color32(255, 198, 36, 255));
+            FrameLayer(frame, "GoldShine", new Vector2(size.x - 16, 4), new Vector2(0, size.y * .5f + 7.5f), 2, new Color32(255, 246, 190, 200));
+            FrameLayer(frame, "InnerKeyline", size + new Vector2(7, 7), Vector2.zero, 15, ink);
+
+            var mask = ArenaUi.Rect(frame, "Arena", size, Vector2.zero);
             var shape = mask.gameObject.AddComponent<ArenaRoundedGraphic>();
-            shape.Radius = 18; shape.raycastTarget = false;
+            shape.Radius = 13; shape.raycastTarget = false;
             mask.gameObject.AddComponent<Mask>().showMaskGraphic = false;
             var art = ArenaUi.Rect(mask, "Artwork", Vector2.zero, Vector2.zero).gameObject.AddComponent<RawImage>();
             ArenaUi.Stretch(art.rectTransform);
             art.raycastTarget = false;
             AvatarCollectionScreen.FrameArena(art, home, size);
+
+            var ribbon = ArenaUi.Rect(frame, "NewRibbon", new Vector2(132, 30), new Vector2(0, size.y * .5f + 14));
+            FrameLayer(ribbon, "Keyline", new Vector2(132, 30), Vector2.zero, 15, ink);
+            FrameLayer(ribbon, "Fill", new Vector2(126, 24), Vector2.zero, 12, new Color32(238, 44, 64, 255));
+            FrameLayer(ribbon, "Shine", new Vector2(116, 9), new Vector2(0, 5), 5, new Color32(255, 255, 255, 60));
+            var label = ArenaUi.Label(ribbon, "Label", "NEW ARENA", new Vector2(126, 26), new Vector2(0, 1), 15);
+            if (_prizeUi.Amount != null) { label.font = _prizeUi.Amount.font; label.fontSharedMaterial = _prizeUi.Amount.fontSharedMaterial; }
+            label.color = Color.white; label.textWrappingMode = TextWrappingModes.NoWrap; label.raycastTarget = false;
+            // The frame is taller than the art: the amount steps down to clear it.
+            if (_prizeUi.Amount != null) _prizeUi.Amount.rectTransform.anchoredPosition += new Vector2(0, -34);
+        }
+
+        private static void FrameLayer(Transform parent, string name, Vector2 size, Vector2 position, float radius, Color32 color)
+        {
+            var layer = ArenaUi.Rect(parent, name, size, position).gameObject.AddComponent<ArenaRoundedGraphic>();
+            layer.Radius = radius; layer.color = color; layer.raycastTarget = false;
         }
 
         private IEnumerator EnterPrize()
