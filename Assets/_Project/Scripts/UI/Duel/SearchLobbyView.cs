@@ -1,4 +1,5 @@
 using System;
+using System.Collections;
 using TMPro;
 using UnityEngine;
 using UnityEngine.UI;
@@ -36,7 +37,7 @@ namespace PushStars.UI
         private Image _cup;
         private CanvasGroup _offerGroup;
         private Material _fightMaterial;
-        private float _offerShownAt = -1f;
+        private float _offerShownAt = -1f, _appearAt = -1f;
 
         public static SearchLobbyView Ensure(GameObject overlay)
         {
@@ -91,13 +92,27 @@ namespace PushStars.UI
             if (!OfferShown)
             {
                 _offerShownAt = Time.unscaledTime;
+                _offerGroup.alpha = 0f;
+                _appearAt = -1f;
                 _offer.gameObject.SetActive(true);
+                StopAllCoroutines();
+                StartCoroutine(Appear());
             }
+        }
+
+        // The card is glass over the search screen: that frame is taken first, while the card is
+        // still invisible, and only then does it slide in.
+        private IEnumerator Appear()
+        {
+            yield return new WaitForEndOfFrame();
+            FrostedBackdrop.Capture();
+            _appearAt = Time.unscaledTime;
         }
 
         public void HideOffer()
         {
             _offerShownAt = -1f;
+            _appearAt = -1f;
             if (_offer != null) _offer.gameObject.SetActive(false);
             if (_tip != null) _tip.gameObject.SetActive(true);
         }
@@ -105,8 +120,8 @@ namespace PushStars.UI
         // Slides up and fades in once, without a tween dependency: an offer, not an interruption.
         private void Update()
         {
-            if (!OfferShown || _offerGroup == null) return;
-            float t = Mathf.Clamp01((Time.unscaledTime - _offerShownAt) / .35f);
+            if (!OfferShown || _offerGroup == null || _appearAt < 0f) return;
+            float t = Mathf.Clamp01((Time.unscaledTime - _appearAt) / .35f);
             float ease = 1f - Mathf.Pow(1f - t, 3f);
             _offerGroup.alpha = ease;
             _offer.anchoredPosition = new Vector2(0f, OfferBottom - 24f * (1f - ease));
@@ -160,7 +175,7 @@ namespace PushStars.UI
             _offer.pivot = new Vector2(.5f, 0f);
             _offerGroup = _offer.gameObject.AddComponent<CanvasGroup>();
             var plate = _offer.gameObject.AddComponent<DuelActionPlate>();
-            plate.color = Card;
+            CallBanner.MakeGlass(plate);
             plate.raycastTarget = false;
             _offerHeader = Label("Header", _offer, font, clean, 12f, Gold, TextAlignmentOptions.TopLeft);
             Place(_offerHeader.rectTransform, new Vector2(20f, -16f), new Vector2(200f, 18f));
@@ -181,18 +196,14 @@ namespace PushStars.UI
             var fight = Rect("Fight", _offer, new Vector2(1f, .5f), new Vector2(-70f, 0f), new Vector2(118f, 58f));
             var face = fight.gameObject.AddComponent<DuelActionPlate>();
             face.color = Gold;
+            face.Slope = CallBanner.Slope; // its sides run parallel to the card's
             var tap = fight.gameObject.AddComponent<Button>();
             tap.targetGraphic = face;
             tap.onClick.AddListener(() => OfferTapped?.Invoke());
-            // The CTA keeps the font's outlined look, like START on the main screen, but thinner:
-            // at this size the font's own outline and dilate swallow the letters.
-            _fightLabel = Label("Label", fight, font, null, 20f, Color.white, TextAlignmentOptions.Center);
-            _fightMaterial = new Material(_fightLabel.fontSharedMaterial) { name = "Search fight label" };
-            _fightMaterial.SetFloat(ShaderUtilities.ID_OutlineWidth, .16f);
-            _fightMaterial.SetFloat(ShaderUtilities.ID_FaceDilate, .08f);
-            _fightMaterial.SetFloat(ShaderUtilities.ID_UnderlayDilate, .2f);
-            _fightLabel.fontSharedMaterial = _fightMaterial;
-            Stretch(_fightLabel.rectTransform, 6f, 6f);
+            // The same FIGHT as the main screen's callout: lighter than START, centred on the face.
+            _fightLabel = Label("Label", fight, font, null, 20f, Color.white, TextAlignmentOptions.Midline);
+            CallBanner.StyleFight(_fightLabel, font);
+            _fightMaterial = _fightLabel.fontSharedMaterial;
             _offer.gameObject.SetActive(false);
         }
 

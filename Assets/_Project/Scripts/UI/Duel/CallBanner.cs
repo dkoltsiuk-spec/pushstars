@@ -1,4 +1,5 @@
 using System;
+using System.Collections;
 using TMPro;
 using UnityEngine;
 using UnityEngine.UI;
@@ -14,7 +15,13 @@ namespace PushStars.UI
     public sealed class CallBanner : MonoBehaviour
     {
         private const float ShowSec = 30f, PopSec = .28f;
-        private static readonly Color Plate = new Color32(24, 27, 36, 245);
+        /// <summary>The lean of a glass plate's sides, shared by the FIGHT button on it so they run
+        /// parallel (the callout here, the offer card on the search screen).</summary>
+        public const float Slope = .1f;
+        /// <summary>Dark see-through glass over the blurred main screen (FrostedBackdrop).</summary>
+        private static readonly Color Glass = new Color(.05f, .06f, .09f, .58f);
+        /// <summary>Without the glass shader: plain dark, still see-through.</summary>
+        private static readonly Color Plate = new Color32(18, 20, 28, 200);
         private static readonly Color Gold = new Color32(255, 210, 31, 255);
         private static readonly Color Live = new Color32(82, 255, 2, 255);
 
@@ -47,7 +54,7 @@ namespace PushStars.UI
             var plate = new GameObject("Plate", typeof(RectTransform)).AddComponent<DuelActionPlate>();
             plate.rectTransform.SetParent(rt, false);
             Fill(plate.rectTransform);
-            plate.color = Plate;
+            MakeGlass(plate);
             var tap = rt.gameObject.AddComponent<Button>();
             tap.targetGraphic = plate;
             tap.onClick.AddListener(() => { banner.Hide(); fight?.Invoke(); });
@@ -80,23 +87,65 @@ namespace PushStars.UI
             chip.sizeDelta = new Vector2(86f, 40f);
             var face = chip.gameObject.AddComponent<DuelActionPlate>();
             face.color = Gold;
+            face.Slope = Slope;
             face.raycastTarget = false;
-            var fightLabel = Text(chip, font, 19f, Color.white, TextAlignmentOptions.Center);
-            fightLabel.fontSharedMaterial = font.material; // outlined, like START
-            Fill(fightLabel.rectTransform);
+            var fightLabel = Text(chip, font, 18f, Color.white, TextAlignmentOptions.Midline);
+            StyleFight(fightLabel, font);
             fightLabel.text = "FIGHT";
 
             rt.gameObject.SetActive(false);
             return banner;
         }
 
+        /// <summary>Dark see-through glass over the blurred screen behind (take the frame with
+        /// <see cref="FrostedBackdrop.Capture"/> before it shows); plain dark without the shader.</summary>
+        public static void MakeGlass(DuelActionPlate plate)
+        {
+            plate.Flat = true;
+            plate.Slope = Slope;
+            plate.Radius = 14f;
+            var glass = FrostedBackdrop.CreateMaterial(Glass);
+            if (glass != null) { plate.material = glass; plate.color = Color.white; }
+            else plate.color = Plate;
+        }
+
+        /// <summary>FIGHT on a yellow <see cref="DuelActionPlate"/> sitting on glass: lighter than
+        /// START — the font's own material dilates the face and rings it in a thick outline, too heavy
+        /// for a small button — and centred on the yellow face, not the whole plate (its drop shadow
+        /// takes the bottom 5 px; Midline centres the letters themselves).</summary>
+        public static void StyleFight(TextMeshProUGUI label, TMP_FontAsset font)
+        {
+            var light = new Material(font.material) { hideFlags = HideFlags.DontSave };
+            light.SetFloat(ShaderUtilities.ID_FaceDilate, .1f);
+            light.SetFloat(ShaderUtilities.ID_OutlineWidth, .2f);
+            label.fontSharedMaterial = light;
+            label.fontStyle = FontStyles.Normal;
+            label.alignment = TextAlignmentOptions.Midline;
+            var rect = label.rectTransform;
+            rect.anchorMin = Vector2.zero; rect.anchorMax = Vector2.one;
+            rect.offsetMin = new Vector2(4f, 5f); rect.offsetMax = new Vector2(-4f, -1f);
+        }
+
         /// <param name="text">Already localized, with the caller's name in it.</param>
         public void Show(string text)
         {
             _label.text = text;
-            _shownAt = Time.unscaledTime;
+            _shownAt = -1f;
+            _group.alpha = 0f;
             Showing = true;
             gameObject.SetActive(true);
+            StopAllCoroutines();
+            if (isActiveAndEnabled) StartCoroutine(Appear());
+            else _shownAt = Time.unscaledTime; // START is hidden right now: it pops in when it shows
+        }
+
+        // The glass shows the main screen behind it blurred: that frame is taken first, while the
+        // callout is still invisible, and only then does it pop in.
+        private IEnumerator Appear()
+        {
+            yield return new WaitForEndOfFrame();
+            FrostedBackdrop.Capture();
+            _shownAt = Time.unscaledTime;
             Place();
         }
 

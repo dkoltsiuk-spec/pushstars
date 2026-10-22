@@ -7,20 +7,34 @@ namespace PushStars.UI
     [RequireComponent(typeof(CanvasRenderer))]
     public sealed class DuelActionPlate : MaskableGraphic
     {
+        /// <summary>How far the sides lean, in x per unit of height. Negative keeps the classic
+        /// fixed 4 px lean at any height; plates nested in one another share a slope so their
+        /// sides run parallel.</summary>
+        public float Slope = -1f;
+        /// <summary>Just the rounded face, no black edge or drop shadow (a glass plate).</summary>
+        public bool Flat;
+        public float Radius = 11f;
+
         protected override void OnPopulateMesh(VertexHelper vh)
         {
             vh.Clear();
             var r = GetPixelAdjustedRect();
+            if (Flat)
+            {
+                Rounded(vh, new Rect(r.x + 1, r.y + 1, r.width - 2, r.height - 2), Radius, color, Slope);
+                return;
+            }
             var face = new Rect(r.x + 4, r.y + 5, r.width - 8, r.height - 6);
             var shadow = face; shadow.position += new Vector2(1, -4);
             var ink = new Color(0, 0, 0, color.a);
-            Rounded(vh, shadow, 11, ink);
-            Rounded(vh, face, 11, ink);
-            Rounded(vh, new Rect(face.x + 1.5f, face.y + 1.5f, face.width - 3, face.height - 3), 9.5f, color);
+            Rounded(vh, shadow, Radius, ink, Slope);
+            Rounded(vh, face, Radius, ink, Slope);
+            Rounded(vh, new Rect(face.x + 1.5f, face.y + 1.5f, face.width - 3, face.height - 3), Radius - 1.5f, color, Slope);
         }
 
-        private static void Rounded(VertexHelper vh, Rect r, float radius, Color tint)
+        private static void Rounded(VertexHelper vh, Rect r, float radius, Color tint, float slope)
         {
+            float lean = slope < 0 ? 2f : slope * r.height * .5f;
             int first = vh.currentVertCount;
             vh.AddVert(r.center, tint, Vector2.zero);
             const int steps = 16;
@@ -33,7 +47,7 @@ namespace PushStars.UI
                 {
                     float angle = (-corner * 90 - j * 90f / steps) * Mathf.Deg2Rad;
                     var point = center + new Vector2(Mathf.Cos(angle), Mathf.Sin(angle)) * radius;
-                    point.x += Mathf.Lerp(-2, 2, (point.y - r.yMin) / r.height);
+                    point.x += Mathf.Lerp(-lean, lean, (point.y - r.yMin) / r.height);
                     vh.AddVert(point, tint, Vector2.zero);
                 }
             }
@@ -52,7 +66,7 @@ namespace PushStars.UI
                 {
                     float angle = (-corner * 90 - j * 90f / steps) * Mathf.Deg2Rad;
                     var point = center + new Vector2(Mathf.Cos(angle), Mathf.Sin(angle)) * (radius + .6f);
-                    point.x += Mathf.LerpUnclamped(-2, 2, (point.y - r.yMin) / r.height);
+                    point.x += Mathf.LerpUnclamped(-lean, lean, (point.y - r.yMin) / r.height);
                     vh.AddVert(point, clear, Vector2.zero);
                 }
             }
