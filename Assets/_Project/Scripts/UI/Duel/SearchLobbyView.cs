@@ -26,12 +26,16 @@ namespace PushStars.UI
         private static readonly Color CardOn = new Color32(58, 50, 26, 255);
         private static readonly Color Gold = new Color32(255, 210, 31, 255);
 
+        // CANCEL sits low, near the thumb, with a clear gap to the offer card above it.
+        private const float CancelBottom = 40f, OfferBottom = 150f;
+
         private RectTransform _content, _offer, _tip;
         private DuelActionPlate _bellPlate;
         private Image _bellIcon;
         private TextMeshProUGUI _bellLabel, _status, _offerHeader, _offerName, _offerDetail, _trophies, _fightLabel;
         private Image _cup;
         private CanvasGroup _offerGroup;
+        private Material _fightMaterial;
         private float _offerShownAt = -1f;
 
         public static SearchLobbyView Ensure(GameObject overlay)
@@ -105,7 +109,7 @@ namespace PushStars.UI
             float t = Mathf.Clamp01((Time.unscaledTime - _offerShownAt) / .35f);
             float ease = 1f - Mathf.Pow(1f - t, 3f);
             _offerGroup.alpha = ease;
-            _offer.anchoredPosition = new Vector2(0f, 164f - 24f * (1f - ease));
+            _offer.anchoredPosition = new Vector2(0f, OfferBottom - 24f * (1f - ease));
         }
 
         // The cup follows the detail as it is drawn — after localization, in whatever language.
@@ -122,6 +126,7 @@ namespace PushStars.UI
             _content = content;
             _tip = content.Find("TipBlock") as RectTransform;
             var title = content.Find("Title")?.GetComponent<TextMeshProUGUI>();
+            if (content.Find("ExitButton") is RectTransform cancel) cancel.anchoredPosition = new Vector2(0f, CancelBottom);
             var font = title != null ? title.font : TMP_Settings.defaultFontAsset;
             var clean = title != null ? title.fontSharedMaterial : null;
 
@@ -151,7 +156,7 @@ namespace PushStars.UI
             status.sizeDelta = new Vector2(-32f, 24f);
 
             // ── Offer card (where the tip was) ─────────────────────────────────────────────
-            _offer = Rect("OfferCard", content, new Vector2(.5f, 0f), new Vector2(0f, 164f), new Vector2(350f, 112f));
+            _offer = Rect("OfferCard", content, new Vector2(.5f, 0f), new Vector2(0f, OfferBottom), new Vector2(350f, 112f));
             _offer.pivot = new Vector2(.5f, 0f);
             _offerGroup = _offer.gameObject.AddComponent<CanvasGroup>();
             var plate = _offer.gameObject.AddComponent<DuelActionPlate>();
@@ -159,8 +164,8 @@ namespace PushStars.UI
             plate.raycastTarget = false;
             _offerHeader = Label("Header", _offer, font, clean, 12f, Gold, TextAlignmentOptions.TopLeft);
             Place(_offerHeader.rectTransform, new Vector2(20f, -16f), new Vector2(200f, 18f));
-            _offerName = Label("Name", _offer, font, clean, 21f, Color.white, TextAlignmentOptions.TopLeft);
-            _offerName.fontStyle = FontStyles.Bold;
+            // The title font is already heavy: no faux bold on top, or the name smears.
+            _offerName = Label("Name", _offer, font, clean, 20f, Color.white, TextAlignmentOptions.TopLeft);
             Place(_offerName.rectTransform, new Vector2(20f, -38f), new Vector2(200f, 28f));
             _offerDetail = Label("Detail", _offer, font, clean, 14f, Muted, TextAlignmentOptions.TopLeft);
             Place(_offerDetail.rectTransform, new Vector2(20f, -70f), new Vector2(200f, 22f));
@@ -179,11 +184,21 @@ namespace PushStars.UI
             var tap = fight.gameObject.AddComponent<Button>();
             tap.targetGraphic = face;
             tap.onClick.AddListener(() => OfferTapped?.Invoke());
-            // The CTA keeps the font's own outlined material, like START on the main screen.
-            _fightLabel = Label("Label", fight, font, null, 22f, Color.white, TextAlignmentOptions.Center);
-            _fightLabel.fontStyle = FontStyles.Bold;
+            // The CTA keeps the font's outlined look, like START on the main screen, but thinner:
+            // at this size the font's own outline and dilate swallow the letters.
+            _fightLabel = Label("Label", fight, font, null, 20f, Color.white, TextAlignmentOptions.Center);
+            _fightMaterial = new Material(_fightLabel.fontSharedMaterial) { name = "Search fight label" };
+            _fightMaterial.SetFloat(ShaderUtilities.ID_OutlineWidth, .16f);
+            _fightMaterial.SetFloat(ShaderUtilities.ID_FaceDilate, .08f);
+            _fightMaterial.SetFloat(ShaderUtilities.ID_UnderlayDilate, .2f);
+            _fightLabel.fontSharedMaterial = _fightMaterial;
             Stretch(_fightLabel.rectTransform, 6f, 6f);
             _offer.gameObject.SetActive(false);
+        }
+
+        private void OnDestroy()
+        {
+            if (_fightMaterial != null) Destroy(_fightMaterial);
         }
 
         private static RectTransform Rect(string name, Transform parent, Vector2 anchor, Vector2 position, Vector2 size)
