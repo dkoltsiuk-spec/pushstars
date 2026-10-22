@@ -30,6 +30,7 @@ namespace PushStars.Editor
             Check("Opened prize survives reload and is never rerolled", OpenPersistence, report, ref passed, ref failed);
             Check("Claim pays once across reload and cannot re-award the workout", ClaimPersistence, report, ref passed, ref failed);
             Check("Selected cases can be opened out of order without changing others", Queue, report, ref passed, ref failed);
+            Check("Case bonuses: Aura, x2 boosts, nick colors and the jackpot pay once on claim", Bonuses, report, ref passed, ref failed);
             Check("Persistence failure leaves awards, taps, opens and claims uncommitted", FailedWrites, report, ref passed, ref failed);
             Check("Malformed or unsupported saves are rejected without overwriting them", InvalidSaves, report, ref passed, ref failed);
             report.AppendLine($"RESULT: {passed} passed, {failed} failed.");
@@ -85,8 +86,10 @@ namespace PushStars.Editor
                 "Assessment Aura was not credited exactly once with the award.");
             for (int tap = 0; tap < CaseRewards.UpgradeTapCount; tap++)
                 Require(f.Ledger.TryUpgrade(id, tap, out _), "Welcome case refused an upgrade tap.");
-            Require(f.Ledger.TryOpen(id, out var prize) && prize.Gems >= CaseRewards.MinimumGems(prize.Rarity), "Welcome case did not open to gems.");
-            Require(f.Ledger.TryClaim(id, out int gems) && gems == prize.Gems && f.Ledger.AuraBalance == CaseRewards.AssessmentAura,
+            Require(f.Ledger.TryOpen(id, out var prize) && prize.Gems == CaseRewards.AssessmentGems && prize.Rarity == CaseRarity.Legendary,
+                "Welcome case did not climb to legendary and open to its fixed gems.");
+            f.Reload();
+            Require(f.Ledger.TryClaim(id, out int gems) && gems == CaseRewards.AssessmentGems && f.Ledger.AuraBalance == CaseRewards.AssessmentAura,
                 "Claim changed the Aura wallet.");
             f.Reload();
             Require(!f.Ledger.TryAwardAssessmentCase(30) && f.Ledger.AuraBalance == CaseRewards.AssessmentAura, "Replay re-awarded the assessment.");
@@ -278,7 +281,7 @@ namespace PushStars.Editor
             f.Reload();
             Require(f.Ledger.Pending.Opened && f.Ledger.Pending.Gems == opened.Gems, "Reload discarded an opened prize.");
             Require(f.Ledger.TryOpen("a", out var replay) && replay.Gems == opened.Gems, "Reopening rerolled the prize.");
-            Require(!f.Ledger.TryUpgrade("a", 3, out _) && f.Draws == 6 && f.Writes == 5, "Opened case accepted another random transition.");
+            Require(!f.Ledger.TryUpgrade("a", 3, out _) && f.Draws == 8 && f.Writes == 5, "Opened case accepted another random transition.");
         }
 
         private static void ClaimPersistence()
@@ -298,7 +301,8 @@ namespace PushStars.Editor
 
         private static void Queue()
         {
-            var f = new Fixture(0, 0.99, 0.99, 0.99, 0, 0.5, 0.5, 0.99, 0.99, 0);
+            // b opens with gems 0, cards .5/.5, then its bonus: no jackpot (.99) and Aura (.99).
+            var f = new Fixture(0, 0.99, 0.99, 0.99, 0, 0.5, 0.5, 0.99, 0.99, 0.99, 0.99, 0);
             f.Ledger.TryGrantCase("a");
             f.Ledger.TryUpgrade("a", 0, out _);
             f.Ledger.TryGrantCase("b");
@@ -320,6 +324,59 @@ namespace PushStars.Editor
             f.Reload();
             Require(!f.Ledger.TryOpen("a", out _) && !f.Ledger.TryUpgrade("a", 0, out _) && !f.Ledger.TryClaim("a", out _), "Stale case callbacks were accepted.");
             Require(f.Ledger.PendingCount == 0 && f.Ledger.GemsBalance == 40, "Queue claims lost inventory or paid the wrong total.");
+        }
+
+        private static void Bonuses()
+        {
+            // Common: three missed taps, gems, the robot card roll pair, jackpot miss, Aura.
+            var f = new Fixture(.99, .99, .99, 0, .5, .5, .99, .5);
+            f.Ledger.TryGrantCase("a");
+            f.UpgradeAll("a");
+            Require(f.Ledger.TryOpen("a", out var common) && common.Bonus == CaseBonus.Aura && common.BonusAmount == 350,
+                "A common case must add rounded Aura.");
+            Require(f.Ledger.AuraBalance == 0, "Aura was paid before the claim.");
+            f.Reload();
+            Require(f.Ledger.TryClaim("a", out _) && f.Ledger.AuraBalance == 350 && f.Ledger.AuraPeak == 350, "Case Aura was not paid on claim.");
+            Require(f.Ledger.HasAuraReceipt(CaseRewardLedger.CaseAuraReceipt("a")), "Case Aura has no receipt.");
+
+            // Legendary: gems, cards, jackpot miss, color branch (.1), ultra tier (.9), first ultra.
+            f = new Fixture(0, 0, 0, .5, .5, .5, .99, .1, .9, 0);
+            f.Ledger.TryGrantCase("b");
+            f.UpgradeAll("b");
+            Require(f.Ledger.TryOpen("b", out var legendary) && legendary.Bonus == CaseBonus.NickColor &&
+                NickColorCatalog.Find(legendary.BonusId)?.Tier == NickColorTier.Ultra, "A legendary case must be able to hold an ultra color.");
+            Require(!f.Ledger.TrySelectNickColor(legendary.BonusId), "A color was usable before its claim.");
+            Require(f.Ledger.TryClaim("b", out _) && f.Ledger.OwnsNickColor(legendary.BonusId) && f.Ledger.TrySelectNickColor(legendary.BonusId), "Claimed color could not be picked.");
+            f.Reload();
+            Require(f.Ledger.NickColorId == legendary.BonusId && !f.Ledger.TrySelectNickColor("sky"), "Picked color was lost or an unowned one accepted.");
+
+            // Legendary boost branch: two boosts; the first fight that earns Aura spends one and doubles.
+            f = new Fixture(0, 0, 0, .5, .5, .5, .99, .99);
+            f.Ledger.TryGrantCase("c");
+            f.UpgradeAll("c");
+            Require(f.Ledger.TryOpen("c", out var boost) && boost.Bonus == CaseBonus.Boost && boost.BonusAmount == CaseRewards.MaximumBoosts, "Legendary boost branch failed.");
+            f.Ledger.TryClaim("c", out _);
+            var doubled = f.Ledger.ApplyAura(new[] { new AuraGrant("fight", 1000), new AuraGrant("fight:boost", 1000) }, "fight:boost");
+            Require(doubled.BoostUsed && doubled.Change == 2000 && f.Ledger.Boosts == 1, "A boost did not double the fight once.");
+            var replay = f.Ledger.ApplyAura(new[] { new AuraGrant("fight", 1000), new AuraGrant("fight:boost", 1000) }, "fight:boost");
+            Require(!replay.BoostUsed && replay.Change == 0 && f.Ledger.Boosts == 1, "A replayed fight spent another boost.");
+
+            // Jackpot: the roll under the chance unlocks a whole Aura hero (robot is first in the pool).
+            f = new Fixture(0, 0, 0, .5, .5, .5, 0, 0);
+            f.Ledger.TryGrantCase("d");
+            f.UpgradeAll("d");
+            Require(f.Ledger.TryOpen("d", out var jackpot) && jackpot.IsJackpot && jackpot.Bonus == CaseBonus.Hero && jackpot.BonusId == "robot",
+                "Jackpot did not pick an unowned Aura hero.");
+            Require(!f.Ledger.OwnsAvatar("robot") && f.Ledger.TryClaim("d", out _) && f.Ledger.OwnsAvatar("robot"), "Jackpot hero was not unlocked on claim.");
+            f.Reload();
+            Require(f.Ledger.OwnsAvatar("robot") && f.Ledger.Boosts == 0, "Jackpot hero did not persist.");
+
+            // Welcome case: always one boost, never a jackpot.
+            f = new Fixture(0, 0, 0, 0, 0, 0);
+            f.Ledger.TryAwardAssessmentCase(5);
+            f.UpgradeAll(CaseRewards.AssessmentReceipt);
+            Require(f.Ledger.TryOpen(CaseRewards.AssessmentReceipt, out var welcome) && welcome.Bonus == CaseBonus.Boost && welcome.BonusAmount == 1,
+                "The welcome case must add exactly one boost.");
         }
 
         private static void FailedWrites()

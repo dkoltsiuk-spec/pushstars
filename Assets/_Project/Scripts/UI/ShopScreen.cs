@@ -210,7 +210,7 @@ namespace PushStars.UI
             if (Time.frameCount != _openedFrame && Input.GetKeyDown(KeyCode.Escape))
             {
                 if (PackDialog.activeSelf) ClosePack();
-                else if (_arenas != null && _arenas.DialogOpen) _arenas.CloseDialog();
+                else if (_arenas != null && _arenas.DialogOpen) _arenas.Dismiss();
                 else Hide();
             }
         }
@@ -243,6 +243,14 @@ namespace PushStars.UI
             RefreshNoticeBadge();
         }
         public void ClosePack() => PackDialog.SetActive(false);
+
+        /// <summary>The arena buy dialog for a locked gem arena tapped in the avatar screen's ARENAS
+        /// tab; buying or dismissing it goes back to that tab.</summary>
+        public void BuyArena(string id)
+        {
+            Show();
+            _arenas?.Open(id, fromArenas: true);
+        }
 
         public void Preview(int index)
         {

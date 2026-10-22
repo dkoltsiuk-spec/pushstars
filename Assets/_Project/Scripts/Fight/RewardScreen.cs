@@ -235,6 +235,7 @@ namespace PushStars.Fight
             _summary = data;
             HomeRewardFlight.QueueSummary(data);
             Set(_summaryUi.PlayerName, string.IsNullOrWhiteSpace(data.PlayerName) ? "YOUR RESULT" : data.PlayerName);
+            NickStyleView.Own(_summaryUi.PlayerName);
             Set(_summaryUi.TotalReps, Mathf.Max(0, data.TotalReps).ToString());
             Set(_summaryUi.Technique, $"{Mathf.Clamp01(data.Technique) * 100f:0}%");
             // Aura is never counted here: it gets its own screen right after this one.
@@ -815,7 +816,8 @@ namespace PushStars.Fight
         {
             if (FightScreenNavigation.IsPreview)
             {
-                _gems = 100 + (int)_rarity * 50; FightScreenNavigation.PreviewGems = _gems;
+                _gems = FightScreenNavigation.PreviewAssessment ? CaseRewards.AssessmentGems : 100 + (int)_rarity * 50;
+                FightScreenNavigation.PreviewGems = _gems;
             }
             else
             {
@@ -873,7 +875,8 @@ namespace PushStars.Fight
             var prize = FightScreenNavigation.IsPreview ? null : CaseRewards.Find(_caseId);
             var avatar = prize != null ? AvatarCatalog.Find(prize.AvatarId) : null;
             bool hasCards = avatar != null && prize.AvatarCards > 0;
-            if (_prizeUi.Note != null) _prizeUi.Note.gameObject.SetActive(hasCards);
+            bool hasBonus = prize != null && prize.Bonus != CaseBonus.None;
+            if (_prizeUi.Note != null) _prizeUi.Note.gameObject.SetActive(hasCards || hasBonus);
             if (_prizeUi.AvatarCardIcon != null)
             {
                 _prizeUi.AvatarCardIcon.gameObject.SetActive(hasCards);
@@ -882,12 +885,218 @@ namespace PushStars.Fight
             Set(_prizeUi.Note, hasCards
                 ? $"+{prize.AvatarCards} {avatar.Name} CARDS\nCollect cards to unlock your avatar!"
                 : "Crystals will be added to your balance");
+            // Gems first, on their own screen; the bonus gets the next one (see ShowBonusPage).
+            _bonus = hasBonus ? prize : null;
+            _bonusShown = false;
+            if (hasBonus && _prizeUi.Note != null) _prizeUi.Note.gameObject.SetActive(false);
+            Set(PrizeTitle, "GEMS");
             Set(_prizeUi.ClaimLabel, "CLAIM & HOME");
             // No preload here: streaming home stalls a frame mid pop-in. Home loads under the cover.
             _busy = true;
             if (_prizeUi.ClaimButton != null) _prizeUi.ClaimButton.interactable = false;
             StartCoroutine(EnterPrize());
         }
+        private PendingCase _bonus;
+        private bool _bonusShown;
+        private TextMeshProUGUI _prizeTitle;
+        private RectTransform _bonusArt;
+
+        /// <summary>The prize screen's heading ("REWARDS" in the scene; "GEMS" or the bonus name here).</summary>
+        private TextMeshProUGUI PrizeTitle
+        {
+            get
+            {
+                if (_prizeTitle != null) return _prizeTitle;
+                foreach (var label in GetComponentsInChildren<TextMeshProUGUI>(true))
+                    if (label.name == "Title" && label.transform.parent != null && label.transform.parent.name == "header")
+                        return _prizeTitle = label;
+                return null;
+            }
+        }
+
+        /// <summary>Tap on the gems screen: the gems shrink away and the bonus pops in on its own
+        /// screen, with its own colour. Nothing is claimed until the bonus screen is tapped too.</summary>
+        private IEnumerator ShowBonusPage()
+        {
+            _busy = true;
+            _bonusShown = true;
+            var content = _prizeUi.Content;
+            float from = content != null ? content.localScale.x : 1f;
+            for (float t = 0; t < .16f; t += Time.unscaledDeltaTime)
+            {
+                Scale(content, Mathf.Lerp(from, 0f, t / .16f));
+                yield return null;
+            }
+            Scale(content, 0);
+            ApplyBonusPage(_bonus);
+            GameAudio.Play(_bonus.IsJackpot ? SoundCue.CaseUpgradeComplete : SoundCue.CaseReveal, _bonus.IsJackpot ? 1.2f : 1f);
+            if (_bonus.IsJackpot) StartCoroutine(JackpotConfetti());
+            yield return PopIn(content, .55f);
+            _busy = false;
+        }
+
+        private static readonly Color32 Gold32 = new Color32(255, 216, 74, 255);
+
+        /// <summary>One screen per bonus, laid out like the gems one: title, picture, amount, and a
+        /// single line only where the prize needs explaining.</summary>
+        private void ApplyBonusPage(PendingCase prize)
+        {
+            string title, amount, note = null;
+            Color top, bottom, glow;
+            if (_bonusArt != null) Destroy(_bonusArt.gameObject);
+            _bonusArt = ArenaUi.Rect(_prizeUi.Content, "BonusArt", Vector2.zero, Vector2.zero);
+            ArenaUi.Stretch(_bonusArt);
+            // Lifted a little: unlike the gem pile, these pictures fill their box to the bottom.
+            _bonusArt.anchoredPosition = new Vector2(0, 14);
+            foreach (var art in _prizeUi.Content.GetComponentsInChildren<Image>(true))
+                if (!art.transform.IsChildOf(_bonusArt)) art.enabled = false;
+            switch (prize.Bonus)
+            {
+                case CaseBonus.Aura:
+                    title = "AURA"; amount = $"+{prize.BonusAmount:N0}";
+                    top = new Color32(92, 20, 200, 255); bottom = new Color32(52, 8, 140, 255); glow = new Color32(205, 150, 255, 175);
+                    BonusImage(Resources.Load<PushStarsTheme>("PushStarsTheme")?.IconAura, new Vector2(150, 150));
+                    break;
+                case CaseBonus.Boost:
+                    title = "x2 BOOST";
+                    amount = prize.BonusAmount > 1 ? $"NEXT {prize.BonusAmount} FIGHTS" : "NEXT FIGHT";
+                    note = "Aura you earn counts double";
+                    top = new Color32(247, 142, 12, 255); bottom = new Color32(214, 82, 0, 255); glow = new Color32(255, 232, 130, 180);
+                    NickStyleView.Set(BonusText("x2", 120), "gold");
+                    break;
+                case CaseBonus.NickColor:
+                    var color = NickColorCatalog.Find(prize.BonusId);
+                    title = "NAME COLOR"; amount = color?.Name ?? "NEW COLOR";
+                    note = (color != null ? NickColorCatalog.TierName(color.Tier) + " · " : "") + "pick it when you edit your name";
+                    top = new Color32(26, 66, 216, 255); bottom = new Color32(12, 30, 142, 255); glow = new Color32(125, 195, 255, 170);
+                    var name = BonusText(ProfileIdentityEditor.PlayerName(), 60);
+                    name.enableAutoSizing = true; name.fontSizeMin = 28; name.fontSizeMax = 60;
+                    name.rectTransform.sizeDelta = new Vector2(340, 90);
+                    NickStyleView.Set(name, prize.BonusId);
+                    break;
+                case CaseBonus.Hero:
+                    var hero = AvatarCatalog.Find(prize.BonusId);
+                    title = "JACKPOT!"; amount = hero?.Name ?? "NEW HERO"; note = "Hero unlocked";
+                    top = new Color32(222, 28, 96, 255); bottom = new Color32(128, 8, 72, 255); glow = new Color32(255, 196, 96, 185);
+                    BonusHero(prize.BonusId, hero != null && !string.IsNullOrEmpty(hero.HeadIcon) ? Resources.Load<Sprite>(hero.HeadIcon) : null);
+                    break;
+                default:
+                    var arena = ArenaCatalog.Get(prize.BonusId);
+                    title = "JACKPOT!"; amount = arena?.Title.ToUpperInvariant() ?? "NEW ARENA"; note = "Arena unlocked";
+                    top = new Color32(222, 28, 96, 255); bottom = new Color32(128, 8, 72, 255); glow = new Color32(255, 196, 96, 185);
+                    BonusArena(arena?.Home, new Vector2(260, 150));
+                    break;
+            }
+            Set(PrizeTitle, title);
+            Set(_prizeUi.Amount, amount);
+            if (_prizeUi.Note != null)
+            {
+                _prizeUi.Note.gameObject.SetActive(note != null);
+                Set(_prizeUi.Note, note);
+                if (_prizeUi.Amount != null)
+                {
+                    // Right under the amount, centred, instead of the old receipt row at the bottom.
+                    var anchor = _prizeUi.Amount.rectTransform;
+                    _prizeUi.Note.rectTransform.position = anchor.position;
+                    _prizeUi.Note.rectTransform.anchoredPosition += new Vector2(0, -(anchor.rect.height * .5f + 24f));
+                }
+            }
+            if (_prizeUi.AvatarCardIcon != null) _prizeUi.AvatarCardIcon.gameObject.SetActive(false);
+            if (_prizeUi.Rarity != null) _prizeUi.Rarity.gameObject.SetActive(false);
+            GetComponentInChildren<FightRewardBackdrop>(true)?.SetPalette(top, bottom, glow);
+            if (_prizeUi.Glow != null) _prizeUi.Glow.color = new Color(glow.r, glow.g, glow.b, .45f);
+            var rays = _prizeUi.Rays != null ? _prizeUi.Rays.GetComponent<Graphic>() : null;
+            if (rays != null) rays.color = new Color(1f, 1f, 1f, rays.color.a);
+        }
+
+        private ConfettiBurst _confetti;
+
+        /// <summary>The jackpot's party: a blast out of the prize, then two cannons from the bottom
+        /// corners, then a last puff from the top while the first wave is still falling.</summary>
+        private IEnumerator JackpotConfetti()
+        {
+            var canvas = GetComponentInChildren<Canvas>();
+            if (canvas == null) yield break;
+            if (_confetti == null) _confetti = ConfettiBurst.Create(canvas.transform);
+            _confetti.transform.SetAsLastSibling();
+            var area = _confetti.rectTransform.rect;
+            Vector2 centre = _prizeUi.Content != null ? (Vector2)_confetti.rectTransform.InverseTransformPoint(_prizeUi.Content.position) : area.center;
+            _confetti.Burst(centre, 190, 90f, 360f, 1050f);
+            GameAudio.Play(SoundCue.RewardComplete, 1.1f);
+            yield return new WaitForSecondsRealtime(.18f);
+            _confetti.Burst(new Vector2(area.xMin + 10, area.yMin + 40), 95, 62f, 26f, 1750f);
+            _confetti.Burst(new Vector2(area.xMax - 10, area.yMin + 40), 95, 118f, 26f, 1750f);
+            yield return new WaitForSecondsRealtime(.45f);
+            _confetti.Burst(new Vector2(area.center.x, area.yMax + 10), 90, 270f, 140f, 350f);
+        }
+
+        /// <summary>The jackpot hero in 3D, full body and idling, rendered like the hero cards.
+        /// Falls back to the head icon when the body cannot be loaded.</summary>
+        private void BonusHero(string heroId, Sprite fallback)
+        {
+            var prefab = HeroPrefabs.For(heroId);
+            if (prefab == null) { BonusImage(fallback, new Vector2(165, 165)); return; }
+            int layer = LayerMask.NameToLayer("AvatarCards");
+            if (layer < 0) layer = 31;
+            var raw = ArenaUi.Rect(_bonusArt, "Hero3D", new Vector2(210, 300), new Vector2(0, 40)).gameObject.AddComponent<RawImage>();
+            raw.raycastTarget = false;
+            // The home stage's rig (key, blue fill, cool rim), so the hero looks as it does at home.
+            HeroLight(raw.transform, layer, "Key", 6.77f, Color.white, new Vector3(35, 25, 0));
+            HeroLight(raw.transform, layer, "Fill", .45f, new Color(0, .341f, 1f), new Vector3(15, 325, 0));
+            HeroLight(raw.transform, layer, "Rim", 2.9f, new Color(.575f, .664f, 1f), new Vector3(17.24f, 125.88f, 218.8f));
+            var preview = raw.gameObject.AddComponent<AvatarCardPreview>();
+            preview.Image = raw;
+            preview.Slot = 48;
+            preview.PreviewLayer = layer;
+            preview.FullBody = true;
+            preview.SetPrefab(prefab);
+            // The standing body is taller than the icons: the amount steps down to clear the feet.
+            if (_prizeUi.Amount != null) _prizeUi.Amount.rectTransform.anchoredPosition += new Vector2(0, -50);
+        }
+
+        private static void HeroLight(Transform parent, int layer, string name, float intensity, Color color, Vector3 rotation)
+        {
+            var light = new GameObject("Hero" + name + "Light").AddComponent<Light>();
+            light.transform.SetParent(parent, false);
+            light.type = LightType.Directional;
+            light.cullingMask = 1 << layer;
+            light.intensity = intensity;
+            light.color = color;
+            light.shadows = LightShadows.None;
+            light.transform.rotation = Quaternion.Euler(rotation);
+        }
+
+        private void BonusImage(Sprite sprite, Vector2 size)
+        {
+            if (sprite == null) return;
+            var image = ArenaUi.Rect(_bonusArt, "Icon", size, Vector2.zero).gameObject.AddComponent<Image>();
+            image.sprite = sprite; image.preserveAspect = true; image.raycastTarget = false;
+        }
+
+        /// <summary>Big lettering in the amount's font: the boost's "x2" or the player's name.</summary>
+        private TextMeshProUGUI BonusText(string text, float size)
+        {
+            var label = ArenaUi.Label(_bonusArt, "Text", text, new Vector2(340, size * 1.3f), Vector2.zero, size);
+            if (_prizeUi.Amount != null) { label.font = _prizeUi.Amount.font; label.fontSharedMaterial = _prizeUi.Amount.fontSharedMaterial; }
+            label.textWrappingMode = TextWrappingModes.NoWrap;
+            label.raycastTarget = false;
+            return label;
+        }
+
+        /// <summary>The jackpot arena as a rounded, landscape crop of its home art, like its card.</summary>
+        private void BonusArena(Sprite home, Vector2 size)
+        {
+            if (home == null) return;
+            var mask = ArenaUi.Rect(_bonusArt, "Arena", size, Vector2.zero);
+            var shape = mask.gameObject.AddComponent<ArenaRoundedGraphic>();
+            shape.Radius = 18; shape.raycastTarget = false;
+            mask.gameObject.AddComponent<Mask>().showMaskGraphic = false;
+            var art = ArenaUi.Rect(mask, "Artwork", Vector2.zero, Vector2.zero).gameObject.AddComponent<RawImage>();
+            ArenaUi.Stretch(art.rectTransform);
+            art.raycastTarget = false;
+            AvatarCollectionScreen.FrameArena(art, home, size);
+        }
+
         private IEnumerator EnterPrize()
         {
             Scale(_prizeUi.Content, 0);
@@ -906,6 +1115,7 @@ namespace PushStars.Fight
         {
             if (_busy || ScreenLayoutRoot.IsAnyEditing) return;
             if (!_available || !_opened) { Home(); return; }
+            if (_bonus != null && !_bonusShown) { StartCoroutine(ShowBonusPage()); return; }
             if (!FightScreenNavigation.IsPreview)
             {
                 try

@@ -167,7 +167,7 @@ namespace PushStars.Fight
             Result = new FightResultData { Mode = FightMode.LevelTest, MyReps = 8, MyForm = 92, Xp = 80, PlayerName = "BEASTCORE_DEV" };
             RewardSummary = new FightRewardFlow.Summary { PlayerName = Result.PlayerName, TotalReps = 8, Technique = .92f, EnergyXp = 80, Aura = CaseRewards.AssessmentAura, HasCase = true,
                 AuraMoments = new[] { "WELCOME AURA +" + CaseRewards.AssessmentAura } };
-            PreviewAssessment = true; PreviewGems = 100; PreviewRarity = CaseRarity.Common;
+            PreviewAssessment = true; PreviewGems = CaseRewards.AssessmentGems; PreviewRarity = CaseRarity.Common;
             CaseId = AwardedCaseId = null;
         }
 #endif

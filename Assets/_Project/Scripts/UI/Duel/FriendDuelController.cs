@@ -69,6 +69,7 @@ namespace PushStars.UI
             if (_wired) return;
             _wired = true;
             EnsureSheetMotion();
+            BoostBadge.Attach(BattleButton);
             Slot.onClick.AddListener(Open);
             ModeButton.onClick.AddListener(ExplainLockedMode);
             if (FriendAvatarButton != null) FriendAvatarButton.onClick.AddListener(Open);

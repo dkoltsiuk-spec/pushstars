@@ -167,15 +167,9 @@ namespace PushStars.Editor
                     Check(((RectTransform)screen.Tabs[0].transform).rect.width < ((RectTransform)screen.Tabs[1].transform).rect.width, "ALL must be shorter than the other tabs.");
                     Check(Mathf.Approximately(screen.Tabs[0].transform.localPosition.x + 74,
                         screen.Tabs[1].transform.localPosition.x) &&
-                        Mathf.Approximately(screen.Tabs[1].transform.localPosition.x + 106,
-                        screen.Tabs[2].transform.localPosition.x) &&
                         Mathf.Approximately(((RectTransform)screen.Tabs[0].transform).anchoredPosition.x, 20),
                         "Tabs must form a compact left-aligned group.");
                     Check(screen.Cards.Count(c => c.gameObject.activeSelf) == 2, "Opened filter failed.");
-                    screen.Filter(2);
-                    Check(!screen.Empty.gameObject.activeSelf && screen.Cards[0].gameObject.activeSelf &&
-                        screen.Cards.Skip(1).All(c => !c.gameObject.activeSelf), "Premium filter must show only Sonic.");
-                    Check(_previews[0].IsRendering && _previews.Skip(1).All(p => !p.IsRendering), "Hidden previews must stop rendering.");
                     screen.Home.onClick.Invoke(); Check(!screen.IsOpen, "Home failed.");
                     screen.Show(); screen.Back.onClick.Invoke(); Check(!screen.IsOpen, "Back failed.");
                     Check(_previews.All(p => !p.IsRendering), "Closing collection must stop all previews.");

@@ -1,3 +1,4 @@
+using System.Collections.Generic;
 using PushStars.Core;
 using PushStars.Services;
 using TMPro;
@@ -21,8 +22,11 @@ namespace PushStars.UI
         public Sprite Circle, Rounded, YellowPlate, DarkPlate;
         public TMP_FontAsset Font;
         public TMP_InputField NameInput { get; private set; }
-        private GameObject _modal, _nameGroup, _avatarGroup;
+        private GameObject _modal, _nameGroup, _avatarGroup, _colorGroup;
+        private RectTransform _panel, _saveButton, _cancelButton;
         private TextMeshProUGUI _title, _feedback;
+        private string _draftColor;
+        private readonly List<(string Id, Image Border, CanvasGroup Group)> _chips = new List<(string, Image, CanvasGroup)>();
         private Image[] _selection;
         private bool _editingAvatar;
         private int _draftAvatar;
@@ -46,6 +50,7 @@ namespace PushStars.UI
         private void Awake()
         {
             BuildModal();
+            NickStyleView.Own(NameLabel);
             EditName.onClick.AddListener(OpenName);
             EditAvatar.onClick.AddListener(OpenAvatar);
             RefreshAvatar();
@@ -96,10 +101,14 @@ namespace PushStars.UI
             _title.text = avatar ? "CHOOSE AVATAR" : "EDIT NAME";
             _nameGroup.SetActive(!avatar);
             _avatarGroup.SetActive(avatar);
+            _colorGroup.SetActive(!avatar);
+            _draftColor = CaseRewards.NickColorId;
+            Layout(avatar ? 370f : 480f);
             _feedback.text = "Saved on this device";
             _modal.SetActive(true);
             _modal.transform.SetAsLastSibling();
             DrawSelection();
+            DrawColors();
             if (!avatar) { NameInput.Select(); NameInput.ActivateInputField(); }
         }
 
@@ -121,6 +130,7 @@ namespace PushStars.UI
                 PlayerPrefs.SetString(_scope + "name", name);
                 NameLabel.text = name;
                 NameShadow.text = name;
+                CaseRewards.TrySelectNickColor(_draftColor);
             }
             PlayerPrefs.Save();
             RefreshAvatar();
@@ -133,6 +143,87 @@ namespace PushStars.UI
                 _selection[i].color = i == _draftAvatar ? new Color32(255, 202, 0, 255) : new Color32(72, 100, 180, 255);
         }
 
+        /// <summary>The panel grows for the color picker; title, feedback and buttons keep their
+        /// distance from its edges.</summary>
+        private void Layout(float height)
+        {
+            _panel.sizeDelta = new Vector2(342, height);
+            float width = Mathf.Max(1, ModalParent.rect.width - 24), tall = Mathf.Max(1, ModalParent.rect.height - 40);
+            _panel.localScale = Vector3.one * Mathf.Min(1, Mathf.Min(width / 342f, tall / height));
+            float top = height / 2f, bottom = -height / 2f;
+            _title.rectTransform.anchoredPosition = new Vector2(0, top - 38);
+            ((RectTransform)_nameGroup.transform).anchoredPosition = new Vector2(0, top - 115);
+            ((RectTransform)_avatarGroup.transform).anchoredPosition = new Vector2(0, top - 164);
+            ((RectTransform)_colorGroup.transform).anchoredPosition = new Vector2(0, top - 265);
+            _feedback.rectTransform.anchoredPosition = new Vector2(0, bottom + 80);
+            _cancelButton.anchoredPosition = new Vector2(-82, bottom + 32);
+            _saveButton.anchoredPosition = new Vector2(82, bottom + 32);
+        }
+
+        private static readonly Color32 ChipFill = new Color32(10, 27, 76, 255), Picked = new Color32(255, 202, 0, 255);
+
+        private static Color32 TierColor(NickColorTier tier) =>
+            tier == NickColorTier.Ultra ? new Color32(255, 196, 40, 255) : tier == NickColorTier.Rare ? new Color32(196, 140, 255, 255) : new Color32(128, 206, 255, 255);
+
+        /// <summary>Three rows of "Aa" chips, each lettered in its own color; white leads the common
+        /// row. Colors not owned stay faint, and tapping one says where they drop.</summary>
+        private void BuildColorPicker(RectTransform panel)
+        {
+            var group = Rect(panel, "NameColors", Vector2.zero, new Vector2(310, 200));
+            _colorGroup = group.gameObject;
+            var rows = new[] { NickColorTier.Common, NickColorTier.Rare, NickColorTier.Ultra };
+            for (int r = 0; r < rows.Length; r++)
+            {
+                var tier = rows[r];
+                float y = 82 - r * 70;
+                var caption = Label(group, tier + "Caption", NickColorCatalog.TierName(tier), new Vector2(0, y), new Vector2(300, 18), 12);
+                caption.color = TierColor(tier);
+                var colors = System.Array.FindAll(NickColorCatalog.All, c => c.Tier == tier || (tier == NickColorTier.Common && c.Tier == NickColorTier.Basic));
+                const float chip = 40, gap = 4;
+                float start = -(colors.Length * chip + (colors.Length - 1) * gap) / 2f + chip / 2f;
+                for (int i = 0; i < colors.Length; i++)
+                {
+                    var color = colors[i];
+                    var root = Rect(group, "Color_" + color.Id, new Vector2(start + i * (chip + gap), y - 32), new Vector2(chip, chip));
+                    var border = root.gameObject.AddComponent<Image>(); border.sprite = Rounded; border.type = Image.Type.Sliced;
+                    var fill = Rect(root, "Fill", Vector2.zero, new Vector2(chip - 6, chip - 6)).gameObject.AddComponent<Image>();
+                    fill.sprite = Rounded; fill.type = Image.Type.Sliced; fill.color = ChipFill; fill.raycastTarget = false;
+                    var sample = Label(fill.transform, "Sample", "Aa", new Vector2(0, 1), new Vector2(chip, chip - 6), 17);
+                    NickStyleView.Set(sample, color.Id);
+                    var canvasGroup = root.gameObject.AddComponent<CanvasGroup>();
+                    var button = root.gameObject.AddComponent<Button>(); button.targetGraphic = border;
+                    string id = color.Id;
+                    button.onClick.AddListener(() => PickColor(id));
+                    _chips.Add((id, border, canvasGroup));
+                }
+            }
+        }
+
+        private void PickColor(string id)
+        {
+            var color = NickColorCatalog.Find(id);
+            if (color == null) return;
+            if (!CaseRewards.OwnsNickColor(id))
+            {
+                _feedback.text = color.Name + " \u00b7 " + NickColorCatalog.TierName(color.Tier) + "\n<size=11>Drops from epic and legendary cases</size>";
+                return;
+            }
+            _draftColor = id;
+            _feedback.text = color.Name;
+            DrawColors();
+        }
+
+        private void DrawColors()
+        {
+            foreach (var chip in _chips)
+            {
+                bool owned = CaseRewards.OwnsNickColor(chip.Id);
+                chip.Group.alpha = owned ? 1f : .28f;
+                chip.Border.color = chip.Id == _draftColor ? Picked : new Color32(72, 100, 180, owned ? (byte)255 : (byte)120);
+            }
+            if (NameInput != null && NameInput.textComponent != null) NickStyleView.Set(NameInput.textComponent, _draftColor);
+        }
+
         private void BuildModal()
         {
             var modal = Rect(ModalParent, "ProfileIdentityDialog", Vector2.zero, Vector2.zero);
@@ -140,8 +231,7 @@ namespace PushStars.UI
             var shade = modal.gameObject.AddComponent<Image>(); shade.color = new Color(0, 0, 0, .75f);
             _modal = modal.gameObject;
             var panel = Rect(modal, "Panel", Vector2.zero, new Vector2(342, 370));
-            float scale = Mathf.Min(1, Mathf.Max(1, ModalParent.rect.width - 24) / 342f);
-            panel.localScale = Vector3.one * scale;
+            _panel = panel;
             var image = panel.gameObject.AddComponent<Image>(); image.sprite = Rounded; image.type = Image.Type.Sliced; image.color = new Color32(26, 55, 135, 255);
             _title = Label(panel, "Title", "EDIT NAME", new Vector2(0, 147), new Vector2(310, 38), 25);
             var ng = Rect(panel, "NameEditor", new Vector2(0, 35), new Vector2(298, 115)); _nameGroup = ng.gameObject;
@@ -172,13 +262,14 @@ namespace PushStars.UI
                 raw.texture = AvatarTextures[i]; raw.uvRect = AvatarCrops[i]; raw.raycastTarget = false;
                 Label(tile, "Caption", AvatarNames[i], new Vector2(0, -31), new Vector2(122, 18), 11);
             }
+            BuildColorPicker(panel);
             _feedback = Label(panel, "Feedback", "Saved on this device", new Vector2(0, -105), new Vector2(306, 35), 13);
-            MakeButton(panel, "Cancel", "CANCEL", new Vector2(-82, -153), DarkPlate, Cancel);
-            MakeButton(panel, "Save", "SAVE", new Vector2(82, -153), YellowPlate, Save);
+            _cancelButton = MakeButton(panel, "Cancel", "CANCEL", new Vector2(-82, -153), DarkPlate, Cancel);
+            _saveButton = MakeButton(panel, "Save", "SAVE", new Vector2(82, -153), YellowPlate, Save);
             _modal.SetActive(false);
         }
 
-        private void MakeButton(Transform p, string name, string caption, Vector2 pos, Sprite sprite, UnityEngine.Events.UnityAction action)
+        private RectTransform MakeButton(Transform p, string name, string caption, Vector2 pos, Sprite sprite, UnityEngine.Events.UnityAction action)
         {
             const float height = 50f;
             var rt = Rect(p, name, pos, new Vector2(150, height)); var image = rt.gameObject.AddComponent<Image>();
@@ -188,6 +279,7 @@ namespace PushStars.UI
             if (sprite != null) image.pixelsPerUnitMultiplier = sprite.rect.height / height;
             var b = rt.gameObject.AddComponent<Button>(); b.targetGraphic = image; b.onClick.AddListener(action);
             Label(rt, "Label", caption, new Vector2(-2, 2), new Vector2(130, 40), 19);
+            return rt;
         }
         private static Sprite SlicedPlate(Sprite plate)
         {

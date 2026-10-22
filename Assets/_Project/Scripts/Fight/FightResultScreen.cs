@@ -161,12 +161,13 @@ namespace PushStars.Fight
             BetterWorse(myForm, oppForm, higherIsBetter: true, out Color myFormColor, out Color oppFormColor);
             BetterWorse(mySecondsPerRep, oppSecPerRep, higherIsBetter: false, out Color myTempoColor, out Color oppTempoColor);
 
-            SetText(_opponentName, opponentName, new Color32(255, 214, 0, 255));
+            SetText(_opponentName, opponentName, Color.white);
             SetText(_opponentReps, oppReps.ToString(), theirs);
             SetText(_opponentForm, $"{oppForm:0}", oppFormColor);
             SetText(_opponentTempo, oppSecPerRep < float.PositiveInfinity ? $"{oppSecPerRep:0.0}s" : "—", oppTempoColor);
 
-            SetText(_playerName, WrapPlayerName(playerName), new Color32(255, 214, 0, 255));
+            SetText(_playerName, WrapPlayerName(playerName), Color.white);
+            PushStars.UI.NickStyleView.Own(_playerName);
             SetText(_playerReps, myReps.ToString(), mine);
             SetText(_playerForm, $"{myForm:0}", myFormColor);
             SetText(_playerTempo, mySecondsPerRep < float.PositiveInfinity ? $"{mySecondsPerRep:0.0}s" : "—", myTempoColor);

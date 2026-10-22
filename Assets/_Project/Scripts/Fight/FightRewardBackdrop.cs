@@ -7,9 +7,18 @@ namespace PushStars.Fight
     [RequireComponent(typeof(CanvasRenderer))]
     public sealed class FightRewardBackdrop : MaskableGraphic
     {
-        public enum Style { Summary, Case, Gems, Aura }
+        public enum Style { Summary, Case, Gems, Aura, Custom }
         public Style Appearance;
         private Texture2D _summaryBackground;
+        private Color _customTop, _customBottom, _customGlow;
+
+        /// <summary>A gradient and centre glow of the caller's own, e.g. one per case bonus screen.</summary>
+        public void SetPalette(Color top, Color bottom, Color glow)
+        {
+            Appearance = Style.Custom;
+            _customTop = top; _customBottom = bottom; _customGlow = glow;
+            SetVerticesDirty();
+        }
         public override Texture mainTexture => Appearance == Style.Summary
             ? (_summaryBackground != null ? _summaryBackground
                 : (_summaryBackground = Resources.Load<Texture2D>("Rewards/SummaryBackground")))
@@ -36,6 +45,9 @@ namespace PushStars.Fight
                     top = new Color32(40, 151, 0, 255);
                     bottom = new Color32(39, 148, 0, 255);
                     glow = new Color32(135, 255, 35, 155);
+                    break;
+                case Style.Custom:
+                    top = _customTop; bottom = _customBottom; glow = _customGlow;
                     break;
                 case Style.Case:
                     top = new Color32(20, 23, 29, 255);

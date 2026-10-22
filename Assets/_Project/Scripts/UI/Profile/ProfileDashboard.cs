@@ -148,6 +148,7 @@ namespace PushStars.UI
         private void Bind(UserProfile p)
         {
             PlayerName.text = ProfileIdentityEditor.PlayerName();
+            NickStyleView.Own(PlayerName);
             PlayerId.text = "ON DEVICE";
             if (ServiceLocator.TryGet<FirebaseAuthService>(out var auth) && !string.IsNullOrEmpty(auth.Uid))
                 PlayerId.text = "#" + auth.Uid.Substring(0, Math.Min(8, auth.Uid.Length)).ToUpperInvariant();

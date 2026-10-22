@@ -1,5 +1,6 @@
 using TMPro;
 using System.Collections.Generic;
+using System.Linq;
 using UnityEngine;
 using UnityEngine.UI;
 using PushStars.Core;
@@ -59,6 +60,12 @@ namespace PushStars.UI
             Back.onClick.AddListener(Hide);
             Home.onClick.AddListener(Hide);
             InfoClose.onClick.AddListener(CloseInfo);
+            // No PREMIUM filter: paid heroes and arenas sit in ALL, priced. The scene's tab goes.
+            if (Tabs.Length > 2)
+            {
+                for (int i = 2; i < Tabs.Length; i++) Destroy(Tabs[i].gameObject);
+                System.Array.Resize(ref Tabs, 2);
+            }
             for (int i = 0; i < Tabs.Length; i++)
             {
                 int index = i;
@@ -126,7 +133,10 @@ namespace PushStars.UI
             var template = Cards[Mathf.Min(2, Cards.Length - 1)].gameObject;
             bool wasActive = template.activeSelf;
             template.SetActive(false);
-            foreach (var arena in catalog.Arenas)
+            // Gem arenas follow the free ones, cheapest first, so they show without scrolling.
+            var ordered = catalog.Arenas.OrderBy(a => a.Access == ArenaAccess.Free ? 0 : a.Access == ArenaAccess.Purchase ? 1 : 2)
+                .ThenBy(a => a.Access == ArenaAccess.Purchase ? a.Price : 0);
+            foreach (var arena in ordered)
             {
                 var root = Instantiate(template, template.transform.parent);
                 root.name = arena.Id;
@@ -167,7 +177,7 @@ namespace PushStars.UI
 
         /// <summary>Crops the tall home art to the card, centred a little above the middle where
         /// every arena puts its landmark (arch, window, throne).</summary>
-        internal static void FrameArena(RawImage image, Sprite sprite, Vector2 size)
+        public static void FrameArena(RawImage image, Sprite sprite, Vector2 size)
         {
             if (sprite == null) return;
             image.texture = sprite.texture;
@@ -208,7 +218,7 @@ namespace PushStars.UI
                 bool arenas = i == 1;
                 button.onClick.AddListener(() => SetMode(arenas));
                 var label = ArenaUi.Label(half, "Label", names[i], new Vector2(90, 30), Vector2.zero, 16);
-                // Lettered like the ALL / OPENED / PREMIUM tabs: white with their dark outline.
+                // Lettered like the ALL / OPENED tabs: white with their dark outline.
                 var style = Tabs.Length > 0 ? Tabs[0].GetComponentInChildren<TextMeshProUGUI>(true) : title;
                 if (style != null)
                 {
@@ -253,7 +263,7 @@ namespace PushStars.UI
             else if (ArenaCatalog.Get(id)?.Access == ArenaAccess.Purchase)
             {
                 var shop = FindFirstObjectByType<ShopScreen>(FindObjectsInactive.Include);
-                if (shop != null) shop.Show();
+                if (shop != null) shop.BuyArena(id);
             }
         }
 
@@ -350,29 +360,25 @@ namespace PushStars.UI
 
         public void Filter(int index)
         {
-            _filter = Mathf.Clamp(index, 0, 2);
+            _filter = Mathf.Clamp(index, 0, 1);
             for (int i = 0; i < Tabs.Length; i++)
                 Tabs[i].image.sprite = i == 0 && ShortTabOn != null && ShortTabOff != null
                     ? (i == _filter ? ShortTabOn : ShortTabOff)
                     : (i == _filter ? TabOn : TabOff);
             for (int i = 0; i < Cards.Length; i++)
             {
-                var kind = AvatarCatalog.At(i)?.Kind;
-                bool visible = !_arenas && AvatarCatalog.IsListed(i) && (_filter == 0 || (_filter == 1 && !IsLocked(i)) ||
-                    (_filter == 2 && (kind == AvatarPurchaseKind.Gems || kind == AvatarPurchaseKind.Dollars)));
+                bool visible = !_arenas && AvatarCatalog.IsListed(i) && (_filter == 0 || !IsLocked(i));
                 Cards[i].gameObject.SetActive(visible);
             }
             foreach (var card in _arenaCards)
             {
-                var arena = ArenaCatalog.Get(card.Id);
-                bool visible = _arenas && (_filter == 0 || (_filter == 1 && ArenaProfile.Owns(card.Id)) ||
-                    (_filter == 2 && arena != null && arena.Access == ArenaAccess.Purchase));
+                bool visible = _arenas && (_filter == 0 || ArenaProfile.Owns(card.Id));
                 card.Root.SetActive(visible);
             }
             bool any = false;
             foreach (var card in Cards) any |= card.gameObject.activeSelf;
             foreach (var card in _arenaCards) any |= card.Root.activeSelf;
-            Empty.text = _arenas ? "PREMIUM ARENAS\n<size=16>Coming soon</size>" : _emptyHeroes;
+            Empty.text = _arenas ? "ARENAS\n<size=16>Coming soon</size>" : _emptyHeroes;
             Empty.gameObject.SetActive(!any);
             RefreshSelection();
             LayoutRebuilder.ForceRebuildLayoutImmediate(Grid);

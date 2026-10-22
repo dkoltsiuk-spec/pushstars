@@ -163,6 +163,7 @@ namespace PushStars.Fight
                 int separator = playerName.LastIndexOf('_');
                 PlayerName.text = Preparation && PlayerName.GetPreferredValues(playerName).x > PlayerName.rectTransform.rect.width && separator > 0
                     ? playerName.Insert(separator + 1, "\n") : playerName;
+                PushStars.UI.NickStyleView.Own(PlayerName);
             }
             if (!Preparation && _fight != null)
             {

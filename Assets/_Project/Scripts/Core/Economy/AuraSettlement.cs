@@ -20,17 +20,28 @@ namespace PushStars.Core
     public static class AuraSettlement
     {
         public static string FightReceipt(string fightId) => "fight:" + fightId + ":aura:v1";
+        public static string BoostReceipt(string fightId) => "fight:" + fightId + ":boost:v1";
 
         public static AuraSettlementResult Settle(string fightId, IReadOnlyList<AuraMoment> fightMoments, long xp, long trophies,
             DailyGoalStatus dailyGoal = default, int streakDays = 0)
         {
             var result = new AuraSettlementResult();
             var grants = new List<AuraGrant>();
+            string boostReceipt = null;
+            int boostMoment = -1;
             if (fightMoments != null)
             {
                 result.Moments.AddRange(fightMoments);
                 long total = AuraCalculator.Total(fightMoments);
                 if (total != 0 && !string.IsNullOrWhiteSpace(fightId)) grants.Add(new AuraGrant(FightReceipt(fightId), total));
+                // An x2 boost from a case doubles a fight that earned Aura; a lost fight keeps it.
+                if (total > 0 && !string.IsNullOrWhiteSpace(fightId) && CaseRewards.Boosts > 0)
+                {
+                    boostReceipt = BoostReceipt(fightId);
+                    grants.Add(new AuraGrant(boostReceipt, total));
+                    boostMoment = result.Moments.Count;
+                    result.Moments.Add(new AuraMoment("x2 BOOST", total));
+                }
             }
 
             // Levels: one line for all unpaid levels, so a veteran's first settlement stays readable.
@@ -61,7 +72,8 @@ namespace PushStars.Core
             { grants.Add(grant); result.Moments.Add(moment); }
 
             int tierBefore = AuraTiers.ForPeak(CaseRewards.AuraPeak).Index;
-            var applied = CaseRewards.ApplyAura(grants);
+            var applied = CaseRewards.ApplyAura(grants, boostReceipt);
+            if (boostMoment >= 0 && !applied.BoostUsed) result.Moments.RemoveAt(boostMoment);
             result.Change = applied.Change;
             var tierAfter = AuraTiers.ForPeak(CaseRewards.AuraPeak);
             if (tierAfter.Index > tierBefore) result.Moments.Add(new AuraMoment(tierAfter.Name + " AURA!", 0));

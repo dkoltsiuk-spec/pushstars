@@ -8,6 +8,10 @@ namespace PushStars.Core
     // Values match the chest art: black, blue, gold, purple.
     public enum CaseRarity { Common, Rare, Epic, Legendary }
 
+    /// <summary>The case's prize beside its gems. Hero and Arena are the rare jackpot: a whole Aura
+    /// hero or Aura arena, unlocked outright.</summary>
+    public enum CaseBonus { None, Aura, Boost, NickColor, Hero, Arena }
+
     /// <summary>A detached, read-only view of an unclaimed case.</summary>
     public sealed class PendingCase
     {
@@ -19,9 +23,16 @@ namespace PushStars.Core
         public int Gems { get; }
         public string AvatarId { get; }
         public int AvatarCards { get; }
+        public CaseBonus Bonus { get; }
+        /// <summary>Nick color, hero or arena id of the bonus.</summary>
+        public string BonusId { get; }
+        /// <summary>Aura amount, or the number of x2 boosts.</summary>
+        public int BonusAmount { get; }
+        public bool IsJackpot => Bonus == CaseBonus.Hero || Bonus == CaseBonus.Arena;
         public bool CanOpen => !Opened && RemainingTaps == 0;
 
-        internal PendingCase(string id, CaseRarity rarity, int taps, bool opened, int gems, string avatarId = null, int avatarCards = 0)
+        internal PendingCase(string id, CaseRarity rarity, int taps, bool opened, int gems, string avatarId = null, int avatarCards = 0,
+            CaseBonus bonus = CaseBonus.None, string bonusId = null, int bonusAmount = 0)
         {
             Id = id;
             Rarity = rarity;
@@ -30,6 +41,9 @@ namespace PushStars.Core
             Gems = gems;
             AvatarId = avatarId;
             AvatarCards = avatarCards;
+            Bonus = bonus;
+            BonusId = bonusId;
+            BonusAmount = bonusAmount;
         }
     }
 
@@ -46,6 +60,8 @@ namespace PushStars.Core
         /// <summary>What the assessment paid before Aura moved to meme scale (saves v3–v5).</summary>
         public const int LegacyAssessmentAura = 200;
         public const string AssessmentReceipt = "assessment:welcome:v1";
+        /// <summary>The welcome case always pays this. Its taps always upgrade, so it opens legendary.</summary>
+        public const int AssessmentGems = 200;
         /// <summary>Wallet receipt of the assessment's Aura, credited with the award itself.</summary>
         public const string AssessmentAuraReceipt = "assessment:welcome:aura:v1";
         /// <summary>Tops a legacy 200 welcome up to <see cref="AssessmentAura"/> once (save v6).</summary>
@@ -102,11 +118,17 @@ namespace PushStars.Core
         public static bool OwnsEmote(string id) => Ledger.OwnsEmote(id);
         public static bool TryBuyEmote(string id, int price) => Ledger.TryBuyEmote(id, price);
         public static bool OwnsArena(string id) => Ledger.OwnsArena(id);
+        /// <summary>Unused x2 Aura boosts. The next fight that earns Aura spends one and doubles it.</summary>
+        public static int Boosts => Ledger.Boosts;
+        public static bool OwnsNickColor(string id) => Ledger.OwnsNickColor(id);
+        /// <summary>The picked nickname color, white until one is chosen.</summary>
+        public static string NickColorId => Ledger.NickColorId;
+        public static bool TrySelectNickColor(string id) => Ledger.TrySelectNickColor(id);
         public static bool TryBuyArena(string id, int price) => Ledger.TryBuyArena(id, price);
         public static bool TryCreditAura(string receipt, int amount) => Ledger.TryCreditAura(receipt, amount);
         /// <summary>Applies several receipted Aura changes (plus or minus) in one save.
         /// See <see cref="CaseRewardLedger.ApplyAura"/>.</summary>
-        public static AuraApplyResult ApplyAura(IReadOnlyList<AuraGrant> grants) => Ledger.ApplyAura(grants);
+        public static AuraApplyResult ApplyAura(IReadOnlyList<AuraGrant> grants, string boostReceipt = null) => Ledger.ApplyAura(grants, boostReceipt);
         public static bool HasAuraReceipt(string receipt) => Ledger.HasAuraReceipt(receipt);
         /// <summary>One-shot gem payout keyed by a stable receipt (e.g. a boss-map gem islet).</summary>
         public static bool TryCreditGems(string receipt, int amount) => Ledger.TryCreditGems(receipt, amount);
@@ -225,6 +247,25 @@ namespace PushStars.Core
             return minimum + (int)Math.Floor(roll * (MaximumGems(rarity) - minimum + 1));
         }
 
+        /// <summary>Chance a case of this rarity holds a whole Aura hero or Aura arena instead of its
+        /// usual bonus. Small on purpose: the jackpot should be a story, not a schedule.</summary>
+        public static double JackpotChance(CaseRarity rarity)
+        {
+            switch (rarity)
+            {
+                case CaseRarity.Common: return 0.005;
+                case CaseRarity.Rare: return 0.01;
+                case CaseRarity.Epic: return 0.02;
+                case CaseRarity.Legendary: return 0.04;
+                default: throw new ArgumentOutOfRangeException(nameof(rarity));
+            }
+        }
+
+        /// <summary>Aura bonus of the weak cases (common and rare); a duel win is worth 1000.</summary>
+        public static int MinimumBonusAura(CaseRarity rarity) => rarity == CaseRarity.Common ? 200 : 500;
+        public static int MaximumBonusAura(CaseRarity rarity) => rarity == CaseRarity.Common ? 500 : 1200;
+        public const int MaximumBoosts = 2;
+
         private static void ValidateRoll(double roll)
         {
             if (double.IsNaN(roll) || roll < 0 || roll >= 1)
@@ -247,6 +288,8 @@ namespace PushStars.Core
         /// <summary>Actual balance change after the zero floor.</summary>
         public long Change;
         public long Balance, Peak;
+        /// <summary>An x2 boost was spent on this change.</summary>
+        public bool BoostUsed;
         /// <summary>Aura heroes whose unlock goal this change reached.</summary>
         public readonly List<string> Unlocked = new List<string>();
     }
@@ -269,9 +312,13 @@ namespace PushStars.Core
             public int aura;
             public string avatarId;
             public int avatarCards;
+            /// <summary>Rolled on open with the gems, paid on claim. Added within v6; older entries load None.</summary>
+            public CaseBonus bonus;
+            public string bonusId;
+            public int bonusAmount;
 
             public Entry Copy() => (Entry)MemberwiseClone();
-            public PendingCase Snapshot() => new PendingCase(id, rarity, taps, opened, gems, avatarId, avatarCards);
+            public PendingCase Snapshot() => new PendingCase(id, rarity, taps, opened, gems, avatarId, avatarCards, bonus, bonusId, bonusAmount);
         }
 
         [Serializable]
@@ -299,6 +346,11 @@ namespace PushStars.Core
             public List<string> emotes = new List<string>();
             /// <summary>Bought arena (home background) ids. Added within v6; older saves load it as null.</summary>
             public List<string> arenas = new List<string>();
+            /// <summary>Unused x2 Aura boosts. Added within v6.</summary>
+            public int boosts;
+            /// <summary>Owned nickname colors (white is never listed) and the picked one. Added within v6.</summary>
+            public List<string> nickColors = new List<string>();
+            public string nickColor;
             public List<string> awardedWorkouts = new List<string>();
             public List<Entry> cases = new List<Entry>();
             public List<string> processedWorkoutIds = new List<string>();
@@ -311,6 +363,7 @@ namespace PushStars.Core
                 {
                     version = version, gems = gems, aura = aura, peakAura = peakAura, auraReceipts = new List<string>(auraReceipts),
                     gemReceipts = new List<string>(gemReceipts), emotes = new List<string>(emotes), arenas = new List<string>(arenas), awardedWorkouts = new List<string>(awardedWorkouts),
+                    boosts = boosts, nickColors = new List<string>(nickColors), nickColor = nickColor,
                     processedWorkoutIds = new List<string>(processedWorkoutIds),
                     dailyWorkoutUtcDay = dailyWorkoutUtcDay, dailyWorkoutCount = dailyWorkoutCount
                 };
@@ -354,6 +407,7 @@ namespace PushStars.Core
             if (_state.gemReceipts == null) _state.gemReceipts = new List<string>();
             if (_state.emotes == null) _state.emotes = new List<string>();
             if (_state.arenas == null) _state.arenas = new List<string>();
+            if (_state.nickColors == null) _state.nickColors = new List<string>();
             if (_state.version < 6) MigrateMemeAura(_state);
             _awardedWorkouts = new HashSet<string>(_state.awardedWorkouts, StringComparer.Ordinal);
             _state.version = 6;
@@ -437,7 +491,9 @@ namespace PushStars.Core
         /// after each grant, the peak follows the highest balance, and any Aura hero whose goal is
         /// reached becomes owned in the same save. Replayed receipts change nothing.
         /// </summary>
-        public AuraApplyResult ApplyAura(IReadOnlyList<AuraGrant> grants)
+        /// <param name="boostReceipt">The grant under this receipt is an x2 boost's extra half: it is
+        /// applied only while a boost is left, and spends one in the same save.</param>
+        public AuraApplyResult ApplyAura(IReadOnlyList<AuraGrant> grants, string boostReceipt = null)
         {
             var result = new AuraApplyResult();
             var next = _state.Copy();
@@ -446,23 +502,50 @@ namespace PushStars.Core
             {
                 if (string.IsNullOrWhiteSpace(grant.Receipt) || grant.Delta == 0) continue;
                 string receipt = grant.Receipt.Trim();
-                if (!seen.Add(receipt)) continue;
-                next.aura = Math.Max(0, checked(next.aura + grant.Delta));
-                next.peakAura = Math.Max(next.peakAura, next.aura);
-                next.auraReceipts.Add(receipt);
+                bool boost = receipt == boostReceipt?.Trim();
+                if ((boost && next.boosts <= 0) || !seen.Add(receipt)) continue;
+                if (boost) { next.boosts--; result.BoostUsed = true; }
+                AddAura(next, receipt, grant.Delta);
                 result.Applied.Add(receipt);
             }
             result.Change = next.aura - _state.aura;
             result.Balance = next.aura; result.Peak = next.peakAura;
             if (result.Applied.Count == 0) return result;
+            UnlockAuraHeroes(next, result.Unlocked);
+            Commit(next);
+            return result;
+        }
+
+        private static void AddAura(SaveData state, string receipt, long delta)
+        {
+            state.aura = Math.Max(0, checked(state.aura + delta));
+            state.peakAura = Math.Max(state.peakAura, state.aura);
+            state.auraReceipts.Add(receipt);
+        }
+
+        /// <summary>Aura heroes whose goal <paramref name="next"/> reaches become owned in it.</summary>
+        private void UnlockAuraHeroes(SaveData next, List<string> unlocked)
+        {
             foreach (var offer in _offers)
                 if (offer.UnlocksByAura && !Owns(_state, offer) && Owns(next, offer))
                 {
                     Progress(next, offer.Id).owned = true;
-                    result.Unlocked.Add(offer.Id);
+                    unlocked?.Add(offer.Id);
                 }
+        }
+
+        public int Boosts => _state.boosts;
+        public bool OwnsNickColor(string id) => id == NickColorCatalog.DefaultId || (!string.IsNullOrWhiteSpace(id) && _state.nickColors.Contains(id));
+        public string NickColorId => OwnsNickColor(_state.nickColor) && NickColorCatalog.Find(_state.nickColor) != null ? _state.nickColor : NickColorCatalog.DefaultId;
+
+        public bool TrySelectNickColor(string id)
+        {
+            if (NickColorCatalog.Find(id) == null || !OwnsNickColor(id)) return false;
+            if (NickColorId == id) return true;
+            var next = _state.Copy();
+            next.nickColor = id;
             Commit(next);
-            return result;
+            return true;
         }
 
         public bool TryCreditGems(string receipt, int amount)
@@ -632,7 +715,9 @@ namespace PushStars.Core
 
             var next = _state.Copy();
             Entry entry = next.cases[index];
-            entry.rarity = CaseRewards.UpgradeForRoll(entry.rarity, _random());
+            // The welcome case is scripted luck: every tap lands, so it climbs to legendary.
+            entry.rarity = entry.id == CaseRewards.AssessmentReceipt && entry.rarity < CaseRarity.Legendary
+                ? entry.rarity + 1 : CaseRewards.UpgradeForRoll(entry.rarity, _random());
             entry.taps++;
             Commit(next);
             updated = next.cases[index].Snapshot();
@@ -649,7 +734,8 @@ namespace PushStars.Core
 
             var next = _state.Copy();
             Entry entry = next.cases[index];
-            entry.gems = CaseRewards.GemsForRoll(entry.rarity, _random());
+            entry.gems = entry.id == CaseRewards.AssessmentReceipt ? CaseRewards.AssessmentGems
+                : CaseRewards.GemsForRoll(entry.rarity, _random());
             var eligible = Array.FindAll(_offers, a => a.UsesCards && !OwnsAvatar(a.Id));
             if (eligible.Length > 0)
             {
@@ -660,11 +746,96 @@ namespace PushStars.Core
                 entry.avatarCards = Math.Min(offer.RequiredCards - CardsFor(offer.Id),
                     minimum[tier] + (int)(_random() * (maximum[tier] - minimum[tier] + 1)));
             }
+            RollBonus(next, entry);
             entry.opened = true;
             Commit(next);
             opened = next.cases[index].Snapshot();
             return true;
         }
+
+        /// <summary>
+        /// The prize beside the gems. A small rarity-scaled chance of the jackpot (a whole Aura hero
+        /// or Aura arena not yet owned); otherwise common and rare cases add Aura, epic ones an x2
+        /// boost or a common/rare nick color, legendary ones two boosts or a rare/ultra nick color.
+        /// The welcome case always adds one boost, so the first real fight shows it off.
+        /// </summary>
+        private void RollBonus(SaveData state, Entry entry)
+        {
+            if (entry.id == CaseRewards.AssessmentReceipt) { SetBonus(entry, CaseBonus.Boost, null, 1); return; }
+            if (_random() < CaseRewards.JackpotChance(entry.rarity))
+            {
+                var pool = JackpotPool(state);
+                if (pool.Count > 0)
+                {
+                    var pick = pool[Math.Min(pool.Count - 1, (int)(_random() * pool.Count))];
+                    SetBonus(entry, pick.Key, pick.Value, 1);
+                    return;
+                }
+            }
+            switch (entry.rarity)
+            {
+                case CaseRarity.Common:
+                case CaseRarity.Rare:
+                    int min = CaseRewards.MinimumBonusAura(entry.rarity), max = CaseRewards.MaximumBonusAura(entry.rarity);
+                    // Round to tens: "+430 AURA" reads as a prize, "+437" as noise.
+                    int aura = Math.Min(max, (min + (int)(_random() * (max - min + 1))) / 10 * 10);
+                    SetBonus(entry, CaseBonus.Aura, null, Math.Max(min, aura));
+                    return;
+                case CaseRarity.Epic:
+                {
+                    string color = _random() < .5 ? RollNickColor(state, _random() < .7 ? NickColorTier.Common : NickColorTier.Rare) : null;
+                    if (color != null) SetBonus(entry, CaseBonus.NickColor, color, 1);
+                    else SetBonus(entry, CaseBonus.Boost, null, 1);
+                    return;
+                }
+                default:
+                {
+                    string color = _random() < .5 ? RollNickColor(state, _random() < .6 ? NickColorTier.Rare : NickColorTier.Ultra) : null;
+                    if (color != null) SetBonus(entry, CaseBonus.NickColor, color, 1);
+                    else SetBonus(entry, CaseBonus.Boost, null, CaseRewards.MaximumBoosts);
+                    return;
+                }
+            }
+        }
+
+        private static void SetBonus(Entry entry, CaseBonus bonus, string id, int amount)
+        {
+            entry.bonus = bonus; entry.bonusId = id; entry.bonusAmount = amount;
+        }
+
+        /// <summary>Things already waiting in another opened case are left out, so two cases never
+        /// hold the same color, hero or arena.</summary>
+        private static bool PendingBonus(SaveData state, CaseBonus bonus, string id) =>
+            state.cases.Exists(c => c.opened && c.bonus == bonus && c.bonusId == id);
+
+        /// <summary>A color of this tier not owned yet; the other drop tier is tried before giving up.</summary>
+        private string RollNickColor(SaveData state, NickColorTier tier)
+        {
+            foreach (var wanted in new[] { tier, tier == NickColorTier.Ultra ? NickColorTier.Rare : tier == NickColorTier.Rare ? NickColorTier.Common : NickColorTier.Rare })
+            {
+                var free = Array.FindAll(NickColorCatalog.All, c => c.Tier == wanted && !state.nickColors.Contains(c.Id) &&
+                    !PendingBonus(state, CaseBonus.NickColor, c.Id));
+                if (free.Length > 0) return free[Math.Min(free.Length - 1, (int)(_random() * free.Length))].Id;
+            }
+            return null;
+        }
+
+        private List<KeyValuePair<CaseBonus, string>> JackpotPool(SaveData state)
+        {
+            var pool = new List<KeyValuePair<CaseBonus, string>>();
+            foreach (var offer in _offers)
+                if (offer.UnlocksByAura && !Owns(state, offer) && !PendingBonus(state, CaseBonus.Hero, offer.Id))
+                    pool.Add(new KeyValuePair<CaseBonus, string>(CaseBonus.Hero, offer.Id));
+            var arenas = ArenaCatalog.Instance;
+            if (arenas != null)
+                foreach (var arena in arenas.Arenas)
+                    if (arena.Access == ArenaAccess.Aura && state.peakAura < arena.Price && !state.arenas.Contains(arena.Id) &&
+                        !PendingBonus(state, CaseBonus.Arena, arena.Id))
+                        pool.Add(new KeyValuePair<CaseBonus, string>(CaseBonus.Arena, arena.Id));
+            return pool;
+        }
+
+        public static string CaseAuraReceipt(string caseId) => "case:" + caseId + ":aura:v1";
 
         public bool TryClaim(string caseId, out int gems)
         {
@@ -682,6 +853,18 @@ namespace PushStars.Core
                 progress.cards = (int)Math.Min(offer.RequiredCards, (long)progress.cards + prize.avatarCards);
                 progress.owned = offer.Unlocked(next.peakAura, progress.cards);
             }
+            switch (prize.bonus)
+            {
+                case CaseBonus.Aura:
+                    string receipt = CaseAuraReceipt(prize.id);
+                    if (!next.auraReceipts.Contains(receipt)) AddAura(next, receipt, prize.bonusAmount);
+                    break;
+                case CaseBonus.Boost: next.boosts = checked(next.boosts + prize.bonusAmount); break;
+                case CaseBonus.NickColor: if (!next.nickColors.Contains(prize.bonusId)) next.nickColors.Add(prize.bonusId); break;
+                case CaseBonus.Hero: if (Offer(prize.bonusId) != null) Progress(next, prize.bonusId).owned = true; break;
+                case CaseBonus.Arena: if (!next.arenas.Contains(prize.bonusId)) next.arenas.Add(prize.bonusId); break;
+            }
+            UnlockAuraHeroes(next, null);
             next.cases.RemoveAt(index);
             Commit(next);
             gems = reward;
@@ -759,9 +942,19 @@ namespace PushStars.Core
                     entry.taps < 0 || entry.taps > CaseRewards.UpgradeTapCount || (int)entry.rarity > entry.taps ||
                     entry.avatarCards < 0 || entry.avatarCards > 20 || (entry.avatarCards > 0 && (!entry.opened || string.IsNullOrWhiteSpace(entry.avatarId))) ||
                     (!entry.opened && entry.gems != 0) || (entry.opened && (entry.taps != CaseRewards.UpgradeTapCount ||
-                    entry.gems < CaseRewards.MinimumGems(entry.rarity) || entry.gems > CaseRewards.MaximumGems(entry.rarity))))
+                    // Welcome cases opened before the fixed amount keep their rolled prize.
+                    !(entry.id == CaseRewards.AssessmentReceipt && entry.gems == CaseRewards.AssessmentGems) &&
+                    (entry.gems < CaseRewards.MinimumGems(entry.rarity) || entry.gems > CaseRewards.MaximumGems(entry.rarity)))))
                     throw new InvalidOperationException("Invalid pending case. Saved rewards were not overwritten.");
+                bool bonusValid = entry.bonus == CaseBonus.None ? entry.bonusAmount == 0 && string.IsNullOrEmpty(entry.bonusId) :
+                    entry.opened && (int)entry.bonus <= (int)CaseBonus.Arena && (entry.bonus == CaseBonus.Aura
+                        ? entry.bonusAmount > 0 && entry.bonusAmount <= CaseRewards.MaximumBonusAura(CaseRarity.Rare)
+                        : entry.bonus == CaseBonus.Boost ? entry.bonusAmount >= 1 && entry.bonusAmount <= CaseRewards.MaximumBoosts
+                        : !string.IsNullOrWhiteSpace(entry.bonusId));
+                if (!bonusValid) throw new InvalidOperationException("Invalid case bonus. Saved rewards were not overwritten.");
             }
+            if (state.boosts < 0 || (state.nickColors != null && state.nickColors.Exists(string.IsNullOrWhiteSpace)))
+                throw new InvalidOperationException("Invalid boosts or nick colors. Saved rewards were not overwritten.");
         }
     }
 }

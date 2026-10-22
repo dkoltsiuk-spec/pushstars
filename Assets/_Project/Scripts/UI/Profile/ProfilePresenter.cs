@@ -73,6 +73,7 @@ namespace PushStars.UI
         private void Bind(UserProfile p)
         {
             if (_nameText   != null) _nameText.text   = ProfileIdentityEditor.PlayerName();
+            NickStyleView.Own(_nameText);
             if (_rankText   != null) _rankText.text   = RankLabel(p.Rank);
             if (_streakText != null) _streakText.text = $"WIN STREAK: {p.WinStreak}";
 

@@ -34,7 +34,7 @@ namespace PushStars.UI
         private TextMeshProUGUI _title, _price, _status, _description, _actionLabel;
         private Button _action;
         private string _showing;
-        private bool _bought;
+        private bool _bought, _fromArenas;
         private float _statusRestoreAt;
 
         public bool DialogOpen => _dialog != null && _dialog.activeSelf;
@@ -130,11 +130,13 @@ namespace PushStars.UI
             _dialog.name = "ArenaDialog";
             var dim = _dialog.AddComponent<Button>();
             dim.transition = Selectable.Transition.None;
-            dim.onClick.AddListener(CloseDialog);
+            dim.onClick.AddListener(Dismiss);
             var panel = _dialog.transform.Find("Panel");
             panel.gameObject.AddComponent<Button>().transition = Selectable.Transition.None; // swallow taps
             _title = panel.Find("Title").GetComponent<TextMeshProUGUI>();
             _price = panel.Find("Price").GetComponent<TextMeshProUGUI>();
+            // The pack dialog's price has no gem sprite; letter it like the cards, which do.
+            if (_cards.Count > 0) _price.spriteAsset = _cards[0].Action.spriteAsset;
             _status = panel.Find("Availability").GetComponent<TextMeshProUGUI>();
             _description = panel.Find("Description").GetComponent<TextMeshProUGUI>();
 
@@ -165,13 +167,15 @@ namespace PushStars.UI
             _dialog.SetActive(false);
         }
 
-        private void Open(string id)
+        /// <param name="fromArenas">Opened from the avatar screen's ARENAS tab: closing goes back there.</param>
+        public void Open(string id, bool fromArenas = false)
         {
             var arena = ArenaCatalog.Instance.Find(id);
             if (arena == null) return;
             if (ArenaProfile.Owns(id)) { OpenArenas(); return; }
             _showing = id;
             _bought = false;
+            _fromArenas = fromArenas;
             _statusRestoreAt = 0f;
             AvatarCollectionScreen.FrameArena(_dialogArt, arena.Home, DialogArtSize);
             _title.text = arena.Title.ToUpperInvariant();
@@ -219,10 +223,18 @@ namespace PushStars.UI
             _shop.Collection.ShowArenas();
         }
 
+        /// <summary>Tap outside or back: returns to the ARENAS tab when the dialog was opened from it.</summary>
+        public void Dismiss()
+        {
+            if (_fromArenas) OpenArenas();
+            else CloseDialog();
+        }
+
         public void CloseDialog()
         {
             if (_dialog != null) _dialog.SetActive(false);
             _showing = null;
+            _fromArenas = false;
         }
 
         public void Refresh()

@@ -177,6 +177,7 @@ namespace PushStars.Fight
         private void LoadPlayerName()
         {
             if (_playerName != null) _playerName.text = PushStars.UI.ProfileIdentityEditor.PlayerName();
+            PushStars.UI.NickStyleView.Own(_playerName);
         }
 
         public void Hide()
