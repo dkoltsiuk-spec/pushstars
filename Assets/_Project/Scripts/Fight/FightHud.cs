@@ -208,6 +208,7 @@ namespace PushStars.Fight
             SetText(_opponentReps, "0");
             SetText(_playerName, playerName);
             SetText(_playerReps, "0");
+            PrepareOwnSide();
             ConfigureEditableHud(false);
             SetDuelAvatarZoom(true);
             ApplyPushupShots();
@@ -236,6 +237,7 @@ namespace PushStars.Fight
             if (_opponentHalf != null) _opponentHalf.SetActive(false);
             if (_opponentStage != null) _opponentStage.SetActive(false);
             if (_timerPlate != null) _timerPlate.SetActive(false);
+            SetOpponentDim(false);
             SetBannerY(_soloBannerY);
             if (_soloPanel != null) _soloPanel.SetActive(true);
             // On, but still off-screen at zero alpha: they arrive on the cue below, not with the
@@ -289,6 +291,8 @@ namespace PushStars.Fight
 
             if (_opponentPanel != null) _opponentPanel.SetActive(visible && _showOpponent);
             if (_playerPanel != null) _playerPanel.SetActive(visible);
+            // The ready card presents both fighters evenly; the dim belongs to the fight itself.
+            SetOpponentDim(visible && _showOpponent);
         }
 
         /// <summary>The cue the corner bolts come in on: the clock has started, and the thing being
