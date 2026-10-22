@@ -238,25 +238,23 @@ function wasInRoom(match, uid) {
 }
 
 // Standby players: searched earlier, allowed notifications, left the screen (not polling), not
-// in a recorded fight right now. The nearest in level are called first; each push is budgeted
-// in push.js. A called place carries the caller's name, so the phone that opens on the push
-// (or is already open) knows to search at once.
+// in a recorded fight right now. The nearest in level are called first. A called place carries
+// the caller's name: an open app shows it above START at once, and the phone that opens on the
+// push (or within a minute and a half) searches at once. Only the push is budgeted (push.js) —
+// a player called a minute ago still sees the next search in the open app.
 async function callStandby(caller) {
   const now = Date.now();
   const snap = await db.collection('liveDuelQueue').where('standbyUntilMs', '>', now).limit(C.LIVE_QUEUE_STANDBY_POOL).get();
   const candidates = snap.docs.map(d => d.data())
     .filter(e => e.uid !== caller.uid && e.state === 'waiting' && (e.waitUntilMs || 0) <= now && (e.standbyFromMs || 0) <= now)
-    .sort((a, b) => Math.abs((a.best || 0) - caller.best) - Math.abs((b.best || 0) - caller.best));
-  let called = 0;
+    .sort((a, b) => Math.abs((a.best || 0) - caller.best) - Math.abs((b.best || 0) - caller.best))
+    .slice(0, C.LIVE_QUEUE_CALLS_PER_SEARCH);
   for (const e of candidates) {
-    if (called >= C.LIVE_QUEUE_CALLS_PER_SEARCH) break;
-    const sent = await callPlayer(e.uid, 'queue', { name: caller.name }, now);
-    functions.logger.info('queue call', { caller: caller.uid.slice(0, 6), callee: e.uid.slice(0, 6), sent });
-    if (!sent) continue;
-    called++;
     await queueRef(e.uid).update({ calledAtMs: now, callerName: caller.name }).catch(() => {});
+    const pushed = await callPlayer(e.uid, 'queue', { name: caller.name }, now);
+    functions.logger.info('queue call', { caller: caller.uid.slice(0, 6), callee: e.uid.slice(0, 6), pushed });
   }
-  return called;
+  return candidates.length;
 }
 
 exports.enqueueLiveDuel = functions.region(...QUEUE_REGIONS).https.onCall(async (data, context) => search(uidOf(context), data, true));

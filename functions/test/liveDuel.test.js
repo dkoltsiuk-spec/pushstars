@@ -453,8 +453,10 @@ test('"notify me": a searcher who left is called by the next search, within budg
     f.advance(10000);
     assert.equal((await f.live.pollLiveDuel({ best: 28 }, f.as('bob'))).called, 0, 'not every poll calls');
     f.advance(40000);
-    assert.equal((await f.live.pollLiveDuel({ best: 28 }, f.as('bob'))).called, 0, 'one call per cooldown');
-    assert.equal(f.sent.length, 1);
+    const again = await f.live.pollLiveDuel({ best: 28 }, f.as('bob'));
+    assert.equal(again.called, 1, 'called again in the app (the callout above START)');
+    assert.equal(f.docs.get('liveDuelQueue/alice').calledAtMs, Date.now());
+    assert.equal(f.sent.length, 1, 'but one push per cooldown');
     // Alice opens the app on the push and searches: bob is still there.
     const alice = await f.live.enqueueLiveDuel({ best: 30, notify: true }, f.as('alice'));
     assert.equal(alice.status, 'matched'); assert.equal(alice.opponentUid, 'bob'); assert.equal(alice.host, false);
@@ -561,6 +563,16 @@ test('"notify me": leaving the search for the main screen keeps the player calla
     f.advance(1000);
     assert.equal((await f.live.enqueueLiveDuel({}, f.as('bob'))).called, 1);
     assert.equal(f.docs.get('liveDuelQueue/alice').callerName, 'BOB');
+    assert.equal(f.sent.length, 1);
+    // A minute later alice is on the main screen again and carol searches: the push budget is
+    // spent, but the open app still gets the call.
+    await f.live.leaveLiveDuel({ ghost: false }, f.as('bob'));
+    f.seedUser('carol');
+    f.advance(60000);
+    assert.equal((await f.live.enqueueLiveDuel({}, f.as('carol'))).called, 1);
+    const place = f.docs.get('liveDuelQueue/alice');
+    assert.equal(place.callerName, 'CAROL'); assert.equal(place.calledAtMs, Date.now());
+    assert.equal(f.sent.length, 1, 'no second push within the cooldown');
   } finally { f.restore(); }
 });
 
@@ -592,7 +604,7 @@ test('calls respect the daily budget and standby expiry; a dead token is forgott
     f.dead.add('tok-dora');
     await f.live.enqueueLiveDuel({ notify: true }, f.as('dora'));
     f.advance(6000);
-    assert.equal((await f.live.enqueueLiveDuel({}, f.as('bob'))).called, 0);
+    assert.equal((await f.live.enqueueLiveDuel({}, f.as('bob'))).called, 1, 'still called in the app');
     assert.equal(f.docs.has('pushTokens/dora'), false);
     await f.push.registerPushToken({ token: '' }, f.as('alice'));
     assert.equal(f.docs.has('pushTokens/alice'), false);
