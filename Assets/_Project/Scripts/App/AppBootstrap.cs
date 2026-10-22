@@ -79,13 +79,20 @@ namespace PushStars.App
             // is decided by _initializeBackend; either way the router below only reads local state.
             if (_initializeBackend || PlayerPrefs.GetInt(FirebaseAuthService.RememberBackendKey, 0) == 1)
             {
-                var services = InitServicesAsync().Preserve();
-                services.Forget();
+                var services = InitServicesAsync();
                 // A signed-in phone gives the account's cloud copy a moment to land (another phone
                 // may have moved it on), so the first screen reads the restored save. Offline, the
                 // wait simply ends and the launch goes on with the save on this phone.
+                //
+                // Exactly one awaiter per task: a UniTask still running throws on a second one, and
+                // Preserve() does not change that while it is pending. Forget() plus this wait used
+                // to throw here, which ended Start and left every signed-in phone on 12 % for good.
                 if (CloudProgressSync.IsLinkedOnThisPhone)
-                    await UniTask.WhenAny(services, UniTask.Delay(TimeSpan.FromSeconds(_cloudRestoreWaitSec), DelayType.Realtime));
+                {
+                    try { await UniTask.WhenAny(services, UniTask.Delay(TimeSpan.FromSeconds(_cloudRestoreWaitSec), DelayType.Realtime)); }
+                    catch (Exception e) { Debug.LogException(e); }
+                }
+                else services.Forget();
             }
 
             string next = ResolveNextScene();
