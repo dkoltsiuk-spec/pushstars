@@ -1,10 +1,12 @@
 const { FieldValue } = require('firebase-admin/firestore');
+const { nameFor } = require('./playerNames');
 
 // The canonical default profile document. Shared by onUserCreated (Auth trigger) and
 // ensureProfile (callable backfill), so the schema lives in exactly one place.
-function defaultProfile(displayName) {
+// Without a provider name the player starts with the nickname the app derives from the uid.
+function defaultProfile(displayName, uid) {
   return {
-    displayName: displayName || 'Игрок',
+    displayName: displayName || nameFor(uid),
     avatarState: {},
     rank: 'bronze',
     trophies: 0,

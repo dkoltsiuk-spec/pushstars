@@ -1,6 +1,7 @@
 const functions = require('firebase-functions/v1');
 const admin = require('./admin');
 const { defaultProfile } = require('./profileDefaults');
+const { displayNameOf } = require('./playerNames');
 const C = require('./constants');
 const { cleanClapTimes } = require('./clapTimes');
 const rules = require('./progressRules');
@@ -20,7 +21,7 @@ function seasonAt(now = Date.now()) {
 }
 function entry(uid, profile) {
   const trophies = Math.min(MAX_TROPHIES, Math.max(0, profile.trophies || 0));
-  const displayName = String(profile.displayName || 'PLAYER').replace(/[<>]/g, '').slice(0, 20);
+  const displayName = displayNameOf(profile, uid);
   return { uid, displayName, trophies, league: leagueFor(trophies),
     standing: standing(trophies, uid), bestTimes: profile.rankedBestTimes || [],
     bestClapTimes: profile.rankedBestClapTimes || [] };
@@ -55,7 +56,7 @@ async function join(uid) {
     const season = seasonAt();
     const userRef = db.doc(`users/${uid}`);
     const [user, meta, existing] = await tx.getAll(userRef, seasonRef(season), playerRef(season, uid));
-    const profile = user.exists ? user.data() : defaultProfile();
+    const profile = user.exists ? user.data() : defaultProfile(null, uid);
     ensureSeason(tx, meta, season);
     if (!user.exists) tx.create(userRef, profile);
     const row = entry(uid, profile);
@@ -114,7 +115,7 @@ exports.beginRankedMatch = functions.https.onCall(async (data, context) => {
   return db.runTransaction(async tx => {
     const now = Date.now(), userRef = db.doc(`users/${uid}`), ref = db.doc(`rankedSessions/${uid}_${id}`);
     const [user, old] = await tx.getAll(userRef, ref);
-    const p = user.exists ? user.data() : defaultProfile();
+    const p = user.exists ? user.data() : defaultProfile(null, uid);
     if (old.exists) {
       const s = old.data();
       if (s.mode !== mode) fail('already-exists', 'Request ID already used.');
@@ -267,7 +268,7 @@ exports.syncLeagueTrophies = functions.https.onCall(async (data, context) => {
   return db.runTransaction(async tx => {
     const now = Date.now(), season = seasonAt(now), userRef = db.doc(`users/${uid}`);
     const [user, meta] = await tx.getAll(userRef, seasonRef(season));
-    const p = user.exists ? user.data() : defaultProfile();
+    const p = user.exists ? user.data() : defaultProfile(null, uid);
     const previous = p.leagueSync;
     try { rules.checkPace(previous, summary, previous ? (now - previous.atMs) / 1000 : 0); }
     catch (e) { throw new functions.https.HttpsError(e.code, e.message); }

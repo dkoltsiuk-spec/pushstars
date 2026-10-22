@@ -156,8 +156,7 @@ namespace PushStars.Fight
             PlayerHpFill.FillAmount = _playerFill; BossHpFill.FillAmount = _bossFill;
             PlayerHpText.text = _health.PlayerHp + " / " + BossCombatState.PlayerMaxHp;
             BossHpText.text = _health.BossHp + " / " + _health.BossMaxHp;
-            string playerName = SourcePlayerName != null && !string.IsNullOrWhiteSpace(SourcePlayerName.text) ? SourcePlayerName.text : "YOU";
-            playerName = PushStars.UI.ProfileIdentityEditor.ResolveName(playerName);
+            string playerName = PushStars.UI.ProfileIdentityEditor.PlayerName();
             if (playerName != _lastPlayerName)
             {
                 _lastPlayerName = playerName;

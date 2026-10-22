@@ -88,7 +88,7 @@ namespace PushStars.UI
                 if (this == null || !isActiveAndEnabled || version != _generation) return;
                 var page = await LeagueClient.GetPage(cursor, requestedSeason, requestedLeague, force);
                 if (this == null || !isActiveAndEnabled || version != _generation) return;
-                string chosenName = ProfileIdentityEditor.ResolveName("");
+                string chosenName = ProfileIdentityEditor.PlayerName();
                 if (!more && _archive == "" && chosenName.Length >= 2 && chosenName.Length <= 20 && page.own?.displayName != chosenName)
                 {
                     await LeagueClient.SyncDisplayName(chosenName);

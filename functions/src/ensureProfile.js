@@ -17,7 +17,7 @@ exports.ensureProfile = functions.https.onCall(async (data, context) => {
     const snap = await tx.get(ref);
     if (snap.exists) return { status: 'exists' };
     const name = context.auth.token && context.auth.token.name;
-    tx.create(ref, defaultProfile(name));
+    tx.create(ref, defaultProfile(name, context.auth.uid));
     return { status: 'created' };
   });
 });

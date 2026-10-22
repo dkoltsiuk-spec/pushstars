@@ -30,21 +30,18 @@ namespace PushStars.UI
         private string _positionedName;
         private Vector2 _positionedNameSize;
 
-        private static string Scope
+        private static string Uid => ServiceLocator.TryGet<FirebaseAuthService>(out var auth) ? auth.Uid : null;
+        private static string Scope => string.IsNullOrEmpty(Uid) ? "profile.identity.local." : "profile.identity." + Uid + ".";
+
+        /// <summary>The nickname the profile header shows — the edited name, else the one generated
+        /// from the uid, which the server also gives this player until they rename.</summary>
+        public static string PlayerName()
         {
-            get
-            {
-                if (ServiceLocator.TryGet<FirebaseAuthService>(out var auth) && !string.IsNullOrEmpty(auth.Uid))
-                    return "profile.identity." + auth.Uid + ".";
-                return "profile.identity.local.";
-            }
+            string name = PlayerPrefs.GetString(Scope + "name", PlayerPrefs.GetString("profile.identity.local.name", ""));
+            if (!PlayerNames.IsPlaceholder(name)) return name;
+            string uid = Uid;
+            return PlayerNames.For(string.IsNullOrEmpty(uid) ? SystemInfo.deviceUniqueIdentifier : uid);
         }
-
-        public static string ResolveName(string fallback) => PlayerPrefs.GetString(Scope + "name",
-            PlayerPrefs.GetString("profile.identity.local.name", fallback));
-
-        /// <summary>The nickname the profile header shows — the edited name, else the profile's.</summary>
-        public static string PlayerName() => ResolveName(LocalProfile.Profile.DisplayName);
 
         private void Awake()
         {

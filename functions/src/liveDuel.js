@@ -29,6 +29,7 @@ const admin = require('./admin');
 const C = require('./constants');
 const R = require('./liveDuelRules');
 const { cleanClapTimes } = require('./clapTimes');
+const { displayNameOf: nameOf } = require('./playerNames');
 const { seasonAt, entry } = require('./league');
 const { callPlayer } = require('./push');
 const db = admin.firestore();
@@ -54,7 +55,6 @@ function look(data) {
   const country = typeof data?.country === 'string' && /^[A-Z]{2}$/.test(data.country) ? data.country : '';
   return { hero, gender, country };
 }
-const nameOf = profile => String(profile?.displayName || 'PLAYER').replace(/[<>]/g, '').slice(0, 20);
 
 function ticket(match) {
   return {
@@ -89,7 +89,7 @@ async function openByCode(tx, code, uid) {
 exports.createLiveDuel = functions.https.onCall(async (data, context) => {
   const uid = uidOf(context), me = look(data);
   const profile = await db.doc(`users/${uid}`).get();
-  const hostName = nameOf(profile.exists ? profile.data() : null);
+  const hostName = nameOf(profile.exists ? profile.data() : null, uid);
   for (let attempt = 0; attempt < 8; attempt++) {
     const code = String(crypto.randomInt(1, 1000000)).padStart(6, '0');
     const id = randomId();
@@ -123,7 +123,7 @@ exports.joinLiveDuel = functions.https.onCall(async (data, context) => {
   const uid = uidOf(context), me = look(data);
   if (!validCode(data?.code)) fail('invalid-argument', 'Enter a 6-digit code.');
   const profile = await db.doc(`users/${uid}`).get();
-  const guestName = nameOf(profile.exists ? profile.data() : null);
+  const guestName = nameOf(profile.exists ? profile.data() : null, uid);
   return db.runTransaction(async tx => {
     const match = await openByCode(tx, data.code, uid);
     const guest = { guestUid: uid, guestName, guestHero: me.hero, guestGender: me.gender, guestCountry: me.country, state: 'joined' };
@@ -157,7 +157,7 @@ async function search(uid, data, fresh) {
   // Read alongside the transaction: the name is needed only when this call makes the pairing.
   const profile = db.doc(`users/${uid}`).get();
   profile.catch(() => {}); // a call that returns before reading it must not leave it unhandled
-  const nameNow = async () => { const p = await profile; return nameOf(p.exists ? p.data() : null); };
+  const nameNow = async () => { const p = await profile; return nameOf(p.exists ? p.data() : null, uid); };
   let seat = null, recall = false, lobby = null, pairedWith = '';
   const result = await db.runTransaction(async tx => {
     const now = Date.now();
@@ -323,7 +323,7 @@ async function ghostFor(uid, best, near = false) {
     .slice(0, 3);
   if (!candidates.length) return null;
   const pick = candidates[crypto.randomInt(candidates.length)];
-  return { uid: pick.uid, name: String(pick.displayName || 'PLAYER').slice(0, 20), trophies: pick.trophies || 0,
+  return { uid: pick.uid, name: nameOf(pick, pick.uid), trophies: pick.trophies || 0,
     repTimes: pick.bestTimes, clapTimes: pick.bestClapTimes || [] };
 }
 

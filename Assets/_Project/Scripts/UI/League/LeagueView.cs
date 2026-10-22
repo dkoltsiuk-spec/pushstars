@@ -74,7 +74,7 @@ namespace PushStars.UI
                 row.gameObject.SetActive(own);
                 if (own && Names.Length > 0 && Names[0] != null)
                     ((RectTransform)row).anchoredPosition = ((RectTransform)Names[0].transform.parent).anchoredPosition;
-                Names[i].text = own ? ProfileIdentityEditor.ResolveName("PLAYER") : "";
+                Names[i].text = own ? ProfileIdentityEditor.PlayerName() : "";
                 if (Scores != null && i < Scores.Length && Scores[i] != null)
                     Scores[i].text = own ? DisplayTrophies.ToString() : "";
                 var rank = row.Find("Rank")?.GetComponent<TextMeshProUGUI>();

@@ -11,7 +11,7 @@ exports.onUserCreated = functions.auth.user().onCreate(async (user) => {
   const ref = db.doc(`users/${user.uid}`);
   await db.runTransaction(async tx => {
     const snap = await tx.get(ref);
-    if (!snap.exists) tx.create(ref, defaultProfile(user.displayName));
+    if (!snap.exists) tx.create(ref, defaultProfile(user.displayName, user.uid));
   });
   functions.logger.info(`Seeded profile for ${user.uid}`);
   return null;
