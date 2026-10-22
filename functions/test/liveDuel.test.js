@@ -76,7 +76,7 @@ function fixture({ secret = 'hook-secret' } = {}) {
   } });
   const admin = { firestore, messaging, auth: () => ({ verifyIdToken: async t => { if (!tokens[t]) throw new Error('bad'); return { uid: tokens[t] }; } }) };
   class HttpsError extends Error { constructor(code, message) { super(message); this.code = code; } }
-  const functions = { region: () => functions, logger: { info() {}, warn() {} }, https: { HttpsError, onCall: fn => fn, onRequest: fn => fn }, pubsub: { schedule: () => ({ timeZone: () => ({ onRun: fn => fn }) }) } };
+  const functions = { region: () => functions, runWith: () => functions, logger: { info() {}, warn() {} }, https: { HttpsError, onCall: fn => fn, onRequest: fn => fn }, pubsub: { schedule: () => ({ timeZone: () => ({ onRun: fn => fn }) }) } };
   const src = path.join(__dirname, '../src');
   for (const key of Object.keys(require.cache)) if (key.startsWith(src)) delete require.cache[key];
   const load = Module._load;
@@ -614,5 +614,17 @@ test("a fresh search offers a stranger only at the player's level", async () => 
     await f.live.leaveLiveDuel({ ghost: false }, f.as('alice'));
     assert.equal((await f.live.enqueueLiveDuel({ best: 0 }, f.as('alice'))).ghost, null, 'no level yet');
     assert.equal((await f.live.pollLiveDuel({ best: 30 }, f.as('alice'))).ghost, undefined, 'polls carry no offer');
+  } finally { f.restore(); }
+});
+
+test('cleanup clears a busy evening in one run, page after page', async () => {
+  const f = fixture();
+  try {
+    for (let i = 0; i < 450; i++)
+      f.docs.set(`liveDuelQueue/p${i}`, { uid: `p${i}`, state: 'waiting', waitUntilMs: 0, expiresAtMs: Date.now() - 1 });
+    f.docs.set('liveDuelQueue/later', { uid: 'later', state: 'waiting', waitUntilMs: 0, expiresAtMs: Date.now() + 60000 });
+    assert.deepEqual(await f.live.sweep(), { expired: 0, settled: 0, dequeued: 450 });
+    assert.deepEqual([...f.docs.keys()].filter(p => p.startsWith('liveDuelQueue/')), ['liveDuelQueue/later']);
+    assert.deepEqual(await f.live.sweep(), { expired: 0, settled: 0, dequeued: 0 });
   } finally { f.restore(); }
 });

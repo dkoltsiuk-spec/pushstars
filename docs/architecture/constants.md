@@ -290,7 +290,7 @@
 | Пуш-вызов: бюджет | не чаще раза в `180` с (`PUSH_CALL_COOLDOWN_SEC`), до `6` в UTC-сутки (`PUSH_CALLS_PER_DAY`), живёт `60` с (`PUSH_CALL_TTL_SEC`) |
 | Пуш-вызов: клиент реагирует | на вызов не старше `90` с (`SearchOpponentController.CallWindowMs`); баннер висит `30` с |
 | Тёплое подключение Photon во время поиска | `20` с, потом отпускается (`ServerQueue.WarmSec`) |
-| «Сегодня в игре: N» | показывается от `20` игроков (`SearchOpponentController.PlayersTodayMin`), счёт по UTC-дню (`activeDays/{day}`) |
+| «Сегодня в игре: N» | показывается от `20` игроков (`SearchOpponentController.PlayersTodayMin`), счёт по UTC-дню: `count()` по `onlinePresence` с `day == сегодня` |
 | Час дуэлей | `20:00–21:00` по местному времени (`EconomyConfig.DuelHourStartMinute/Minutes`), одно напоминание в начале |
 | Очередь: ожидание соперника в комнате | `10` сек (`LiveQueueSearch.RoomSec`) |
 | Очередь: уборка места | через `60` сек после последней записи (`LIVE_QUEUE_ENTRY_TTL_SEC`) |

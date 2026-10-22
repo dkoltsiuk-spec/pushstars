@@ -497,12 +497,34 @@ exports.photonAuth = functions.https.onRequest(async (req, res) => {
 
 // Unused codes expire; duels whose results never all arrived are settled with what there is;
 // abandoned queue places go. Single-field range queries (expiresAtMs) — no composite index needed.
-exports.cleanupMatchmaking = functions.pubsub.schedule('every 5 minutes').timeZone('UTC').onRun(async () => sweep());
+// Every minute, SWEEP_PARALLEL documents at once, page after page until nothing is due or the run's
+// budget is spent: a busy evening leaves thousands of places to clear, not a few hundred.
+const SWEEP_PAGE = 200, SWEEP_PARALLEL = 20, SWEEP_BUDGET_MS = 45000;
+exports.cleanupMatchmaking = functions.runWith({ timeoutSeconds: 120 }).pubsub.schedule('every 1 minutes').timeZone('UTC')
+  .onRun(async () => sweep());
+
+// Runs `each` over the documents `query` finds due. Each pass moves its document out of the range
+// (expired, settled, deleted or back to standby), so the next page is new work; one that cannot
+// (a failed transaction) is logged and skipped, and a page with nothing new ends the drain.
+async function drain(query, until, each) {
+  const seen = new Set();
+  while (Date.now() < until) {
+    const due = await query.limit(SWEEP_PAGE).get();
+    const fresh = due.docs.filter(doc => !seen.has(doc.id));
+    fresh.forEach(doc => seen.add(doc.id));
+    for (let i = 0; i < fresh.length; i += SWEEP_PARALLEL) {
+      const runs = await Promise.allSettled(fresh.slice(i, i + SWEEP_PARALLEL).map(each));
+      runs.forEach((run, k) => run.status === 'rejected'
+        && functions.logger.warn(`sweep ${fresh[i + k].ref.path}: ${run.reason?.message}`));
+    }
+    if (!fresh.length || due.size < SWEEP_PAGE) return;
+  }
+}
 
 async function sweep(now = Date.now()) {
-  const due = await db.collection('liveDuels').where('expiresAtMs', '<=', now).limit(200).get();
+  const until = Date.now() + SWEEP_BUDGET_MS;
   let expired = 0, settled = 0;
-  for (const doc of due.docs) {
+  await drain(db.collection('liveDuels').where('expiresAtMs', '<=', now), until, async doc => {
     await db.runTransaction(async tx => {
       const snap = await tx.get(doc.ref);
       if (!snap.exists) return;
@@ -517,12 +539,11 @@ async function sweep(now = Date.now()) {
         if (await settleInto(tx, doc.ref, match, true)) settled++;
       } else tx.update(doc.ref, { expiresAtMs: FAR });
     });
-  }
+  });
   // Queue places of phones that stopped searching without leaving, and pairings nobody used
   // (a player who never came to such a room may go back to standby instead).
-  const stale = await db.collection('liveDuelQueue').where('expiresAtMs', '<=', now).limit(200).get();
   let dequeued = 0;
-  for (const doc of stale.docs) {
+  await drain(db.collection('liveDuelQueue').where('expiresAtMs', '<=', now), until, async doc => {
     await db.runTransaction(async tx => {
       const snap = await tx.get(doc.ref);
       if (!snap.exists || snap.data().expiresAtMs > Date.now()) return;
@@ -532,7 +553,7 @@ async function sweep(now = Date.now()) {
       if (again) tx.set(doc.ref, again); else tx.delete(doc.ref);
       dequeued++;
     });
-  }
+  });
   return { expired, settled, dequeued };
 }
 exports.sweep = sweep;
