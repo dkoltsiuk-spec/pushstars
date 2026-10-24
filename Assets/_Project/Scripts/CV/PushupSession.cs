@@ -42,6 +42,7 @@ namespace PushStars.CV
         public WorkoutSetTracker SetTracker  { get; } = new WorkoutSetTracker();
         public ClapDetector      Clap        { get; } = new ClapDetector();
         public PushupPostureMonitor Posture  { get; } = new PushupPostureMonitor();
+        public StandUpDetector   StandUp     { get; } = new StandUpDetector();
         public PlankArmer        Armer       { get; private set; }
         public AntiCheatAuditor  Auditor     { get; private set; }
 
@@ -160,6 +161,7 @@ namespace PushStars.CV
             SetTracker.Reset();
             Clap.Reset();
             Posture.Reset();
+            StandUp.Reset();
             Armer?.Reset();
             Auditor?.Clear();
             ClapReps = 0;
@@ -273,6 +275,7 @@ namespace PushStars.CV
 
             // ── 7. Set / rest semantics for the UI ──
             SetTracker.Tick(isArmed, Counter != null ? Counter.Reps : 0, now);
+            StandUp.Tick(frame, trackingOk, isArmed, View.View, now);
 
             // Form/HUD can still update on any non-lost frame so the user sees live feedback.
             if (Quality != TrackingQuality.Lost)

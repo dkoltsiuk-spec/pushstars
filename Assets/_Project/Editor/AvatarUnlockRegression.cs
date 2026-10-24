@@ -105,7 +105,7 @@ namespace PushStars.Editor
 
             CaseRewardsRegression.Run();
             Directory.CreateDirectory("Logs");
-            File.WriteAllText("Logs/avatar-unlocks-regression.txt", "PASS: Aura format, fight pricing (win/crush/clutch/comeback/draw/loss/destroyed/gave-it-all/rookie/quit/stakes/performance/streak/boss), level and league Aura, persisted drops, one-time claims, failed saves, cards at 1K on the bar, peak never drops, zero floor, receipt replay, peak+cards unlock, no re-lock, full-card unlock, completed collection, premium exclusion, v2 and v5 migrations.\n");
+            File.WriteAllText("Logs/avatar-unlocks-regression.txt", "PASS: Aura format, fight pricing (win/crush/clutch/comeback/draw/loss/destroyed/gave-it-all/rookie/quit/stakes/performance/streak/boss), workout Aura, level and league Aura, persisted drops, one-time claims, failed saves, cards at 1K on the bar, peak never drops, zero floor, receipt replay, peak+cards unlock, no re-lock, full-card unlock, completed collection, premium exclusion, v2 and v5 migrations.\n");
             Debug.Log("[AvatarUnlockRegression] PASS");
         }
 
@@ -142,6 +142,11 @@ namespace PushStars.Editor
             Expect(boss, 10000, "ISLAND KING DOWN");
             var bossLoss = boss; bossLoss.Won = false; Expect(bossLoss, 0);
             var bossQuit = boss; bossQuit.Quit = true; Expect(bossQuit, 0);
+            Require(AuraCalculator.ForWorkout(19, 99).Count == 0, "Short workout earns no Aura");
+            var workout = AuraCalculator.ForWorkout(60, 80);
+            Require(workout.Count == 1 && workout[0].Caption == "WORKOUT DONE" && AuraCalculator.Total(workout) == 500, "Workout Aura");
+            var clean = AuraCalculator.ForWorkout(60, 95);
+            Require(clean.Count == 2 && clean[1].Caption == "PERFECT FORM" && AuraCalculator.Total(clean) == 1000, "Workout form Aura");
             Require(AuraRewards.ForLevel(1) == 0 && AuraRewards.ForLevel(2) == 1000 && AuraRewards.ForLevel(5) == 6000 &&
                 AuraRewards.ForLevelUp(1, 5) == 9000 && AuraRewards.ForPromotion("diamond") == 100000, "Level and league Aura");
             var robot = new AvatarOffer { Id = "robot", Kind = AvatarPurchaseKind.Aura, Price = 50000, RequiredCards = 50 };

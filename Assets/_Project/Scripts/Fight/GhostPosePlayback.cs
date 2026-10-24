@@ -28,8 +28,10 @@ namespace PushStars.Fight
             playback._restRotation = animator.transform.localRotation;
             playback._head = animator.GetBoneTransform(HumanBodyBones.Head);
             playback._hips = animator.GetBoneTransform(HumanBodyBones.Hips);
-            if (animator.gameObject.scene.name == FightConfig.PreparationSceneName && FightRequest.TestBot != null)
-                playback._preparation = GhostMotionClip.Decode(FightRequest.TestBot.fight.motionBase64);
+            // A recorded bot also waits on the preparation stage the way it was recorded doing.
+            var bot = FightRequest.TestBot ?? FightRequest.StrangerBot;
+            if (animator.gameObject.scene.name == FightConfig.PreparationSceneName && bot != null)
+                playback._preparation = GhostMotionClip.Decode(bot.fight.motionBase64);
         }
         private void LateUpdate()
         {

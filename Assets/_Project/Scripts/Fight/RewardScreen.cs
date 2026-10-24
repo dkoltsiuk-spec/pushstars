@@ -307,6 +307,7 @@ namespace PushStars.Fight
                 Set(ui.OpponentName, "VS " + (string.IsNullOrWhiteSpace(result.OpponentName) ? "GHOST" : result.OpponentName));
             }
             else Set(ui.OpponentName, "REPS");
+            ShowEarlyEnd(duel ? result.EarlyEnd : null);
             if (ui.OpponentReps != null) ui.OpponentReps.gameObject.SetActive(duel);
             if (ui.ScoreSeparator != null) ui.ScoreSeparator.gameObject.SetActive(duel);
             if (ui.OpponentPortrait != null) ui.OpponentPortrait.gameObject.SetActive(duel);
@@ -317,6 +318,28 @@ namespace PushStars.Fight
                 if (duel && ui.Opponent.StageCamera != null) ui.Opponent.StageCamera.enabled = true;
             }
             if (ui.Backdrop != null) Tint(ui.Backdrop, _outcome);
+        }
+
+        private TextMeshProUGUI _earlyEnd;
+
+        /// <summary>A live duel cut short says why at the end of the caption under the score —
+        /// "92% FORM  VS OSKAT · OPPONENT LEFT" — so a loss at 4:4 or a win at 3:3 reads as what it
+        /// is. Built at runtime from the opponent's word (same style), no new block on the screen.</summary>
+        private void ShowEarlyEnd(string reason)
+        {
+            var name = _summaryUi.OpponentName;
+            if (name == null) return;
+            if (_earlyEnd == null)
+            {
+                if (string.IsNullOrEmpty(reason)) return;
+                _earlyEnd = Instantiate(name, name.transform.parent, false);
+                _earlyEnd.name = "EarlyEnd";
+                _earlyEnd.transform.SetSiblingIndex(name.transform.GetSiblingIndex() + 1);
+            }
+            _earlyEnd.gameObject.SetActive(!string.IsNullOrEmpty(reason));
+            if (string.IsNullOrEmpty(reason)) return;
+            _earlyEnd.text = "· " + reason;
+            _earlyEnd.color = _outcome == Outcome.Win ? Gold : Color.white;
         }
 
         private static void Tint(RewardToneBackdrop backdrop, Outcome outcome)
@@ -891,6 +914,8 @@ namespace PushStars.Fight
             if (hasBonus && _prizeUi.Note != null) _prizeUi.Note.gameObject.SetActive(false);
             Set(PrizeTitle, "GEMS");
             Set(_prizeUi.ClaimLabel, "CLAIM & HOME");
+            // A daily case holds no gems: its bonus is the whole prize, so it opens straight on it.
+            if (_gems <= 0 && hasBonus) { ApplyBonusPage(prize); _bonusShown = true; }
             // No preload here: streaming home stalls a frame mid pop-in. Home loads under the cover.
             _busy = true;
             if (_prizeUi.ClaimButton != null) _prizeUi.ClaimButton.interactable = false;
@@ -1129,6 +1154,7 @@ namespace PushStars.Fight
             Scale(_prizeUi.Content, 0);
             yield return ScreenTransition.Settle();
             GameAudio.Play(SoundCue.CaseReveal, .9f + .05f * (int)_rarity);
+            if (_bonusShown && _bonus != null && _bonus.IsJackpot) StartCoroutine(JackpotConfetti());
             yield return PopIn(_prizeUi.Content, .65f);
             _busy = false;
             if (_prizeUi.ClaimButton != null) _prizeUi.ClaimButton.interactable = true;

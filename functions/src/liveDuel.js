@@ -17,8 +17,9 @@
 // While nobody is online the search never times out on its own. A searcher who allowed
 // notifications ("notify me", data.notify) stays callable for LIVE_QUEUE_STANDBY_SEC after
 // leaving the screen: another player's search sends them a push (push.js) and the caller sees
-// `called`. The first answer of a fresh search also offers a stranger's best set close to the
-// player's level (`ghost`), fought as a recorded duel while the search runs.
+// `called`. The first answer of a fresh search also offers a recorded fight (`ghost`) while the
+// search runs: a bot from the pool the player has not met (botPool.js), else a stranger's best set
+// close to the player's level.
 // A queue match is mode 'pvp' (ranked trophies, LIVE_DUEL_TROPHIES.pvp) and otherwise runs
 // start / finish / webhook exactly like a friend duel.
 //
@@ -32,10 +33,12 @@ const { cleanClapTimes } = require('./clapTimes');
 const { displayNameOf: nameOf } = require('./playerNames');
 const { seasonAt, entry } = require('./league');
 const { callPlayer } = require('./push');
+const { botFor } = require('./botPool');
 const db = admin.firestore();
 const { Timestamp } = admin.firestore;
 
 const FAR = 8640000000000000; // expiresAtMs of a finished duel: never picked up by cleanup again
+const ROOM_LOG_MAX = 40;       // join/leave events kept per duel room
 const fail = (code, message) => { throw new functions.https.HttpsError(code, message); };
 const uidOf = context => context.auth?.uid || fail('unauthenticated', 'Sign in required.');
 const matchRef = id => db.doc(`liveDuels/${id}`);
@@ -219,7 +222,7 @@ async function search(uid, data, fresh) {
   // (once per search) offer a stranger's set at the player's level to fight while waiting.
   const [called, ghost] = await Promise.all([
     recall ? callStandby(seat).catch(e => { functions.logger.warn('call standby: ' + e.message); return 0; }) : 0,
-    fresh ? ghostFor(uid, best, true).catch(() => null) : null,
+    fresh ? offerFor(uid, best, data?.fought) : null,
     lobby ? lobbyRef.set(lobby).catch(e => functions.logger.warn('lobby: ' + e.message)) : null,
   ]);
   return { ...result, called, ...(fresh ? { ghost } : {}) };
@@ -307,6 +310,14 @@ exports.leaveLiveDuel = functions.region(...QUEUE_REGIONS).https.onCall(async (d
   return { status: 'left', ghost, serverTimeMs: Date.now() };
 });
 
+// The fight a waiting search offers: a bot from the pool the player has not met yet (botPool.js,
+// shown as the player it plays), else a stranger's season set at their level, else nothing (the
+// phone offers the player's own shadow).
+async function offerFor(uid, best, foughtHere) {
+  const bot = await botFor(uid, best, foughtHere).catch(e => { functions.logger.warn('bot pool: ' + e.message); return null; });
+  return bot || ghostFor(uid, best, true).catch(() => null);
+}
+
 // Another player's best ranked set from this season's table, close to the player's own level.
 // A few nearest candidates take turns, so the same stranger does not answer every search.
 // `near`: only a set within the level band (LIVE_QUEUE_GHOST_BAND_*) — offered as an opponent
@@ -386,11 +397,16 @@ exports.finishLiveDuel = functions.https.onCall(async (data, context) => {
   const error = R.timelineError(data.repTimes, data.durationSec);
   if (error) fail('invalid-argument', error);
   const opponentLeft = data.opponentLeft === true;
+  // forfeit: this player walked out (the exit button, or back after the reconnect window). It
+  // loses the duel at once, whatever the counts.
+  const forfeit = data.forfeit === true;
+  // aborted: the opponent left before the set began, so this phone called the duel off.
+  const aborted = data.aborted === true && !forfeit;
   const opponentReps = data.opponentReps;
   if (!Number.isInteger(opponentReps) || opponentReps < 0 || opponentReps > C.MAX_REPS_PER_MATCH)
     fail('invalid-argument', 'Invalid opponent count.');
-  // A duel runs the full minute; only a friend's forfeit ends it sooner.
-  if (!opponentLeft && data.durationSec < C.MATCH_DURATION_SEC - 1)
+  // A duel runs the full minute; only a forfeit, either side's, ends it sooner.
+  if (!opponentLeft && !forfeit && !aborted && data.durationSec < C.MATCH_DURATION_SEC - 1)
     fail('failed-precondition', 'A live duel lasts 60 seconds.');
   return db.runTransaction(async tx => {
     const ref = matchRef(data.matchId);
@@ -406,7 +422,7 @@ exports.finishLiveDuel = functions.https.onCall(async (data, context) => {
       if (now - match.startedAtMs + 1500 < data.durationSec * 1000) fail('failed-precondition', 'Set completed too early.');
       results[uid] = {
         repTimes: data.repTimes, clapTimes: cleanClapTimes(data.clapTimes, data.repTimes, data.durationSec),
-        durationSec: data.durationSec, opponentReps, opponentLeft, atMs: now,
+        durationSec: data.durationSec, opponentReps, opponentLeft, forfeit, aborted, atMs: now,
       };
     }
     const next = { ...match, results };
@@ -419,9 +435,9 @@ exports.finishLiveDuel = functions.https.onCall(async (data, context) => {
 
 // Reads both profiles and writes the outcome, inside the caller's transaction (all reads first).
 async function settleInto(tx, ref, match, force) {
-  const decided = R.decide(match, { force });
-  if (!decided) return null;
   const now = Date.now();
+  const decided = R.decide(match, { force, now });
+  if (!decided) return null;
   const uids = [match.hostUid, match.guestUid].filter(Boolean);
   const profiles = uids.length ? await tx.getAll(...uids.map(u => db.doc(`users/${u}`))) : [];
   const ranked = match.mode === 'pvp';
@@ -477,14 +493,18 @@ exports.onMatchFinished = functions.https.onRequest(async (req, res) => {
     const snap = await tx.get(ref);
     if (!snap.exists) return;
     const match = snap.data(), now = Date.now(), uid = String(body.UserId || '');
-    const room = { joins: {}, leaves: {}, closedAtMs: 0, ...(match.room || {}) };
-    if (type === 'join' && (uid === match.hostUid || uid === match.guestUid)) room.joins = { ...room.joins, [uid]: now };
-    else if (type === 'leave' && (uid === match.hostUid || uid === match.guestUid))
+    const room = { joins: {}, leaves: {}, log: [], closedAtMs: 0, ...(match.room || {}) };
+    const seat = uid === match.hostUid || uid === match.guestUid;
+    if (type === 'join' && seat) room.joins = { ...room.joins, [uid]: now };
+    else if (type === 'leave' && seat)
       room.leaves = { ...room.leaves, [uid]: { atMs: now, inactive: body.IsInactive === true } };
     else if (type === 'close') room.closedAtMs = now;
     else return;
-    // A walkover the staying phone already claimed is confirmed by this leave. Otherwise the
-    // leave waits: a rejoin inside the reconnect window may still undo it.
+    // The whole join/leave history, not just the latest of each: a late rejoin must not erase
+    // the leave that lost the duel (R.firstGone). Bounded — a duel sees a handful of these.
+    if (seat) room.log = [...(room.log || []), { uid, kind: type, atMs: now, inactive: body.IsInactive === true }].slice(-ROOM_LOG_MAX);
+    // A walkover is settled as soon as someone has reported a count; a leave inside the
+    // reconnect window still waits, since a rejoin may undo it.
     if (match.state === 'started' && !match.receipts) await settleInto(tx, ref, { ...match, room }, false);
     tx.update(ref, { room });
   });

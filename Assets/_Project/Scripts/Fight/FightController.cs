@@ -373,6 +373,8 @@ namespace PushStars.Fight
 
         private void OnApplicationPause(bool paused)
         {
+            // A live duel never pauses: the opponent's minute runs on (FightController.Live).
+            if (_liveLink != null) { if (!_screenPreview) OnLiveApplicationPause(paused); return; }
             // A call or screen lock pauses solo exercise, requiring an explicit resume.
             // Never credit reps while the app and camera are in the background.
             if (!paused || _screenPreview || _hud == null || _paused) return;
@@ -512,7 +514,7 @@ namespace PushStars.Fight
             _clapRepAt = -1f;
             BeginClapImpact();
             _opponent?.Begin();
-            if (_liveLink != null) LiveDuelDiagnostics.Mark("fight:set-begin");
+            if (_liveLink != null) OnLiveSetBegan(lateBy);
             _hud.FlashGo();
         }
 
@@ -540,9 +542,11 @@ namespace PushStars.Fight
             // Live guidance: the timer never pauses (a duel is a duel), but the HUD says loudly
             // why counting stopped so the player can fix it mid-fight.
             var armer = _session.Armer;
+            bool trainingSetDone = _mode == FightMode.Training && _repTimes.Count > 0;
             if (armer != null && !armer.IsArmed)
                 _hud.ShowBanner(armer.State == PlankArmerState.Arming
                     ? $"HOLD A PLANK…  {armer.ArmingProgress01 * 100f:0}%"
+                    : trainingSetDone ? "BACK TO A PLANK — OR STAND UP TO REST"
                     : "RETURN TO A PLANK — COUNT PAUSED", FightHud.BannerTone.Warn);
             else if (_session.WristAnchor.LastVerdict == AnchorVerdict.Airborne)
                 _hud.ShowBanner("COUNT PAUSED — palms on the floor", FightHud.BannerTone.Warn);
@@ -550,7 +554,8 @@ namespace PushStars.Fight
                 _hud.HideBanner();
             if (_liveLink != null && TickLiveConnection()) return;
 
-            if (remain <= 0f) Finish();
+            // A training set ends when the player gets up after it — no reaching for the screen.
+            if (remain <= 0f || (trainingSetDone && _session.StandUp.StoodUp)) Finish();
         }
 
         // ── Finished ─────────────────────────────────────────────────────────────────────────────
@@ -632,8 +637,9 @@ namespace PushStars.Fight
             if (_liveLink != null)
             {
                 // Decided on the count both phones watched live; the server settles the same two
-                // timelines in the background. An opponent who left forfeits.
-                if (_liveWalkover) { win = true; draw = false; }
+                // timelines in the background. Whoever walked out loses, whatever the counts.
+                if (_liveEnd == LiveEnd.OpponentLeft) { win = true; draw = false; }
+                else if (_liveEnd == LiveEnd.Forfeit) { win = false; draw = false; }
             }
             bool ghost = _mode == FightMode.Ghost;
 
@@ -644,7 +650,9 @@ namespace PushStars.Fight
                 Kind = ghost ? AuraFightKind.Duel : AuraFightKind.Boss, Won = win, Draw = draw,
                 MyReps = myReps, OpponentReps = oppReps, AverageForm = AverageForm(), ClapReps = _clapReps,
                 PersonalBestBefore = LocalProfile.BestReps, RatedFightsBefore = LocalProfile.Games,
-                LateDeficit = _lateDeficit, LeagueId = LocalProfile.League.Id
+                LateDeficit = _lateDeficit, LeagueId = LocalProfile.League.Id,
+                // Walking out of a live duel is a RAGE QUIT, priced like the ghost duel's exit.
+                Quit = _liveLink != null && _liveEnd == LiveEnd.Forfeit
             };
             if (!ghost)
             {
@@ -692,7 +700,7 @@ namespace PushStars.Fight
                 if (_rankedReceipt != null && _mode == FightMode.Ghost)
                 { data.Win = _rankedReceipt.won; data.Draw = _rankedReceipt.draw; }
             }
-            else if (_liveLink != null) data.LeagueStatus = LiveStatus();
+            else if (_liveLink != null) { data.LeagueStatus = LiveStatus(); data.EarlyEnd = LiveEarlyEnd(); }
             else if (data.Mode == FightMode.Ghost || data.Mode == FightMode.LevelTest)
                 data.LeagueStatus = "LOCAL RESULT · PLAY FROM LEAGUE TO RANK";
             // Eligibility is settled once here. Presentation never rolls or grants another case.
@@ -712,7 +720,8 @@ namespace PushStars.Fight
                         auraLines.Add(new AuraMoment("WELCOME AURA", aura));
                     }
                 }
-                else
+                // Walking out of a live duel does not earn the day's case; the next real fight does.
+                else if (!(_liveLink != null && _liveEnd == LiveEnd.Forfeit))
                     CaseRewards.TryAwardDailyWorkoutCase(_rewardSessionId, data.MyReps, out awarded);
             }
             catch (System.Exception exception)
@@ -721,18 +730,15 @@ namespace PushStars.Fight
                 // has already been recorded. Keep the inventory intact and show that result.
                 Debug.LogException(exception, this);
             }
-            if (data.Mode != FightMode.Training)
+            try
             {
-                try
-                {
-                    // Fight moments, then any level/league Aura not yet paid, in one save.
-                    var settled = AuraSettlement.Settle(_rewardSessionId, _auraMoments, LocalProfile.Xp, LocalProfile.Trophies,
-                        LocalProfile.TodayGoal, LocalProfile.DailyStreak);
-                    aura += settled.Change;
-                    auraLines.AddRange(settled.Moments);
-                }
-                catch (System.Exception exception) { Debug.LogException(exception, this); }
+                // Fight (or workout) moments, then any level/league Aura not yet paid, in one save.
+                var settled = AuraSettlement.Settle(_rewardSessionId, _auraMoments, LocalProfile.Xp, LocalProfile.Trophies,
+                    LocalProfile.TodayGoal, LocalProfile.DailyStreak);
+                aura += settled.Change;
+                auraLines.AddRange(settled.Moments);
             }
+            catch (System.Exception exception) { Debug.LogException(exception, this); }
             var receipt = LocalProfile.FindWorkout(_rewardSessionId);
             var summary = new FightRewardFlow.Summary
             {
@@ -768,31 +774,41 @@ namespace PushStars.Fight
 
         private void ExitToCaller()
         {
+            // A live set asks first: walking out of it is a defeat (FightController.Live).
+            if (ConfirmLiveExit()) return;
+
             // Leaving a level test that was offered as skippable accepts the zero, so the router
             // stops sending the player back into a measurement their device cannot take. Leaving
             // one that simply hasn't started yet changes nothing — they get it again next launch.
             if (_skipOffered && _mode == FightMode.LevelTest)
                 OnboardingState.CompleteLevelTest(0);
 
-            // Walking out of a live duel is a RAGE QUIT: the one Aura minus that is never waived
-            // for effort (the rookie shield still applies). Bosses never cost Aura.
+            // Walking out of a ghost duel is a RAGE QUIT: the one Aura minus that is never waived
+            // for effort (the rookie shield still applies). Bosses never cost Aura. A live duel
+            // charges it through its forfeit, with the defeat.
             if (_mode == FightMode.Ghost && _phase == Phase.Live && !FightRequest.IsBotTest && _liveLink == null)
-            {
-                try
-                {
-                    var quit = AuraCalculator.ForFight(new AuraFightInput
-                    {
-                        Kind = AuraFightKind.Duel, Quit = true,
-                        RatedFightsBefore = LocalProfile.Games, LeagueId = LocalProfile.League.Id
-                    });
-                    long change = CaseRewards.ApplyAura(new[] {
-                        new AuraGrant(AuraSettlement.FightReceipt(_rewardSessionId), AuraCalculator.Total(quit)) }).Change;
-                    HomeRewardFlight.QueueAuraLoss(-change);
-                }
-                catch (System.Exception exception) { Debug.LogException(exception, this); }
-            }
+                ChargeRageQuit(_rewardSessionId);
 
+            if (_liveSearchAgain) FightRequest.SearchAgainOnReturn();
             FightScreenNavigation.ReturnTo(FightRequest.ReturnScene);
+        }
+
+        /// <summary>The RAGE QUIT Aura minus for the fight <paramref name="sessionId"/>, shown on
+        /// the home screen's pill. Idempotent: the fight's Aura receipt is spent once.</summary>
+        internal static void ChargeRageQuit(string sessionId)
+        {
+            try
+            {
+                var quit = AuraCalculator.ForFight(new AuraFightInput
+                {
+                    Kind = AuraFightKind.Duel, Quit = true,
+                    RatedFightsBefore = LocalProfile.Games, LeagueId = LocalProfile.League.Id
+                });
+                long change = CaseRewards.ApplyAura(new[] {
+                    new AuraGrant(AuraSettlement.FightReceipt(sessionId), AuraCalculator.Total(quit)) }).Change;
+                HomeRewardFlight.QueueAuraLoss(-change);
+            }
+            catch (System.Exception exception) { Debug.LogException(exception); }
         }
 
         /// <summary>Same wording the on-device debug HUD converged on (phase 08.1).</summary>

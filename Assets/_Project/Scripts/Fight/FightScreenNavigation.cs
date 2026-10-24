@@ -18,6 +18,9 @@ namespace PushStars.Fight
         public long Xp;
         public string OpponentName, PlayerName;
         public string LeagueStatus;
+        /// <summary>Why a live duel ended before the bell ("OPPONENT LEFT", "CONNECTION LOST"…),
+        /// shown under the score; empty when the duel ran its minute.</summary>
+        public string EarlyEnd;
         public FitnessTier FitnessTier;
         public int TrainingSets;
     }

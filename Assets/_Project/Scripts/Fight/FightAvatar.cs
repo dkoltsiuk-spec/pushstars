@@ -218,7 +218,7 @@ namespace PushStars.Fight
             AvatarWideCamera.Configure(_stageCamera, preparation);
             if (_stageCamera != null)
                 AvatarWideImage.Configure(_stageCamera.GetComponentInParent<CharacterStage>()?.TargetImage, _stageCamera);
-            // A completed training set may have forced the seated rest pose. Any later return to
+            // A completed training set may have forced the between-sets breathing idle. Any later return to
             // a preparation/result card must release that override before showing StandIdle.
             if (_driverBehaviour is PushupAvatarDriver pushupDriver)
                 pushupDriver.SetRestPresentation(false);
@@ -265,9 +265,9 @@ namespace PushStars.Fight
             }
         }
 
-        /// <summary>Shows the seated rest pose during the training pause between sets. This is
-        /// separate from preparation: the latter is a standing card state, while rest is a
-        /// deliberate seated presentation and must remain active while the session is disabled.</summary>
+        /// <summary>Shows the standing breathing idle during the training pause between sets. This is
+        /// separate from preparation: the latter is the standing idle card state, while rest is a
+        /// deliberate presentation and must remain active while the session is disabled.</summary>
         public void SetRestPresentation(bool resting)
         {
             if (_driverBehaviour is PushupAvatarDriver pushupDriver)
@@ -277,7 +277,8 @@ namespace PushStars.Fight
             }
 
             if (!resting || _animator == null) return;
-            int rest = Animator.StringToHash("SittingIdle");
+            int rest = Animator.StringToHash("RestBreathing");
+            if (!_animator.HasState(0, rest)) rest = Animator.StringToHash("SittingIdle");
             if (_animator.HasState(0, rest))
             {
                 _animator.enabled = true;
@@ -572,7 +573,7 @@ namespace PushStars.Fight
                 recorder.Bind(_animator, FindObjectsByType<FightController>(FindObjectsSortMode.None)
                     .FirstOrDefault(f => f.gameObject.scene == gameObject.scene));
             }
-            else if (FightRequest.TestBot != null)
+            else if ((FightRequest.TestBot ?? FightRequest.StrangerBot) != null)
                 GhostPosePlayback.Attach(_animator, FindObjectsByType<GhostOpponent>(FindObjectsSortMode.None)
                     .FirstOrDefault(g => g.gameObject.scene == gameObject.scene));
             _recordedPose = _animator.GetComponent<GhostPosePlayback>();

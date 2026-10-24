@@ -25,6 +25,11 @@ const TEXT = {
     ru: { title: 'Соперник найден! ⚔️', body: '{name} ждёт дуэль. Заходи в течение 30 секунд!' },
     'pt-BR': { title: 'Oponente encontrado! ⚔️', body: '{name} está esperando um duelo. Entre em até 30 segundos!' },
   },
+  friend: {
+    en: { title: 'Duel invite! ⚔️', body: '{name} calls you to a push-up duel. Tap to join!' },
+    ru: { title: 'Вызов на дуэль! ⚔️', body: '{name} зовёт тебя на дуэль в отжиманиях. Жми, чтобы принять!' },
+    'pt-BR': { title: 'Convite para duelo! ⚔️', body: '{name} te chamou para um duelo de flexões. Toque para entrar!' },
+  },
 };
 
 exports.registerPushToken = functions.https.onCall(async (data, context) => {
@@ -40,8 +45,10 @@ exports.registerPushToken = functions.https.onCall(async (data, context) => {
 
 // The message as both platforms want it: shown in the tray / on the lock screen, gone after a
 // minute (a late "they are waiting" is a lie), one at a time (collapse / tag).
-function message(token, lang, kind, vars, now) {
-  const copy = (TEXT[kind] || TEXT.queue)[lang] || TEXT.queue.en;
+// ttlSec: how long the call stays true (a friend's invitation lives as long as its code).
+function message(token, lang, kind, vars, now, ttlSec = C.PUSH_CALL_TTL_SEC) {
+  const texts = TEXT[kind] || TEXT.queue;
+  const copy = texts[lang] || texts.en;
   const fill = s => s.replace(/\{(\w+)\}/g, (_, k) => String(vars[k] ?? ''));
   return {
     token,
@@ -49,11 +56,11 @@ function message(token, lang, kind, vars, now) {
     // `at` lets the phone tell this call from the same one seen through its queue place.
     data: { kind, at: String(now), name: String(vars.name ?? '') },
     android: {
-      priority: 'high', ttl: C.PUSH_CALL_TTL_SEC * 1000,
+      priority: 'high', ttl: ttlSec * 1000,
       notification: { channelId: 'duels', icon: 'icon_small', sound: 'default', tag: kind },
     },
     apns: {
-      headers: { 'apns-priority': '10', 'apns-expiration': String(Math.floor(now / 1000) + C.PUSH_CALL_TTL_SEC),
+      headers: { 'apns-priority': '10', 'apns-expiration': String(Math.floor(now / 1000) + ttlSec),
         'apns-collapse-id': kind },
       payload: { aps: { sound: 'default' }, data: kind },
     },
@@ -87,5 +94,24 @@ async function callPlayer(uid, kind, vars, now = Date.now()) {
   }
 }
 
+// A friend's personal call (friends.js inviteFriend): not from the stranger-call budget — the
+// caller is rate-limited per friend instead. False when the friend has no token.
+async function sendToFriend(uid, vars, ttlSec, now = Date.now()) {
+  const snap = await tokenRef(uid).get();
+  const t = snap.exists ? snap.data() : null;
+  if (!t || !t.token) return false;
+  try {
+    await admin.messaging().send(message(t.token, t.lang, 'friend', vars, now, ttlSec));
+    return true;
+  } catch (e) {
+    const code = e?.errorInfo?.code || e?.code || '';
+    if (code === 'messaging/registration-token-not-registered' || code === 'messaging/invalid-registration-token')
+      await tokenRef(uid).delete().catch(() => {});
+    else functions.logger.warn(`friend push to ${uid} failed: ${code || e?.message}`);
+    return false;
+  }
+}
+
 exports.callPlayer = callPlayer;
+exports.sendToFriend = sendToFriend;
 exports.message = message;

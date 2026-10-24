@@ -78,6 +78,7 @@ namespace PushStars.Fight
             SetGroup(_wash, 0); SetGroup(_coachGroup, 0); SetGroup(_bubble, 0);
             SetGroup(_assessmentBackground, 0); SetGroup(_assessmentHud, 0);
             _stepLabel.gameObject.SetActive(false);
+            _placement.GetComponentInChildren<PlacementTutorialVideo>(true)?.Preload(gameObject);
         }
 
         private void Start()

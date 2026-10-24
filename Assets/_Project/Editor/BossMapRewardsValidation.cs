@@ -101,12 +101,12 @@ namespace PushStars.Editor
 
             string json = null;
             var ledger = new CaseRewardLedger(null, () => .5, s => json = s);
-            Require(ledger.TryCreditGems(forest.GemReceipt, forest.GemReward) && ledger.GemsBalance == 50, "Gem islet pays");
-            Require(!ledger.TryCreditGems(forest.GemReceipt, forest.GemReward) && ledger.GemsBalance == 50, "Gem islet pays once");
+            Require(ledger.TryCreditGems(forest.GemReceipt, forest.GemReward) && ledger.GemsBalance == forest.GemReward, "Gem islet pays");
+            Require(!ledger.TryCreditGems(forest.GemReceipt, forest.GemReward) && ledger.GemsBalance == forest.GemReward, "Gem islet pays once");
             Require(ledger.TryGrantCase(forest.ChestReceipt) && ledger.HasCaseReceipt(forest.ChestReceipt) &&
                     !ledger.TryGrantCase(forest.ChestReceipt) && ledger.PendingCount == 1, "Chest grants one case");
             var reloaded = new CaseRewardLedger(json, () => .5, s => json = s);
-            Require(reloaded.HasGemReceipt(forest.GemReceipt) && reloaded.GemsBalance == 50 && reloaded.HasCaseReceipt(forest.ChestReceipt),
+            Require(reloaded.HasGemReceipt(forest.GemReceipt) && reloaded.GemsBalance == forest.GemReward && reloaded.HasCaseReceipt(forest.ChestReceipt),
                 "Receipts survive restart");
             var legacy = new CaseRewardLedger("{\"version\":5,\"gems\":7,\"aura\":0,\"auraReceipts\":[],\"avatars\":[],\"awardedWorkouts\":[],\"cases\":[],\"processedWorkoutIds\":[]}",
                 () => .5, s => json = s);
@@ -171,6 +171,9 @@ namespace PushStars.Editor
                 Require(Y(c.Nodes[12].Button) < Y(lavaGems.Button) && Y(lavaGems.Button) < Y(c.Nodes[13].Button), "Lava gems sit between golems 3 and 4");
                 Require(Y(c.Nodes[15].Button) < Y(lavaChest.Button) && Y(iceChest.Button) < Y(c.Nodes[10].Button), "Lava sits above ice, its chest above the volcano king");
                 Require(c.ExtraPlates.Length == 1 && c.ExtraPlates[0].Plate && c.ExtraPlates[0].Face, "Sixth home plate for the lava island");
+                Require(new[] { gems, iceGems, lavaGems }.All(r => r.Icon.sprite != null && r.Icon.sprite.name == "Gems" && r.Amount != null &&
+                        r.Amount.transform.IsChildOf(r.Icon.transform) && r.Amount.text == "x" + BossCatalog.FindChapter(r.ChapterId).GemReward),
+                    "Every gem islet shows a pile labelled with its amount");
 
                 // Collected states depend on the player's wallet; this render shows whatever it holds.
                 SetMap(c, true);

@@ -40,6 +40,9 @@ namespace PushStars.Core
         /// the player's own ghost.</summary>
         public static GhostRecord Stranger { get; private set; }
         public static string StrangerName { get; private set; }
+        /// <summary>The stranger is a bot from the pool: its hero, flag, trophies and recorded
+        /// motion stand in for a player's. Fought for real — rewards and rating as any stranger.</summary>
+        public static BotRecording StrangerBot { get; private set; }
         // Snapshot the chosen boss: winning advances the ladder before the result scene opens.
         public static string BossId { get; private set; }
 
@@ -54,6 +57,7 @@ namespace PushStars.Core
             IsRankedLive = false;
             Stranger = null;
             StrangerName = null;
+            StrangerBot = null;
             BossId = null;
             Mode = FightMode.Ghost;
             ReturnScene = FightConfig.MainSceneName;
@@ -102,6 +106,14 @@ namespace PushStars.Core
             ArenaMatch.BeginLocal(ArenaProfile.SelectedId, ArenaProfile.SelectedId);
         }
 
+        /// <summary>A bot from the pool, offered by the search as a player at this level.</summary>
+        public static void PoolBot(BotRecording bot, string returnScene = FightConfig.MainSceneName)
+        {
+            if (bot == null || !bot.IsValid) throw new System.ArgumentException("Invalid pool bot.");
+            StrangerGhost(bot.fight, bot.displayName, returnScene);
+            StrangerBot = bot;
+        }
+
         /// <param name="ranked">A stranger from the random queue (trophies) rather than a friend.</param>
         public static void Live(LiveDuelLink link, bool ranked = false)
         {
@@ -113,12 +125,22 @@ namespace PushStars.Core
             ArenaMatch.BeginLocal(ArenaProfile.SelectedId, ArenaProfile.SelectedId);
         }
 
+        /// <summary>A queue duel was called off before its set (the stranger walked away): the main
+        /// screen reopens the search on arrival, since the player came to fight someone.</summary>
+        public static void SearchAgainOnReturn() => _searchAgain = true;
+        public static bool ConsumeSearchAgain() { bool again = _searchAgain; _searchAgain = false; return again; }
+        // Not part of Clear(): the way home clears the request, and this is what home reads.
+        private static bool _searchAgain;
+        [UnityEngine.RuntimeInitializeOnLoadMethod(UnityEngine.RuntimeInitializeLoadType.SubsystemRegistration)]
+        private static void ResetSearchAgain() => _searchAgain = false;
+
         /// <summary>The hero and body the opponent's stage should build, when the opponent is a
-        /// person (a test bot or a live friend) rather than the player's own shadow.</summary>
+        /// person (a test bot, a pool bot or a live friend) rather than the player's own shadow.</summary>
         public static bool TryGetOpponentLook(out int hero, out int gender)
         {
             hero = gender = 0;
-            if (TestBot != null) { hero = TestBot.avatar; gender = TestBot.gender; return true; }
+            var bot = TestBot ?? StrangerBot;
+            if (bot != null) { hero = bot.avatar; gender = bot.gender; return true; }
             var peer = LiveDuel?.Peer;
             if (peer == null) return false;
             hero = peer.Hero; gender = peer.Gender;
@@ -133,6 +155,7 @@ namespace PushStars.Core
             IsRankedLive = false;
             Stranger = null;
             StrangerName = null;
+            StrangerBot = null;
             ArenaMatch.Clear();
             if (mode == FightMode.Ghost) ArenaMatch.BeginLocal(ArenaProfile.SelectedId, GhostStore.Load()?.arenaId);
             HasRequest = true;

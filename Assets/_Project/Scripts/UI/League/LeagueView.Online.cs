@@ -91,10 +91,17 @@ namespace PushStars.UI
                 string chosenName = ProfileIdentityEditor.PlayerName();
                 if (!more && _archive == "" && chosenName.Length >= 2 && chosenName.Length <= 20 && page.own?.displayName != chosenName)
                 {
-                    await LeagueClient.SyncDisplayName(chosenName);
+                    // The table is already here: a name that fails to sync (refused, offline) must
+                    // not take it down with it. The old name shows until a later load gets through.
+                    bool renamed = false;
+                    try { await LeagueClient.SyncDisplayName(chosenName); renamed = true; }
+                    catch (Exception e) { Debug.LogWarning("[League] Name not synced: " + e.Message); }
                     if (this == null || !isActiveAndEnabled || version != _generation) return;
-                    page = await LeagueClient.GetPage("", requestedSeason, requestedLeague, true);
-                    if (this == null || !isActiveAndEnabled || version != _generation) return;
+                    if (renamed)
+                    {
+                        page = await LeagueClient.GetPage("", requestedSeason, requestedLeague, true);
+                        if (this == null || !isActiveAndEnabled || version != _generation) return;
+                    }
                 }
                 if (!more || _cloud == null || _cloud.season.id != page.season.id || _cloud.league != page.league) _players.Clear();
                 ApplyStandings(page);

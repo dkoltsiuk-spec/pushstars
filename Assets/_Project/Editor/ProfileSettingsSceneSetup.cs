@@ -240,10 +240,10 @@ namespace PushStars.Editor
             actions.Language = Button(art, "Language", S("Group 543"), "ENGLISH", 270, 413 + below, 100, 40, 13);
             actions.LanguageLabel = actions.Language.GetComponentInChildren<TextMeshProUGUI>();
             ProfileSettingsActions.FitSlantPlate(actions.Language.image, 40);
-            actions.Privacy = Button(art, "Privacy", S("Group 542"), "Privacy\nPolicy", 24, 477 + below, 105, 56, 15);
-            actions.Support = Button(art, "Support", S("Group 542"), "Support", 147, 477 + below, 105, 56, 15);
-            var delete = Button(art, "DeleteAccount", null, "<u>Delete account</u>", 24, 551 + below, 147, 29, 15);
-            delete.image.color = Color.clear;
+            actions.Privacy = Button(art, "Privacy", null, "Privacy Policy", 0, 0, FooterSize.x, FooterSize.y, 14);
+            actions.Support = Button(art, "Support", null, "Support", 0, 0, FooterSize.x, FooterSize.y, 14);
+            var delete = Button(art, "DeleteAccount", null, "Delete account", 0, 0, FooterSize.x, FooterSize.y, 14);
+            StyleFooter(actions, delete);
             var version = Text(art, "Version", "v" + Application.version, 24, 604 + below, 180, 20, 11, false, Muted);
             var noticePanel = Panel(safe, "Notice", new Color32(12,26,65,250), 0, 0, 330, 66);
             actions.Notice = Text(noticePanel.transform, "Message", "", 10, 6, 310, 54, 14, false);
@@ -280,6 +280,67 @@ namespace PushStars.Editor
             Set(so, "_deleteButton", delete); Set(so, "_confirmDialog", confirm.gameObject);
             Set(so, "_confirmYesButton", yes); Set(so, "_confirmNoButton", no);
             so.ApplyModifiedProperties();
+        }
+
+        private static readonly Vector2 FooterSize = new Vector2(170, 44);
+
+        /// <summary>Privacy, Support and Delete account as one family: the slanted blue plate of
+        /// LANGUAGE, SIGN OUT and CANCEL, one size, one caps label. Privacy and Support share a row,
+        /// Delete account sits under Privacy. Works on a fresh build and on the authored scene.</summary>
+        private static void StyleFooter(ProfileSettingsActions actions, Button delete)
+        {
+            const float top = 477 + 2 * RowStep;
+            var source = actions.Language.GetComponentInChildren<TextMeshProUGUI>(true);
+            Footer(actions.Privacy, actions.Language.image.sprite, source, "Privacy Policy", 20, top);
+            Footer(actions.Support, actions.Language.image.sprite, source, "Support", 200, top);
+            Footer(delete, actions.Language.image.sprite, source, "Delete account", 20, top + FooterSize.y + 10);
+        }
+
+        private static void Footer(Button button, Sprite plate, TextMeshProUGUI source, string text, float x, float y)
+        {
+            var rect = (RectTransform)button.transform;
+            rect.anchorMin = rect.anchorMax = rect.pivot = new Vector2(0, 1);
+            rect.anchoredPosition = new Vector2(x, -y); rect.sizeDelta = FooterSize;
+            var image = button.image;
+            image.sprite = plate; image.color = Color.white; image.raycastTarget = true;
+            ProfileSettingsActions.FitSlantPlate(image, FooterSize.y);
+            button.transition = Selectable.Transition.ColorTint;
+            var label = button.GetComponentInChildren<TextMeshProUGUI>(true);
+            label.text = text;
+            label.font = source.font; label.fontSharedMaterial = source.fontSharedMaterial; label.color = source.color;
+            label.fontStyle = source.fontStyle | FontStyles.UpperCase;
+            label.alignment = TextAlignmentOptions.Center; label.textWrappingMode = TextWrappingModes.Normal;
+            label.enableAutoSizing = true; label.fontSizeMin = 9; label.fontSizeMax = 13;
+            var labelRect = label.rectTransform;
+            labelRect.anchorMin = Vector2.zero; labelRect.anchorMax = Vector2.one; labelRect.pivot = new Vector2(.5f, .5f);
+            labelRect.offsetMin = new Vector2(12, 4); labelRect.offsetMax = new Vector2(-12, -4);
+            EditorUtility.SetDirty(image); EditorUtility.SetDirty(label); EditorUtility.SetDirty(rect);
+        }
+
+        /// <summary>Restyles the footer buttons of the authored Main scene in place and saves it.</summary>
+        [MenuItem("Push Stars/UI/Restyle Settings Footer Buttons")]
+        public static void RestyleFooter()
+        {
+            if (EditorApplication.isPlayingOrWillChangePlaymode) throw new InvalidOperationException("Exit Play Mode first.");
+            var scene = SceneManager.GetActiveScene();
+            if (scene.path != "Assets/_Project/Scenes/Main.unity") throw new InvalidOperationException("Open the Main scene first.");
+            var settings = Find<SettingsScreen>(scene);
+            var actions = Find<ProfileSettingsActions>(scene);
+            var delete = settings != null ? new SerializedObject(settings).FindProperty("_deleteButton").objectReferenceValue as Button : null;
+            if (actions == null || actions.Privacy == null || actions.Support == null || delete == null)
+                throw new InvalidOperationException("Settings are not authored yet. Run Build Profile and Settings.");
+            Undo.SetCurrentGroupName("Restyle settings footer");
+            foreach (var b in new[] { actions.Privacy, actions.Support, delete })
+            {
+                Undo.RecordObject(b.transform, "Restyle settings footer");
+                Undo.RecordObject(b.image, "Restyle settings footer");
+                var label = b.GetComponentInChildren<TextMeshProUGUI>(true);
+                Undo.RecordObject(label, "Restyle settings footer");
+                Undo.RecordObject(label.rectTransform, "Restyle settings footer");
+            }
+            StyleFooter(actions, delete);
+            EditorSceneManager.MarkSceneDirty(scene);
+            EditorSceneManager.SaveScene(scene);
         }
 
         // Rows added 2026-10-18 under Notifications: Aura effect, then the analytics opt-out.

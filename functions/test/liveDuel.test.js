@@ -207,8 +207,9 @@ test('a walkover claim without Photon evidence waits for the opponent, then the 
   try {
     const { matchId } = await startedDuel(f);
     f.advance(4000 + 40000);
-    // Bob left after rejoining once: the rejoin cancels the earlier leave.
-    await f.hook({ Type: 'Leave', GameId: `pd_${matchId}`, UserId: 'bob' });
+    // Bob dropped and was back inside the reconnect window: the rejoin cancels the leave.
+    await f.hook({ Type: 'Leave', GameId: `pd_${matchId}`, UserId: 'bob', IsInactive: true });
+    f.advance(4000);
     await f.hook({ Type: 'Join', GameId: `pd_${matchId}`, UserId: 'bob' });
     assert.deepEqual(await finish(f, 'alice', matchId, 15, { durationSec: 40, opponentLeft: true, opponentReps: 14 }), { state: 'pending' });
     f.advance(200000);
@@ -227,6 +228,90 @@ test('both phones partitioned from each other: whoever did more reps wins, no wa
     await finish(f, 'alice', matchId, 14, { durationSec: 35, opponentLeft: true, opponentReps: 9 });
     const bob = await finish(f, 'bob', matchId, 16, { durationSec: 35, opponentLeft: true, opponentReps: 10 });
     assert.equal(bob.won, true); assert.equal(bob.walkover, false); assert.equal(bob.opponentReps, 14);
+  } finally { f.restore(); }
+});
+
+test('a player who forfeits loses at once, before the minute and whatever the counts', async () => {
+  const f = fixture();
+  try {
+    const { matchId } = await startedDuel(f, 'pvp');
+    f.advance(4000 + 20000);
+    const bob = await finish(f, 'bob', matchId, 18, { durationSec: 20, forfeit: true, opponentReps: 6 });
+    assert.equal(bob.state, 'settled'); assert.equal(bob.won, false); assert.equal(bob.walkover, true);
+    assert.equal(bob.reason, 'left'); assert.equal(bob.trophyDelta, 0, 'never below zero');
+    const alice = await finish(f, 'alice', matchId, 7, { durationSec: 21, opponentLeft: true, opponentReps: 18 });
+    assert.equal(alice.won, true); assert.equal(alice.reason, 'opponent-left'); assert.equal(alice.trophyDelta, 25);
+    assert.deepEqual(f.docs.get(`liveDuels/${matchId}`).flags, ['forfeit']);
+  } finally { f.restore(); }
+});
+
+test('a rejoin after the reconnect window does not undo the walkover', async () => {
+  const f = fixture();
+  try {
+    const { matchId } = await startedDuel(f);
+    f.advance(4000 + 20000);
+    await f.hook({ Type: 'TimeoutDisconnect', GameId: `pd_${matchId}`, UserId: 'bob', IsInactive: true }, undefined, '/leave');
+    f.advance(15000);
+    await f.hook({ Type: 'Join', GameId: `pd_${matchId}`, UserId: 'bob' }, undefined, '/join');
+    // Both phones now think the other left; Photon's log says who went first.
+    f.advance(10000);
+    await finish(f, 'bob', matchId, 20, { durationSec: 45, opponentLeft: true, opponentReps: 5 });
+    const alice = await finish(f, 'alice', matchId, 8, { durationSec: 33, opponentLeft: true, opponentReps: 14 });
+    assert.equal(alice.won, true); assert.equal(alice.walkover, true);
+  } finally { f.restore(); }
+});
+
+test('the stayer who gave up waiting a little before Photon timed the window still wins', async () => {
+  const f = fixture();
+  try {
+    const { matchId } = await startedDuel(f);
+    f.advance(4000 + 20000);
+    await f.hook({ Type: 'TimeoutDisconnect', GameId: `pd_${matchId}`, UserId: 'bob', IsInactive: true }, undefined, '/leave');
+    f.advance(6000);   // alice's phone heard nothing for 13 s and ended the set
+    await f.hook({ Type: 'LeaveRequest', GameId: `pd_${matchId}`, UserId: 'alice', IsInactive: false }, undefined, '/leave');
+    f.advance(2000);
+    await f.hook({ Type: 'Join', GameId: `pd_${matchId}`, UserId: 'bob' }, undefined, '/join');
+    const alice = await finish(f, 'alice', matchId, 8, { durationSec: 26, opponentLeft: true, opponentReps: 10 });
+    assert.equal(alice.state, 'settled'); assert.equal(alice.won, true); assert.equal(alice.walkover, true);
+  } finally { f.restore(); }
+});
+
+test('both dropping together and back inside the window is no walkover', async () => {
+  const f = fixture();
+  try {
+    const { matchId } = await startedDuel(f);
+    f.advance(4000 + 20000);
+    for (const uid of ['alice', 'bob']) await f.hook({ Type: 'TimeoutDisconnect', GameId: `pd_${matchId}`, UserId: uid, IsInactive: true }, undefined, '/leave');
+    f.advance(5000);
+    for (const uid of ['alice', 'bob']) await f.hook({ Type: 'Join', GameId: `pd_${matchId}`, UserId: uid }, undefined, '/join');
+    f.advance(40000);
+    await finish(f, 'alice', matchId, 30, { opponentReps: 28 });
+    const bob = await finish(f, 'bob', matchId, 28, { opponentReps: 30 });
+    assert.equal(bob.won, false); assert.equal(bob.walkover, false);
+  } finally { f.restore(); }
+});
+
+test('a friend who left during the countdown calls the duel off; claiming that after walking out does not', async () => {
+  const f = fixture();
+  try {
+    const first = await startedDuel(f, 'pvp');
+    f.advance(2000);
+    await f.hook({ Type: 'LeaveRequest', GameId: `pd_${first.matchId}`, UserId: 'bob', IsInactive: false }, undefined, '/leave');
+    f.advance(12000);
+    const alice = await finish(f, 'alice', first.matchId, 0, { durationSec: 1, aborted: true });
+    assert.equal(alice.state, 'settled'); assert.equal(alice.draw, true); assert.equal(alice.trophyDelta, 0);
+    assert.equal(alice.reason, 'left-before-start');
+    assert.equal(f.docs.get(`liveDuels/${first.matchId}`).state, 'abandoned');
+
+    const f2 = fixture();
+    try {
+      const { matchId } = await startedDuel(f2, 'pvp');
+      f2.advance(4000 + 25000);
+      await f2.hook({ Type: 'LeaveRequest', GameId: `pd_${matchId}`, UserId: 'bob', IsInactive: false }, undefined, '/leave');
+      f2.advance(3000);
+      const bob = await finish(f2, 'bob', matchId, 20, { durationSec: 28, aborted: true });
+      assert.equal(bob.won, false); assert.equal(bob.walkover, true);
+    } finally { f2.restore(); }
   } finally { f.restore(); }
 });
 

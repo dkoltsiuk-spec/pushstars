@@ -266,7 +266,13 @@ namespace PushStars.Services
                 if (response?.error != null && !(string.IsNullOrEmpty(response.error.status) && string.IsNullOrEmpty(response.error.message)))
                     throw new LeagueCallException(response.error.status, response.error.message ?? response.error.status);
                 if (request.result != UnityWebRequest.Result.Success || response?.result == null)
+                {
+                    // Says which of the two it was: no answer, or an answer that did not parse.
+                    string body = request.downloadHandler.text ?? "";
+                    Debug.LogWarning($"[League] {method}: {request.result} HTTP {request.responseCode} {request.error} " +
+                                     $"body={body.Substring(0, Math.Min(300, body.Length))}");
                     throw new InvalidOperationException("League connection unavailable. Please retry.");
+                }
                 return response.result;
             }
         }

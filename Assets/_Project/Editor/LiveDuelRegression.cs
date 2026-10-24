@@ -39,7 +39,7 @@ namespace PushStars.Editor
             Directory.CreateDirectory("Logs");
             File.WriteAllText("Logs/live-duel-regression.txt",
                 "PASS: pose codec, protocol validation, lobby + ready + shared start, score/pose streams, " +
-                "reconnect inside the window, forfeit past it, deliberate exit, leaving after the bell, version mismatch, LiveOpponent feed, " +
+                "reconnect inside the window, forfeit past it, the dropped phone cut off (and back to an empty room), background trips short and long, deliberate exit, leaving after the bell, version mismatch, LiveOpponent feed, " +
                 "queue: two searches meet live, lone search -> stranger ghost, absent stranger, exit, lost poll, offline, " +
                 "open-ended search with a level offer, slower polls, calls, standby leave.\n");
             Debug.Log("[LiveDuelRegression] PASS");
@@ -200,6 +200,40 @@ namespace PushStars.Editor
             p.GuestNet.SetConnected(false);
             p.Step(LiveDuelLink.PeerGraceSec + .5f);
             Require(p.Host.PeerGone, "Friend away past the reconnect window is not gone.");
+
+            // The phone that dropped reaches the same verdict from its side: cut off, the duel lost —
+            // and an empty room on its return does not read as the friend having left.
+            var cut = NewPair();
+            cut.Step(.5f);
+            cut.GuestNet.SetConnected(false);
+            cut.Step(LiveDuelLink.SilenceSec + LiveDuelLink.PeerGraceSec - 1f);
+            Require(!cut.Guest.CutOff && cut.Guest.CutOffInSec > 0f && !cut.Guest.PeerGone, "Dropped phone gave up before the friend could.");
+            Require(cut.Host.PeerGone && !cut.Host.CutOff, "The friend who stayed did not win.");
+            cut.Step(1.2f);
+            Require(cut.Guest.CutOff && !cut.Guest.PeerGone, "Dropped phone not cut off past the friend's wait.");
+            cut.Host.Finish(10); cut.Host.Leave();
+            cut.GuestNet.SetConnected(true);
+            cut.Step(LiveDuelLink.PeerGraceSec + 1f);
+            Require(cut.Guest.CutOff && !cut.Guest.PeerGone, "Back in an empty room, the dropped phone claimed the walkover.");
+
+            // The app in the background: the socket may not notice, the friend does. Back too late,
+            // this phone never claims the friend left (the fight screen books its own forfeit).
+            var away = NewPair();
+            away.Step(.5f);
+            away.Guest.MarkAway(away.Now);
+            for (int i = 0; i < Mathf.CeilToInt((LiveDuelLink.SilenceSec + LiveDuelLink.PeerGraceSec + .5f) / Frame); i++)
+            { away.Now += Frame; away.HostNet.AdvanceClock(Mathf.RoundToInt(Frame * 1000)); away.Host.Tick(away.Now); }
+            away.GuestNet.SetConnected(false);   // the socket died in the background: what piled up is lost
+            away.Guest.Tick(away.Now);
+            Require(away.Host.PeerGone && away.Guest.CutOff && !away.Guest.PeerGone, "Back from the background too late, not judged as gone.");
+
+            // A short trip to the background and back: nothing happens.
+            var brief = NewPair();
+            brief.Step(.5f);
+            brief.Guest.MarkAway(brief.Now);
+            for (int i = 0; i < 60; i++) { brief.Now += Frame; brief.Host.Tick(brief.Now); }
+            brief.Step(.5f);
+            Require(!brief.Guest.CutOff && brief.Guest.CutOffInSec == 0f && !brief.Host.PeerGone, "A short trip to the background was punished.");
 
             // A frozen phone (in the room, silent) is away too.
             var frozen = NewPair();

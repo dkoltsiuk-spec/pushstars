@@ -196,6 +196,19 @@ namespace PushStars.Core
 
         public static bool TryClaim(string caseId, out int gems) => Ledger.TryClaim(caseId, out gems);
 
+        /// <summary>
+        /// The level a scripted case climbs to, or null for an ordinary one that rolls every tap.
+        /// The welcome case goes to legendary; an island chest to its island's level (forest 2,
+        /// ice 3, lava 4). Taps land until that level and then stop, so it opens at exactly it.
+        /// </summary>
+        public static CaseRarity? ScriptedRarity(string caseId)
+        {
+            if (caseId == AssessmentReceipt) return CaseRarity.Legendary;
+            foreach (var chapter in BossCatalog.Chapters)
+                if (chapter.ChestReceipt == caseId) return chapter.ChestRarity;
+            return null;
+        }
+
         public static double UpgradeChance(CaseRarity rarity)
         {
             switch (rarity)
@@ -715,9 +728,11 @@ namespace PushStars.Core
 
             var next = _state.Copy();
             Entry entry = next.cases[index];
-            // The welcome case is scripted luck: every tap lands, so it climbs to legendary.
-            entry.rarity = entry.id == CaseRewards.AssessmentReceipt && entry.rarity < CaseRarity.Legendary
-                ? entry.rarity + 1 : CaseRewards.UpgradeForRoll(entry.rarity, _random());
+            // Scripted cases (welcome, island chests) are scripted luck: every tap lands until their
+            // level, then none does.
+            var scripted = CaseRewards.ScriptedRarity(entry.id);
+            entry.rarity = scripted.HasValue ? entry.rarity < scripted.Value ? entry.rarity + 1 : entry.rarity
+                : CaseRewards.UpgradeForRoll(entry.rarity, _random());
             entry.taps++;
             Commit(next);
             updated = next.cases[index].Snapshot();
@@ -734,8 +749,9 @@ namespace PushStars.Core
 
             var next = _state.Copy();
             Entry entry = next.cases[index];
+            // Gems are the rare currency: the daily workout case pays its bonus only, never gems.
             entry.gems = entry.id == CaseRewards.AssessmentReceipt ? CaseRewards.AssessmentGems
-                : CaseRewards.GemsForRoll(entry.rarity, _random());
+                : IsDailyCase(_state, entry.id) ? 0 : CaseRewards.GemsForRoll(entry.rarity, _random());
             var eligible = Array.FindAll(_offers, a => a.UsesCards && !OwnsAvatar(a.Id));
             if (eligible.Length > 0)
             {
@@ -797,6 +813,11 @@ namespace PushStars.Core
                 }
             }
         }
+
+        /// <summary>A case the daily workout quota awarded. Only those receipts are also processed
+        /// workouts; a grant from any other source (island chest, promotion) never is.</summary>
+        private static bool IsDailyCase(SaveData state, string caseId)
+            => state.processedWorkoutIds != null && state.processedWorkoutIds.Contains(caseId);
 
         private static void SetBonus(Entry entry, CaseBonus bonus, string id, int amount)
         {
@@ -944,6 +965,8 @@ namespace PushStars.Core
                     (!entry.opened && entry.gems != 0) || (entry.opened && (entry.taps != CaseRewards.UpgradeTapCount ||
                     // Welcome cases opened before the fixed amount keep their rolled prize.
                     !(entry.id == CaseRewards.AssessmentReceipt && entry.gems == CaseRewards.AssessmentGems) &&
+                    // Daily cases open without gems (older ones keep their rolled prize).
+                    !(entry.gems == 0 && IsDailyCase(state, entry.id)) &&
                     (entry.gems < CaseRewards.MinimumGems(entry.rarity) || entry.gems > CaseRewards.MaximumGems(entry.rarity)))))
                     throw new InvalidOperationException("Invalid pending case. Saved rewards were not overwritten.");
                 bool bonusValid = entry.bonus == CaseBonus.None ? entry.bonusAmount == 0 && string.IsNullOrEmpty(entry.bonusId) :

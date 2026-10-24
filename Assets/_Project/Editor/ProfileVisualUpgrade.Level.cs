@@ -65,13 +65,14 @@ namespace PushStars.Editor
 
             // The owner's tag art comes already tilted; the level sits on its card below the clip,
             // turned to the same angle.
-            var tag = Pic(page, "LevelBadge", TagSprite(), 6, 108, 51, 67);
+            var tag = Pic(page, "LevelBadge", TagSprite(), 6, 114, 51, 67);
             d.Level = Text(tag.transform, "Level", "", 0, 0, 34, 32, 22, true, new Color32(20, 20, 28, 255));
             var levelRect = d.Level.rectTransform;
             levelRect.pivot = new Vector2(.5f, .5f); levelRect.anchoredPosition = new Vector2(27, -45);
             levelRect.localRotation = Quaternion.Euler(0, 0, 10);
             d.Level.fontSharedMaterial = _caption; d.Level.alignment = TextAlignmentOptions.Center;
             d.Level.lineSpacing = -30; // pulls the small "LVL" down onto the number
+            LevelTagText.Style(d.Level);
         }
 
         /// <summary>Moves every page row below the level block down by <see cref="LevelRowGrow"/>,

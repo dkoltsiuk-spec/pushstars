@@ -102,6 +102,17 @@ namespace PushStars.Core
             return moments;
         }
 
+        /// <summary>A finished training: a flat payout for the work plus the form bonus. Too short a
+        /// session earns nothing, so a one-rep "workout" cannot be farmed.</summary>
+        public static List<AuraMoment> ForWorkout(int reps, float averageForm)
+        {
+            var moments = new List<AuraMoment>();
+            if (reps < EconomyConfig.MinSessionReps) return moments;
+            moments.Add(new AuraMoment("WORKOUT DONE", EconomyConfig.AuraWorkoutDone));
+            AddPerformance(moments, new AuraFightInput { MyReps = reps, AverageForm = averageForm }, 1f);
+            return moments;
+        }
+
         private static void AddPerformance(List<AuraMoment> moments, AuraFightInput f, float stakes)
         {
             if (f.AverageForm >= EconomyConfig.AuraPerfectFormMin && f.MyReps >= EconomyConfig.AuraPerfectFormMinReps)

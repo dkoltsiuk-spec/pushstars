@@ -24,13 +24,15 @@ namespace PushStars.Services
     }
 
     /// <summary>Another player's best set: offered with the first answer of a search (close to
-    /// the player's level), or handed back when an old-style search found nobody.</summary>
+    /// the player's level), or handed back when an old-style search found nobody. A bot from the
+    /// pool comes the same way, with its id (its recording is fetched for the fight) and look.</summary>
     [Serializable] public sealed class LiveQueueGhost
     {
-        public string uid, name;
-        public int trophies;
+        public string uid, name, botId, country;
+        public int trophies, hero, gender;
         public float[] repTimes, clapTimes;
         public bool IsValid => repTimes != null && repTimes.Length > 0;
+        public bool IsBot => !string.IsNullOrEmpty(botId);
     }
     /// <summary>Where a search in the random queue stands (enqueueLiveDuel / pollLiveDuel /
     /// leaveLiveDuel): "waiting", "matched" (a ranked live duel with a stranger, room named) or
@@ -83,9 +85,9 @@ namespace PushStars.Services
         [Serializable] private sealed class FinishRequest
         {
             public string matchId; public float[] repTimes, clapTimes; public float durationSec;
-            public int opponentReps; public bool opponentLeft;
+            public int opponentReps; public bool opponentLeft, forfeit, aborted;
         }
-        [Serializable] private sealed class QueueRequest { public int hero, gender, best; public string country; public bool notify; }
+        [Serializable] private sealed class QueueRequest { public int hero, gender, best; public string country; public bool notify; public string[] fought; }
         [Serializable] private sealed class LeaveRequest { public int best; public bool standby, busy, ghost; }
         [Serializable] private sealed class Empty { }
 
@@ -118,12 +120,14 @@ namespace PushStars.Services
 
         /// <summary>Starts a search in the random queue; pairs at once with anyone already waiting.
         /// <paramref name="notify"/>: the player allowed a push when someone else searches later.
-        /// While waiting, the answer offers a stranger's set at the player's level (<c>ghost</c>).</summary>
+        /// While waiting, the answer offers a recorded fight (<c>ghost</c>): a bot the player has not met
+        /// (<see cref="PoolBotClient.Fought"/> goes along), else a stranger's set at their level.</summary>
         public static async Task<LiveQueueStatus> Enqueue(int hero, int gender, string country, int best, bool notify)
         {
             await FirebaseAuthService.EnsureReadyAsync();
             return await LeagueClient.Call<QueueRequest, LiveQueueStatus>("enqueueLiveDuel",
-                new QueueRequest { hero = hero, gender = gender, country = country ?? "", best = best, notify = notify }, Uid, QueueRegion);
+                new QueueRequest { hero = hero, gender = gender, country = country ?? "", best = best, notify = notify,
+                    fought = PoolBotClient.Fought }, Uid, QueueRegion);
         }
 
         /// <summary>Keeps the place in the queue, and pairs or reports the pairing.</summary>
@@ -260,12 +264,17 @@ namespace PushStars.Services
         public static Task Start(string matchId) =>
             LeagueClient.Call<MatchRequest, Empty>("startLiveDuel", new MatchRequest { matchId = matchId }, Uid);
 
+        /// <param name="forfeit">This player walked out mid-set (the exit button, or back in the app
+        /// after the reconnect window): the duel is lost whatever the counts.</param>
+        /// <param name="aborted">The opponent left before the set began and this phone called the
+        /// duel off: nobody wins.</param>
         public static Task<LiveDuelReceipt> Finish(string matchId, float[] repTimes, float[] clapTimes, float durationSec,
-            int opponentReps, bool opponentLeft) =>
+            int opponentReps, bool opponentLeft, bool forfeit = false, bool aborted = false) =>
             LeagueClient.Call<FinishRequest, LiveDuelReceipt>("finishLiveDuel", new FinishRequest
             {
                 matchId = matchId, repTimes = repTimes ?? Array.Empty<float>(), clapTimes = clapTimes ?? Array.Empty<float>(),
-                durationSec = durationSec, opponentReps = opponentReps, opponentLeft = opponentLeft
+                durationSec = durationSec, opponentReps = opponentReps, opponentLeft = opponentLeft,
+                forfeit = forfeit, aborted = aborted
             }, Uid);
 
         /// <summary>The Firebase ID token Photon's custom authentication checks (photonAuth).</summary>

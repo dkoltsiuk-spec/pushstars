@@ -405,5 +405,18 @@ namespace PushStars.CV
         public const float PostureUprightKappa = 1.20f;
         /// <summary>…and below which it is horizontal again.</summary>
         public const float PostureUprightReleaseKappa = 1.00f;
+
+        // ── The set is over: stood up after it (StandUpDetector) ──
+        /// <summary>Disarmed and up (torso upright, or walked to the phone: out of frame / cropped)
+        /// this long = the set is over: a training set ends without the screen being touched. Long
+        /// enough that a kneeling slap or shaking out the arms mid-set (≤ 0.7 s up) is not the end.</summary>
+        public const float StandUpHoldSec = 1.2f;
+        /// <summary>κ at/below this cannot be a body on the floor: shoulders below the hips in the
+        /// close crop of someone standing at the phone (measured −1.1 … −6.5).</summary>
+        public const float StandUpCroppedKappa = -0.3f;
+        /// <summary>Side view (κ is noise there): torso within this many degrees of vertical…</summary>
+        public const float StandUpSideTiltDeg = 40f;
+        /// <summary>…and lying down again past this.</summary>
+        public const float StandUpSideReleaseTiltDeg = 55f;
     }
 }

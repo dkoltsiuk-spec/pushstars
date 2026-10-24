@@ -65,7 +65,8 @@ namespace PushStars.Editor
 
             var gems = RewardRoot(forest, "GemIslet", slots.Gems);
             var platform = Adopt(forest, gems, "RewardPlatform", new Vector2(0, -26), new Vector2(164, 164), false);
-            var gem = Adopt(forest, gems, "GemReward", new Vector2(0, -12), new Vector2(64, 64), true);
+            var gem = Adopt(forest, gems, "GemReward", new Vector2(0, -12), GemPileSize, true);
+            gem.sprite = AssetDatabase.LoadAssetAtPath<Sprite>(GemPile); gem.preserveAspect = true;
             var chest = RewardRoot(forest, "ChestNode", slots.Chest);
             var chestPlatform = chest.Find("ChestPlatform") as RectTransform;
             if (chestPlatform == null)
@@ -173,8 +174,53 @@ namespace PushStars.Editor
             EditorUtility.SetDirty(bounce);
             return new BossMapController.RewardNode
             {
-                ChapterId = chapter, Kind = kind, Button = button, Platform = platform, Icon = icon, Bounce = bounce
+                ChapterId = chapter, Kind = kind, Button = button, Platform = platform, Icon = icon, Bounce = bounce,
+                Amount = kind == BossMapController.RewardKind.Gems ? GemAmount(icon, chapter) : null
             };
+        }
+
+        /// <summary>A pile, not a single gem: the islet pays a handful at once.</summary>
+        private const string GemPile = "Assets/_Project/Resources/Rewards/Gems.png";
+        private static readonly Vector2 GemPileSize = new Vector2(96, 68);
+        private const string KeylinePath = "Assets/_Project/UI/Fonts/Rubik Black TMP Map Keyline.mat";
+
+        /// <summary>"x25" on the pile's lower right, white with a black keyline. A child of the
+        /// pile, so it bounces and hides with it; the number itself is filled from the catalog.</summary>
+        private static TextMeshProUGUI GemAmount(Image pile, string chapter)
+        {
+            var rect = pile.transform.Find("Amount") as RectTransform;
+            if (rect == null)
+            {
+                rect = new GameObject("Amount", typeof(RectTransform), typeof(CanvasRenderer), typeof(TextMeshProUGUI)).GetComponent<RectTransform>();
+                rect.SetParent(pile.transform, false); rect.gameObject.layer = 5;
+                Undo.RegisterCreatedObjectUndo(rect.gameObject, "Add gem amount");
+            }
+            rect.anchorMin = rect.anchorMax = new Vector2(.5f, 0); rect.pivot = new Vector2(.5f, .5f);
+            rect.anchoredPosition = new Vector2(30, 10); rect.sizeDelta = new Vector2(76, 34); rect.localScale = Vector3.one;
+            var label = rect.GetComponent<TextMeshProUGUI>();
+            label.font = AssetDatabase.LoadAssetAtPath<TMP_FontAsset>("Assets/_Project/UI/Fonts/Rubik Black TMP.asset");
+            label.fontSharedMaterial = Keyline(label.font);
+            label.fontSize = 27; label.fontStyle = FontStyles.Italic;
+            label.alignment = TextAlignmentOptions.Center; label.textWrappingMode = TextWrappingModes.NoWrap;
+            label.color = Color.white; label.raycastTarget = false;
+            label.text = "x" + (BossCatalog.FindChapter(chapter)?.GemReward ?? 0);
+            EditorUtility.SetDirty(label);
+            return label;
+        }
+
+        /// <summary>Shared keyline material, saved as an asset so the scene never holds a
+        /// material that only lived in memory.</summary>
+        private static Material Keyline(TMP_FontAsset font)
+        {
+            var material = AssetDatabase.LoadAssetAtPath<Material>(KeylinePath);
+            if (material != null) return material;
+            material = new Material(font.material) { name = "Rubik Black TMP Map Keyline" };
+            material.EnableKeyword("OUTLINE_ON");
+            material.SetFloat("_OutlineWidth", .22f);
+            material.SetColor("_OutlineColor", Color.black);
+            material.SetFloat("_FaceDilate", .2f);
+            AssetDatabase.CreateAsset(material, KeylinePath);
+            return material;
         }
 
         private static void BuildIcePreview(BossMapController c)
@@ -276,8 +322,8 @@ namespace PushStars.Editor
 
             var gems = Group(ice, prefix + "GemIslet", slots.Gems, new Vector2(142, 148));
             var gemPlatform = Picture(gems, "Platform", platformName, new Vector2(0, -26), new Vector2(164, 164), Color.white);
-            var gem = Picture(gems, "Gem", null, new Vector2(0, -12), new Vector2(64, 64), Color.white);
-            gem.sprite = AssetDatabase.LoadAssetAtPath<Sprite>("Assets/_Project/UI/Sprites/gem.png");
+            var gem = Picture(gems, "Gem", null, new Vector2(0, -12), GemPileSize, Color.white);
+            gem.sprite = AssetDatabase.LoadAssetAtPath<Sprite>(GemPile);
             gem.rectTransform.pivot = new Vector2(.5f, 0);
             var chest = Group(ice, prefix + "Chest", slots.Chest, new Vector2(142, 148));
             var chestPlatform = Picture(chest, "Platform", platformName, new Vector2(0, -26), new Vector2(164, 164), Color.white);

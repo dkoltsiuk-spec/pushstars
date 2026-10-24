@@ -13,7 +13,9 @@ namespace PushStars.Core
     /// for <see cref="SilenceSec"/> — a phone that froze never says goodbye. Away for
     /// <see cref="PeerGraceSec"/> (constants.md: 10 s reconnect window) means gone: the duel
     /// ends and the server settles it as a walkover. While this phone is itself offline the peer
-    /// is not judged at all — we cannot know.</para>
+    /// is not judged at all — we cannot know. The mirror of that is <see cref="CutOff"/>: this
+    /// phone dropped out first and stayed out as long as the peer waits, so it is the one that
+    /// lost — both phones reach the same verdict from their own side.</para>
     ///
     /// <para><b>Shared start.</b> Once both seats hold a plank the host names a moment on the
     /// transport's server clock <see cref="StartLeadMs"/> ahead; both count down to that same
@@ -49,10 +51,25 @@ namespace PushStars.Core
         public bool Online => Transport.Status == DuelLinkStatus.InRoom;
         public bool PeerPresent => Peer != null && Online && Transport.PeerInRoom && _now - _peerHeardAt < SilenceSec;
         public float PeerAbsentSec => Peer == null || PeerPresent || _peerAwaySince < 0 ? 0f : _now - _peerAwaySince;
-        public bool PeerGone => PeerQuit || PeerAbsentSec >= PeerGraceSec;
+        /// <summary>The peer said goodbye, or has been away for the whole grace. Never while this
+        /// phone is itself the likelier one to have dropped (<see cref="CutOff"/>).</summary>
+        public bool PeerGone => !CutOff && (PeerQuit || !Suspect && PeerAbsentSec >= PeerGraceSec);
+        /// <summary>When the peer was last heard from (the clock passed to <see cref="Tick"/>).</summary>
+        public float PeerHeardAt => _peerHeardAt;
+        /// <summary>This phone dropped out — lost the room, or the app went to the background
+        /// (<see cref="MarkAway"/>) — before the peer had gone quiet, and has heard nothing for as
+        /// long as the peer waits before ending the set: silence plus grace, counted from the last
+        /// message, as the peer counts from the last one it heard. On the other phone the duel is
+        /// already over by walkover. Stays true once reached: an empty room afterwards must not
+        /// read as the peer having left.</summary>
+        public bool CutOff { get; private set; }
+        /// <summary>Seconds left before <see cref="CutOff"/> while this phone is out; 0 when it is not.</summary>
+        public float CutOffInSec => Suspect && !CutOff ? Mathf.Max(0f, _peerHeardAt + SilenceSec + PeerGraceSec - _now) : 0f;
+        // Out since before the peer went quiet: until we hear the peer again, the drop is ours.
+        private bool Suspect => _offlineSince >= 0 && _offlineSince <= _peerHeardAt + SilenceSec;
         public float SecondsUntilStart => HasStart ? unchecked(StartAtMs - Transport.ServerTimeMs) / 1000f : float.PositiveInfinity;
 
-        private float _now, _peerHeardAt = float.NegativeInfinity, _peerAwaySince = -1f, _nextHeartbeat;
+        private float _now, _peerHeardAt = float.NegativeInfinity, _peerAwaySince = -1f, _nextHeartbeat, _offlineSince = -1f;
         private DuelLinkStatus _lastStatus = DuelLinkStatus.Idle;
 
         public LiveDuelLink(IDuelTransport transport, string matchId, string roomName, bool isHost, LiveDuelSeat local)
@@ -90,6 +107,7 @@ namespace PushStars.Core
             }
             if (status == DuelLinkStatus.InRoom && now >= _nextHeartbeat) SendState();
             TrackPresence();
+            TrackCutOff();
             PeerPose.Advance(now);
 
             if (IsHost && !HasStart && Local.Armed && Peer != null && Peer.Armed && PeerPresent && !PeerQuit)
@@ -105,6 +123,21 @@ namespace PushStars.Core
             if (Peer == null || !Online) return;      // offline here: nothing to judge the peer by
             if (PeerPresent) _peerAwaySince = -1f;
             else if (_peerAwaySince < 0) _peerAwaySince = _now;
+        }
+
+        private void TrackCutOff()
+        {
+            if (Peer == null || CutOff) return;
+            if (!Online) MarkAway(_now);
+            if (_offlineSince >= 0 && _peerHeardAt > _offlineSince) _offlineSince = -1f;   // heard again: back in time
+            if (Suspect && _now - _peerHeardAt >= SilenceSec + PeerGraceSec) CutOff = true;
+        }
+
+        /// <summary>This phone stopped taking part at <paramref name="since"/> (the app went to the
+        /// background) even if the socket has not noticed yet: the peer hears nothing from then on.</summary>
+        public void MarkAway(float since)
+        {
+            if (Peer != null && _offlineSince < 0) _offlineSince = since;
         }
 
         public void SetReady(bool ready) { if (Local.Ready == ready) return; Local.Ready = ready; SendState(); }

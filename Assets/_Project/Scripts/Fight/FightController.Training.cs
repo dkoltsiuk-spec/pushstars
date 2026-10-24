@@ -12,6 +12,9 @@ namespace PushStars.Fight
         private bool _trainingRecord;
         private TrainingScreen _trainingScreen;
         private float _trainingElapsed;
+        /// <summary>The player has been out of the plank since the rest began: a plank now is a
+        /// new one, not the end of the set still being held.</summary>
+        private bool _restLeftPlank;
         private string TrainingCaption => $"SET {_training.CurrentSet}/{_training.Plan.Sets}";
 
         private void FinishTrainingSet(int reps, long xp)
@@ -27,30 +30,41 @@ namespace PushStars.Fight
             if (!_training.IsComplete)
             {
                 _phase = Phase.Rest;
+                // The camera keeps watching through the rest: a plank starts the next set.
+                _session.enabled = true;
+                _restLeftPlank = false;
                 foreach (var avatar in FindObjectsByType<FightAvatar>(FindObjectsSortMode.None))
                     avatar.SetRestPresentation(true);
                 _hud.SetScoresVisible(true);
                 _hud.ShowTrainingRest(_training.CurrentSet, _training.Plan.Sets, _training.RestRemaining);
                 return;
             }
-            if (_trainingScreen != null)
-            {
-                _trainingScreen.ShowResults(_trainingReps, _training.CompletedSets,
-                    _trainingFormCount == 0 ? 0 : _trainingFormSum / _trainingFormCount,
-                    _trainingXp, _training.Plan.Sets < TrainingPlan.MaxSets);
-                return;
-            }
+            // The finished workout gets the duel's one result screen; its rewards then fly home.
+            float averageForm = _trainingFormCount == 0 ? 0 : _trainingFormSum / _trainingFormCount;
+            _auraMoments = AuraCalculator.ForWorkout(_trainingReps, averageForm);
             PresentResults(new FightResultData {
-                Mode = FightMode.Training, MyReps = _trainingReps,
-                MyForm = _trainingFormCount == 0 ? 0 : _trainingFormSum / _trainingFormCount,
+                Mode = FightMode.Training, MyReps = _trainingReps, MyForm = averageForm,
                 Xp = _trainingXp, PlayerName = PlayerLabel, NewRecord = _trainingRecord,
-                TrainingSets = _training.CompletedSets
+                TrainingSets = _training.CompletedSets,
+                LeagueStatus = _training.CompletedSets == 1 ? "1 SET" : _training.CompletedSets + " SETS"
             });
         }
 
         private void TickTrainingRest()
         {
-            if (_training.TickRest(Time.deltaTime)) { BeginNextTrainingSet(); return; }
+            // Hands-free: getting back into a plank starts the next set — nobody has to walk to the
+            // phone for START SET. A plank still held from the set that just ended does not count.
+            var armer = _session.Armer;
+            bool armed = armer != null && armer.IsArmed;
+            if (!armed) _restLeftPlank = true;
+            else if (_restLeftPlank && _training.Continue()) { BeginNextTrainingSet(); return; }
+            if (_training.TickRest(Time.deltaTime))
+            {
+                // Rest is over: a chime from across the room says "get into a plank".
+                GameAudio.Play(SoundCue.Confirm);
+                BeginNextTrainingSet();
+                return;
+            }
             _hud.ShowTrainingRest(_training.CurrentSet, _training.Plan.Sets, _training.RestRemaining);
         }
 

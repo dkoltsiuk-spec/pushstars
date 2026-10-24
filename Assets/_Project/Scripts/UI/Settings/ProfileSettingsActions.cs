@@ -42,8 +42,11 @@ namespace PushStars.UI
             Email.onClick.AddListener(_authDialog.ShowEmail);
             BuildAccountCard();
             RefreshAccount();
-            Privacy.onClick.AddListener(() => ShowNotice("The published privacy policy link has not been configured yet."));
-            Support.onClick.AddListener(() => ShowNotice("Support contact has not been configured yet."));
+            // The published pages on the legal site (see SettingsScreen). RemoveAll first: the
+            // scene may still carry SettingsScreen's own privacy listener on the same button.
+            Privacy.onClick.RemoveAllListeners();
+            Privacy.onClick.AddListener(() => Application.OpenURL(SettingsScreen.PrivacyUrl));
+            Support.onClick.AddListener(() => Application.OpenURL(SettingsScreen.SupportUrl));
             ExternalMusic.SetIsOnWithoutNotify(GameAudio.KeepExternalMusic);
             ExternalMusic.onValueChanged.AddListener(value => GameAudio.KeepExternalMusic = value);
             for (int i = 0; i < Switches.Length; i++)
@@ -54,14 +57,7 @@ namespace PushStars.UI
             RefreshLanguage();
             for (int i = 0; i < Switches.Length; i++) DrawSwitch(i);
             Notice.transform.parent.gameObject.SetActive(false);
-            // Allow the full privacy label to fit in all supported languages.
-            var privacyRect = (RectTransform)Privacy.transform;
-            privacyRect.sizeDelta = new Vector2(134, privacyRect.sizeDelta.y);
-            var privacyLabel = Privacy.GetComponentInChildren<TMP_Text>().rectTransform;
-            privacyLabel.anchorMin = Vector2.zero; privacyLabel.anchorMax = Vector2.one;
-            privacyLabel.offsetMin = new Vector2(4, 4); privacyLabel.offsetMax = new Vector2(-4, -4);
-            var supportRect = (RectTransform)Support.transform;
-            supportRect.anchoredPosition = new Vector2(180, supportRect.anchoredPosition.y);
+            // Privacy, Support and Delete account are laid out in the scene (Restyle Settings Footer Buttons).
         }
 
         private void OnEnable()

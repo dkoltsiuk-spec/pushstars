@@ -65,6 +65,19 @@ service cloud.firestore {
       allow write: if false;
     }
 
+    // Friends — the players this one fought in a friend-code duel (functions/src/friends.js).
+    // Only the owner reads their list; written by the friends functions only.
+    match /friends/{uid}/list/{friendUid} {
+      allow read: if request.auth != null && uid == request.auth.uid;
+      allow write: if false;
+    }
+
+    // A friend's call into their open duel code: the called phone listens to its own.
+    match /friendInvites/{uid} {
+      allow read: if request.auth != null && uid == request.auth.uid;
+      allow write: if false;
+    }
+
     match /rankedSessions/{id} {
       allow read, write: if false;
     }

@@ -87,11 +87,7 @@ namespace PushStars.App
                 // Exactly one awaiter per task: a UniTask still running throws on a second one, and
                 // Preserve() does not change that while it is pending. Forget() plus this wait used
                 // to throw here, which ended Start and left every signed-in phone on 12 % for good.
-                if (CloudProgressSync.IsLinkedOnThisPhone)
-                {
-                    try { await UniTask.WhenAny(services, UniTask.Delay(TimeSpan.FromSeconds(_cloudRestoreWaitSec), DelayType.Realtime)); }
-                    catch (Exception e) { Debug.LogException(e); }
-                }
+                if (CloudProgressSync.IsLinkedOnThisPhone) await WaitForCloudRestore(services);
                 else services.Forget();
             }
 
@@ -131,6 +127,33 @@ namespace PushStars.App
             {
                 // Guarantee we are back on the main thread before the scene transition.
                 await UniTask.SwitchToMainThread();
+            }
+        }
+
+        /// <summary>Waits for the cloud restore for up to <see cref="_cloudRestoreWaitSec"/>, with the
+        /// bar creeping on the whole time.
+        ///
+        /// <para>The services report 12 % and then go quiet until the account's copy lands, so the
+        /// bar used to stand on 12 % for seconds and the launch looked frozen. It now eases from
+        /// 12 % toward 60 % over the wait (fast first, slowing near the end), and when the restore
+        /// lands early the next report sweeps it on from wherever it got to.</para></summary>
+        private async UniTask WaitForCloudRestore(UniTask services)
+        {
+            const float from = 0.12f, to = 0.6f;
+            bool done = false;
+            // The only awaiter of the services task (see Start): it flags completion for the loop.
+            UniTask.Void(async () =>
+            {
+                try { await services; }
+                catch (Exception e) { Debug.LogException(e); }
+                finally { done = true; }
+            });
+            float start = Time.realtimeSinceStartup;
+            for (float waited = 0; !done && waited < _cloudRestoreWaitSec; waited = Time.realtimeSinceStartup - start)
+            {
+                float t = _cloudRestoreWaitSec > 0 ? waited / _cloudRestoreWaitSec : 1f;
+                Report(Mathf.Lerp(from, to, UITween.EaseOutQuad(t)));
+                await UniTask.Yield();
             }
         }
 

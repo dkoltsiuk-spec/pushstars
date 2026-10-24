@@ -137,6 +137,10 @@ namespace PushStars.Core
         public const int AuraIslandKingFirstWin = 10000;
         public const int AuraBossRepeatWin = 500;
 
+        /// <summary>A finished training of at least <see cref="MinSessionReps"/> reps. PvE rules: no
+        /// stakes, never a minus; perfect form pays on top.</summary>
+        public const int AuraWorkoutDone = 500;
+
         // One-off progression rewards (no multiplier).
         /// <summary>Welcome Aura for the first assessment: Home shows "10K" straight away.</summary>
         public const int AuraAssessment = 10000;

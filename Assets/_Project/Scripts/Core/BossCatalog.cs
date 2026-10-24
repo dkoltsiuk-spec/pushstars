@@ -66,14 +66,17 @@ namespace PushStars.Core
         /// <summary>Chapter-local index of the boss whose defeat opens the gem islet.</summary>
         public int GemsAfterBoss { get; }
         public int GemReward { get; }
+        /// <summary>Level the island's chest climbs to: its upgrade taps land until it gets there and
+        /// then stop, so the case always opens at exactly this rarity.</summary>
+        public CaseRarity ChestRarity { get; }
         public string GemReceipt => "boss-map:" + Id + ":gems:v1";
         public string ChestReceipt => "boss-map:" + Id + ":chest:v1";
 
         public BossChapter(string id, string title, bool playable, int gemsAfterBoss, int gemReward,
-                           params BossProfile[] bosses)
+                           CaseRarity chestRarity, params BossProfile[] bosses)
         {
             Id = id; Title = title; Playable = playable;
-            GemsAfterBoss = gemsAfterBoss; GemReward = gemReward; Bosses = bosses;
+            GemsAfterBoss = gemsAfterBoss; GemReward = gemReward; ChestRarity = chestRarity; Bosses = bosses;
         }
     }
 
@@ -111,19 +114,19 @@ namespace PushStars.Core
         /// </summary>
         public static readonly IReadOnlyList<BossChapter> Chapters = new[]
         {
-            new BossChapter("forest", "FOREST ISLAND", true, 2, 50,
+            new BossChapter("forest", "FOREST ISLAND", true, 2, 25, CaseRarity.Rare,
                 Goblin("novice", 450),
                 Goblin("athlete", 575),
                 Goblin("champion", 700),
                 Goblin("goblin-guard", 825),
                 Goblin("goblin-king", 1025, true)),
-            new BossChapter("ice", "ICE ISLAND", true, 2, 80,
+            new BossChapter("ice", "ICE ISLAND", true, 2, 80, CaseRarity.Epic,
                 Boss("ice-golem-1", "BOSS FROST GOLEM", 1200, "ice-golem-mini"),
                 Boss("ice-golem-2", "BOSS FROST GOLEM", 1400, "ice-golem-mini"),
                 Boss("ice-golem-3", "BOSS FROST GOLEM", 1500, "ice-golem-max"),
                 Boss("ice-golem-4", "BOSS FROST GOLEM", 1700, "ice-golem-max"),
                 Boss("ice-golem-king", "BOSS GLACIER KING", 1900)),
-            new BossChapter("lava", "LAVA ISLAND", true, 2, 120,
+            new BossChapter("lava", "LAVA ISLAND", true, 2, 120, CaseRarity.Legendary,
                 Boss("lava-golem-1", "BOSS MAGMA GOLEM", 2000, "lava-golem-mini", 80),
                 Boss("lava-golem-2", "BOSS MAGMA GOLEM", 2200, "lava-golem-mini", 80),
                 Boss("lava-golem-3", "BOSS MAGMA GOLEM", 2400, "lava-golem-max", 80),

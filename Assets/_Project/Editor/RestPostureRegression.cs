@@ -41,6 +41,8 @@ namespace PushStars.Editor
             Check("Sitting back, hands on the knees, arms flexing → disarmed, no reps, no flights", SittingBackDisarms, report, ref passed, ref failed);
             Check("Same rest at 15 fps", SittingBackDisarms15Fps, report, ref passed, ref failed);
             Check("Kneeling up with the hands still low → disarmed by the upright torso", KneelingUpDisarms, report, ref passed, ref failed);
+            Check("Standing up after the last rep ends the training set; the working sets never do", StandingUpEndsTheSet, report, ref passed, ref failed);
+            Check("Resting low on the heels, hands on the knees, does not end the set", LowRestKeepsTheSet, report, ref passed, ref failed);
             Check("Avatar holds its depth through the rest, plays no flight, then leaves the push-up clip", AvatarStopsPushingUp, report, ref passed, ref failed);
             report.AppendLine($"RESULT: {passed} passed, {failed} failed.");
             Directory.CreateDirectory("Logs");
@@ -67,6 +69,8 @@ namespace PushStars.Editor
             public readonly List<(float t, PlankRejectReason reason)> Disarms = new();
             public bool ArmedAtCut, ArmedAtEnd;
             public float LastRepSec = float.NegativeInfinity;
+            /// <summary>First time the stand-up detector closed the set after a rep / after the cut.</summary>
+            public float StoodUpAfterRepSec = float.NaN, StoodUpAfterCutSec = float.NaN;
             // Avatar driver, when one was stepped.
             public float DepthAtCut, MaxDepthDriftWhileArmed, LeftPushupClipSec = float.NaN;
             public int AvatarFlightsAfterCut;
@@ -84,7 +88,7 @@ namespace PushStars.Editor
             public override string ToString()
                 => $"reps={Reps} afterCut(reps={RepsAfterCut} flights={FlightsAfterCut} avatarFlights={AvatarFlightsAfterCut}) " +
                    $"armedAtCut={ArmedAtCut} armedAtEnd={ArmedAtEnd} depthDrift={MaxDepthDriftWhileArmed:0.00} " +
-                   $"leftClip={LeftPushupClipSec:0.00} disarms=[{string.Join("; ", Disarms.ConvertAll(d => $"{d.reason}@{d.t:0.00}"))}]";
+                   $"leftClip={LeftPushupClipSec:0.00} stoodUp(afterRep={StoodUpAfterRepSec:0.00} afterCut={StoodUpAfterCutSec:0.00}) disarms=[{string.Join("; ", Disarms.ConvertAll(d => $"{d.reason}@{d.t:0.00}"))}]";
         }
 
         /// <summary>Plays <paramref name="fixture"/> up to <paramref name="cutSec"/>, then — when
@@ -144,6 +148,8 @@ namespace PushStars.Editor
                     var frame = RecordedPoseSource.ToFrame(image, world, Clock0 + ft, aspect);
                     s.ProcessOffline(frame, image == null ? TrackingQuality.Lost : PoseQuality.Classify(frame), Clock0 + ft);
                     if (ft <= cut) r.ArmedAtCut = s.Armer.IsArmed;
+                    if (s.StandUp.StoodUp && r.Reps > 0 && float.IsNaN(r.StoodUpAfterRepSec)) r.StoodUpAfterRepSec = ft;
+                    if (s.StandUp.StoodUp && ft > cut && float.IsNaN(r.StoodUpAfterCutSec)) r.StoodUpAfterCutSec = ft;
 
                     if (driver == null) continue;
                     // Two display frames per pose frame: a 60 fps screen over a 30 fps detector.
@@ -254,6 +260,24 @@ namespace PushStars.Editor
             var r = Play();
             float disarm = r.PostureDisarmSec;
             return disarm >= StandUpSec && disarm <= StandUpSec + DisarmWithinSec && !r.ArmedAtEnd ? null : r.ToString();
+        }
+
+        private static string StandingUpEndsTheSet()
+        {
+            var claps = Play();
+            float ended = claps.StoodUpAfterRepSec;
+            // Standing takes about a second after the hands leave the floor, then the hold.
+            if (!(ended >= StandUpSec && ended <= StandUpSec + 1.2f + CVConstants.StandUpHoldSec + .1f))
+                return "claps: " + claps;
+            var lifts = Play(LiftFixture);
+            ended = lifts.StoodUpAfterRepSec;
+            return float.IsNaN(ended) || ended > lifts.LastRepSec + 1f ? null : "lifts: " + lifts;
+        }
+
+        private static string LowRestKeepsTheSet()
+        {
+            var r = Play(cutSec: PlankSec, rest: HandsOnKnees);
+            return float.IsNaN(r.StoodUpAfterCutSec) ? null : r.ToString();
         }
 
         private static string Rested(Replay r, float cut)

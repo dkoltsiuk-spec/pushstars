@@ -2,6 +2,7 @@ using System;
 using System.Collections;
 using System.Collections.Generic;
 using PushStars.Core;
+using TMPro;
 using UnityEngine;
 using UnityEngine.UI;
 
@@ -46,6 +47,8 @@ namespace PushStars.UI
             /// <summary>Island platform art used in every state (tinted while locked); null keeps grass/stone.</summary>
             public Sprite PlatformArt;
             public Image Icon;
+            /// <summary>The gem islet's "x25" under the pile, filled from the catalog; null on chests.</summary>
+            public TMP_Text Amount;
             public RewardBounce Bounce;
         }
 
@@ -245,6 +248,12 @@ namespace PushStars.UI
                 reward.Icon.gameObject.SetActive(reward.Kind == RewardKind.Chest || state != BossMapRewardState.Collected);
                 reward.Icon.color = state == BossMapRewardState.Locked ? new Color(.5f, .52f, .48f, 1)
                     : state == BossMapRewardState.Collected ? new Color(1, 1, 1, .4f) : Color.white;
+                if (reward.Amount != null)
+                {
+                    var chapter = BossCatalog.FindChapter(reward.ChapterId);
+                    reward.Amount.text = "x" + (chapter != null ? chapter.GemReward : 0);
+                    reward.Amount.color = state == BossMapRewardState.Locked ? new Color(.72f, .74f, .7f, 1) : Color.white;
+                }
                 if (reward.Bounce != null) reward.Bounce.Active = state == BossMapRewardState.Ready;
             }
         }
@@ -297,6 +306,9 @@ namespace PushStars.UI
             var pill = FindChild(transform.root, "GemPill");
             if (pill == null) yield break;
             var target = FindChild(pill, "GemIcon") ?? pill;
+            // Single gems fly out of the pile: the HUD's own icon, the islet's art as a fallback.
+            var hudIcon = target.GetComponent<Image>();
+            var flying = hudIcon != null && hudIcon.sprite != null ? hudIcon.sprite : source.sprite;
             var layer = (RectTransform)Map.transform;
             HudBalanceHold.Set("GemPill", before);
             const int count = 7;
@@ -309,7 +321,7 @@ namespace PushStars.UI
             {
                 var icon = new GameObject("FlyingGem", typeof(RectTransform), typeof(Image)).GetComponent<RectTransform>();
                 icon.SetParent(layer, false); icon.sizeDelta = new Vector2(34, 34);
-                var image = icon.GetComponent<Image>(); image.sprite = source.sprite; image.raycastTarget = false;
+                var image = icon.GetComponent<Image>(); image.sprite = flying; image.preserveAspect = true; image.raycastTarget = false;
                 icon.position = from; icon.localScale = Vector3.zero;
                 icons[i] = icon; _flyingGems.Add(icon.gameObject);
                 float angle = i / (float)count * Mathf.PI * 2 + .4f;
@@ -372,12 +384,52 @@ namespace PushStars.UI
             {
                 SetMapVisible(true);
                 StartCoroutine(RevealMap());
+                _focus = StartCoroutine(FocusCurrentBoss());
             }));
         }
 
         private IEnumerator RevealMap()
         {
             yield return UITween.Fade(MapGroup, 0, 1, .18f, 0);
+        }
+
+        private Coroutine _focus;
+
+        /// <summary>The map opens at the bottom and glides up until the boss to fight sits in the
+        /// middle of the screen. A touch hands the scroll back to the player at once.</summary>
+        private IEnumerator FocusCurrentBoss()
+        {
+            var node = Array.Find(Nodes, n => n.BossIndex == BossCatalog.CurrentIndex);
+            if (node == null) yield break;
+            // Let the fade start first: the glide reads as arriving, not as the map jumping.
+            yield return new WaitForSecondsRealtime(.12f);
+            float from = Scroll.verticalNormalizedPosition, to = CentredPosition((RectTransform)node.Button.transform);
+            float travel = Mathf.Abs(to - from) * Mathf.Max(0, MapContent.rect.height - Scroll.viewport.rect.height);
+            if (travel < 1) yield break;
+            float duration = Mathf.Clamp(.45f + travel / 2400f, .45f, 1.2f);
+            Scroll.StopMovement();
+            for (float elapsed = 0; elapsed < duration; elapsed += Time.unscaledDeltaTime)
+            {
+                if (Input.touchCount > 0 || Input.GetMouseButton(0)) { _focus = null; yield break; }
+                float t = elapsed / duration;
+                // Ease in-out cubic: starts gently, slows into place.
+                float e = t < .5f ? 4 * t * t * t : 1 - Mathf.Pow(-2 * t + 2, 3) / 2;
+                Scroll.verticalNormalizedPosition = Mathf.Lerp(from, to, e);
+                yield return null;
+            }
+            Scroll.verticalNormalizedPosition = to;
+            _focus = null;
+        }
+
+        /// <summary>Scroll position that puts <paramref name="target"/>'s centre mid-viewport,
+        /// clamped to the map's ends.</summary>
+        private float CentredPosition(RectTransform target)
+        {
+            float viewport = Scroll.viewport.rect.height;
+            float scrollable = MapContent.rect.height - viewport;
+            if (scrollable <= 0) return 0;
+            Vector3 centre = MapContent.InverseTransformPoint(target.TransformPoint(target.rect.center));
+            return Mathf.Clamp01((centre.y - MapContent.rect.yMin - viewport * .5f) / scrollable);
         }
 
         public void CloseMap()
@@ -391,6 +443,7 @@ namespace PushStars.UI
 
         private void SetMapVisible(bool visible)
         {
+            if (_focus != null) { StopCoroutine(_focus); _focus = null; }
             Map.SetActive(visible);
             Home.SetActive(_boss && !visible);
             for (int i = 0; i < HomeOnly.Length; i++) HomeOnly[i].SetActive(!visible && _homeActive[i]);
@@ -468,6 +521,7 @@ namespace PushStars.UI
         private void ResetInteraction()
         {
             StopAllCoroutines();
+            _focus = null;
             StopGemFlight();
             if (_pressed != null)
             { _pressed.localScale = _pressScale; _pressed.anchoredPosition = _pressPosition; }

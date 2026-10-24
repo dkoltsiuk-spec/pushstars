@@ -264,12 +264,12 @@ namespace PushStars.Editor
         private static Texture2D EnsureStandingPortrait(FightAvatar avatar) =>
             EnsurePortrait(avatar, StandingPortraitPath, "StandIdle", 0f, 512, 1024);
 
-        public static Texture2D EnsureTrainingRestPortrait(FightAvatar avatar, bool female = false) =>
-            EnsurePortrait(avatar, "Assets/_Project/UI/Portraits/training_rest" + (female ? "_female" : "") + ".png", "WarriorIdle", .13f, 960, 720, female, true);
+        public static Texture2D EnsureTrainingRestPortrait(FightAvatar avatar, bool female = false, bool force = false) =>
+            EnsurePortrait(avatar, "Assets/_Project/UI/Portraits/training_rest" + (female ? "_female" : "") + ".png", TrainingRestIdleSetup.State, .1f, 480, 720, female, force);
         public static Texture2D EnsureTrainingPushupPortrait(FightAvatar avatar, bool female = false) =>
             EnsurePortrait(avatar, "Assets/_Project/UI/Portraits/training_pushup" + (female ? "_female" : "") + ".png", "PushUp", .5f, 720, 720, female);
 
-        private static Texture2D EnsurePortrait(FightAvatar avatar, string assetPath, string pose, float poseTime, int width, int height, bool female = false, bool resting = false, bool force = false)
+        private static Texture2D EnsurePortrait(FightAvatar avatar, string assetPath, string pose, float poseTime, int width, int height, bool female = false, bool force = false)
         {
             var existing = AssetDatabase.LoadAssetAtPath<Texture2D>(assetPath);
             if (existing != null && !force) return existing;
@@ -284,6 +284,7 @@ namespace PushStars.Editor
             RenderTexture render = null;
             Texture2D texture = null;
             var previousRender = RenderTexture.active;
+            var hidden = new List<Renderer>();
             try
             {
                 character = (GameObject)PrefabUtility.InstantiatePrefab(prefab, avatarRoot);
@@ -301,25 +302,10 @@ namespace PushStars.Editor
                     animator.Play(pose, 0, poseTime);
                     animator.Update(0f);
                 }
-                if (resting && animator != null && animator.isHuman)
-                {
-                    using (var handler = new HumanPoseHandler(animator.avatar, animator.transform))
-                    {
-                        var human = new HumanPose(); handler.GetHumanPose(ref human);
-                        for (int i = 0; i < human.muscles.Length; i++) human.muscles[i] = 0;
-                        for (int i = 0; i < HumanTrait.MuscleName.Length; i++)
-                        {
-                            string muscle = HumanTrait.MuscleName[i];
-                            if (muscle.Contains("Arm Down-Up")) human.muscles[i] = -.45f;
-                            if (muscle.Contains("Leg In-Out")) human.muscles[i] = .15f;
-                            if (muscle.Contains("Leg Stretch") || muscle.Contains("Forearm Stretch")) human.muscles[i] = 1f;
-                        }
-                        handler.SetHumanPose(ref human);
-                    }
-                    animator.enabled = false;
-                    character.transform.localRotation = Quaternion.Euler(-20, 0, -62);
-                }
                 Bounds bounds = Measure(character);
+                // Only the posed copy: stage figures of any open scene can share the layer and the frame.
+                foreach (var other in Object.FindObjectsByType<Renderer>(FindObjectsSortMode.None))
+                    if (other.enabled && !other.transform.IsChildOf(character.transform)) { other.enabled = false; hidden.Add(other); }
                 cameraObject = new GameObject("__PortraitBakeCamera", typeof(Camera));
                 cameraObject.transform.SetParent(avatar.transform, false);
                 var camera = cameraObject.GetComponent<Camera>();
@@ -378,6 +364,7 @@ namespace PushStars.Editor
             finally
             {
                 RenderTexture.active = previousRender;
+                foreach (var other in hidden) if (other != null) other.enabled = true;
                 if (cameraObject != null) Object.DestroyImmediate(cameraObject);
                 if (character != null) Object.DestroyImmediate(character);
                 if (render != null) { render.Release(); Object.DestroyImmediate(render); }

@@ -175,6 +175,7 @@ namespace PushStars.Editor
             loading.gameObject.SetActive(false); rest.gameObject.SetActive(false); results.gameObject.SetActive(false);
             FightPresentationSceneBuilder.PersistTextMaterials(canvas.gameObject);
             TrainingMeasurementLayout.Apply(scene);
+            TrainingRestLayout.Apply(scene, false);
         }
         private static RectTransform Panel(Transform parent, string name) { var rt = Rect(parent, name); Stretch(rt); return rt; }
         private static RectTransform Rect(Transform parent, string name) { var rt = new GameObject(name, typeof(RectTransform)).GetComponent<RectTransform>(); rt.SetParent(parent, false); rt.gameObject.layer = 5; return rt; }

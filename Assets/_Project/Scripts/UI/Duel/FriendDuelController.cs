@@ -45,6 +45,8 @@ namespace PushStars.UI
         private LiveDuelLink _link;
         private bool _busy;
         private string _candidateHost = "";
+        /// <summary>The friend called into this room from the friends list (FriendsPanel).</summary>
+        private string _calledName = "";
         private float _launchAt = -1f;
         private enum Page { Menu, Join, ConfirmJoin, Room, Info, Leave }
         private Page _page, _returnPage;
@@ -83,6 +85,58 @@ namespace PushStars.UI
             DemoConnection.onClick.AddListener(PreviewConnection);
             CodeInput.onValueChanged.AddListener(_ => Message.text = "");
             Overlay.SetActive(false); Refresh();
+            if (Application.isPlaying) FriendsPanel.Install(this);
+        }
+
+        /// <summary>FIGHT next to a friend in the friends list: a room of our own, and that friend
+        /// called into it (an invitation on their main screen and a push). The code stays on
+        /// the sheet as well, in case the call does not reach them.</summary>
+        public void CallFriend(string friendUid, string friendName)
+        {
+            Session.Tick(Time.realtimeSinceStartupAsDouble);
+            if (HasRoom && !(Session.IsHost && Session.State == FriendDuelSession.Phase.Waiting))
+            { Show(Page.Room); Message.text = "Leave this room to call another friend."; return; }
+            if (!Online)
+            {
+                if (!IsPreview) { Show(Page.Menu); RequirePreview(); return; }
+                if (!HasRoom) Session.Create("736482", Time.realtimeSinceStartupAsDouble);
+                _calledName = friendName ?? ""; Show(Page.Room); return;
+            }
+            if (HasRoom) { Show(Page.Room); SendCall(friendUid, friendName); return; }
+            Show(Page.Menu);
+            HostOnline(friendUid, friendName);
+        }
+
+        /// <summary>A friend's call over BATTLE (or JOIN in the friends list): straight into their
+        /// room — the player has already seen who calls.</summary>
+        public void AcceptCall(string code, string hostName)
+        {
+            Session.Tick(Time.realtimeSinceStartupAsDouble);
+            if (HasRoom) { Show(Page.Room); Message.text = "Leave this room to join your friend."; return; }
+            _candidateCode = code; _candidateHost = hostName ?? "";
+            Show(Page.ConfirmJoin);
+            if (Online) JoinOnline(code);
+            else RequirePreview();
+        }
+
+        private async void SendCall(string friendUid, string friendName)
+        {
+            _calledName = friendName ?? "";
+            Refresh();
+            try
+            {
+                var receipt = await FriendsClient.Invite(friendUid, Session.Code);
+                if (this == null || !HasRoom) return;
+                if (IsOpen) Message.text = receipt != null && receipt.pushed ? "Your friend got a notification." : "";
+            }
+            catch (System.Exception e)
+            {
+                if (this == null) return;
+                _calledName = "";
+                if (IsOpen) Message.text = FriendsClient.Explain(e);
+                Refresh();
+                Debug.LogWarning("[FriendDuel] call friend: " + e.Message);
+            }
         }
 
         public void Open()
@@ -307,7 +361,8 @@ namespace PushStars.UI
 
         // ── Live room ────────────────────────────────────────────────────────────────────────
 
-        private async void HostOnline()
+        /// <param name="callUid">A friend from the friends list to call into the new room.</param>
+        private async void HostOnline(string callUid = null, string callName = null)
         {
             if (_busy) return;
             SetBusy(true, "Creating a room…");
@@ -318,6 +373,7 @@ namespace PushStars.UI
                 _link = link;
                 Session.Create(ticket.code, Time.realtimeSinceStartupAsDouble);
                 SetBusy(false, ""); Show(Page.Room);
+                if (!string.IsNullOrEmpty(callUid)) SendCall(callUid, callName);
             }
             catch (System.Exception e) { if (this != null) SetBusy(false, LiveDuelClient.Explain(e)); Debug.LogWarning("[FriendDuel] host: " + e.Message); }
         }
@@ -439,6 +495,7 @@ namespace PushStars.UI
             if (Slot == null) return;
             var phase = Session.State;
             bool room = HasRoom, friend = room && Session.HasFriend;
+            if (!room || friend) _calledName = "";
             Presentation?.Refresh(Session);
             bool hasPortrait = Presentation != null && Presentation.LoadedAvatar != null;
             PlusIcon.gameObject.SetActive(!friend); FriendBadge.SetActive(friend && !hasPortrait);
@@ -516,7 +573,9 @@ namespace PushStars.UI
             {
                 CodeGroup.SetActive(true); CodeLabel.text = Session.Code.Substring(0, 3) + " " + Session.Code.Substring(3);
                 LayoutBody(246, 125);
-                Body.text = $"Send this code to your friend.\nExpires in {left / 60}:{left % 60:00}";
+                Body.text = string.IsNullOrEmpty(_calledName)
+                    ? $"Send this code to your friend.\nExpires in {left / 60}:{left % 60:00}"
+                    : $"Calling {_calledName}…\nOr send this code. Expires in {left / 60}:{left % 60:00}";
                 PrimaryLabel.text = "COPY CODE"; return;
             }
             if (phase == FriendDuelSession.Phase.Expired)

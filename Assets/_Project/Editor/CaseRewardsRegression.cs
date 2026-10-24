@@ -29,6 +29,8 @@ namespace PushStars.Editor
             Check("Missed upgrades consume taps and permit a common case to open", MissedUpgrades, report, ref passed, ref failed);
             Check("Opened prize survives reload and is never rerolled", OpenPersistence, report, ref passed, ref failed);
             Check("Claim pays once across reload and cannot re-award the workout", ClaimPersistence, report, ref passed, ref failed);
+            Check("Daily workout cases pay their bonus but never gems", DailyCaseHasNoGems, report, ref passed, ref failed);
+            Check("Island chests open at exactly their island's level", IslandChestLevels, report, ref passed, ref failed);
             Check("Selected cases can be opened out of order without changing others", Queue, report, ref passed, ref failed);
             Check("Case bonuses: Aura, x2 boosts, nick colors and the jackpot pay once on claim", Bonuses, report, ref passed, ref failed);
             Check("Persistence failure leaves awards, taps, opens and claims uncommitted", FailedWrites, report, ref passed, ref failed);
@@ -265,7 +267,7 @@ namespace PushStars.Editor
         private static void MissedUpgrades()
         {
             var f = new Fixture(0.99, 0.99, 0.99, 0);
-            f.Ledger.AwardForWorkout("a", 1);
+            f.Ledger.TryGrantCase("a");
             f.UpgradeAll("a");
             Require(f.Ledger.Pending.Rarity == CaseRarity.Common && f.Ledger.Pending.CanOpen, "Failed upgrades did not count as attempts.");
             Require(f.Ledger.TryOpen("a", out var opened) && opened.Gems == 10, "Common case could not be opened after three misses.");
@@ -274,7 +276,7 @@ namespace PushStars.Editor
         private static void OpenPersistence()
         {
             var f = new Fixture(0, 0, 0, 0.5);
-            f.Ledger.AwardForWorkout("a", 1);
+            f.Ledger.TryGrantCase("a");
             f.UpgradeAll("a");
             Require(f.Ledger.TryOpen("a", out var opened), "Ready case failed to open.");
             Require(opened.Opened && opened.Gems == 240 && f.Ledger.GemsBalance == 0, "Opening did not record its expected prize or paid before claim.");
@@ -287,7 +289,7 @@ namespace PushStars.Editor
         private static void ClaimPersistence()
         {
             var f = new Fixture(0, 0, 0, 0.5);
-            f.Ledger.AwardForWorkout("a", 1);
+            f.Ledger.TryGrantCase("a");
             f.UpgradeAll("a");
             f.Ledger.TryOpen("a", out _);
             f.Reload();
@@ -297,6 +299,38 @@ namespace PushStars.Editor
             Require(!f.Ledger.TryClaim("a", out int duplicate) && duplicate == 0, "Repeated claim paid twice.");
             Require(!f.Ledger.AwardForWorkout("a", 999), "Claimed workout could be awarded again.");
             Require(f.Writes == 6 && f.Ledger.GemsBalance == gems, "Duplicate claim or award changed wallet.");
+        }
+
+        private static void DailyCaseHasNoGems()
+        {
+            var f = new Fixture(0, 0, 0);
+            Require(f.Ledger.TryAwardDailyWorkoutCase("daily", 12, Day), "Daily workout was not awarded.");
+            f.UpgradeAll("daily");
+            Require(f.Ledger.TryOpen("daily", out var opened) && opened.Rarity == CaseRarity.Legendary &&
+                    opened.Gems == 0 && opened.Bonus != CaseBonus.None, "A legendary daily case paid gems or held no bonus.");
+            f.Reload();
+            Require(f.Ledger.Find("daily").Gems == 0, "A daily case without gems did not survive reload.");
+            Require(f.Ledger.TryClaim("daily", out int gems) && gems == 0 && f.Ledger.GemsBalance == 0, "Claiming a daily case paid gems.");
+        }
+
+        private static void IslandChestLevels()
+        {
+            foreach (var chapter in BossCatalog.Chapters)
+            {
+                // Every roll would upgrade; the chest must still stop at its island's level.
+                var f = new Fixture(0, 0, 0, 0.5);
+                Require(f.Ledger.TryGrantCase(chapter.ChestReceipt), "Island chest was not granted.");
+                f.UpgradeAll(chapter.ChestReceipt);
+                Require(f.Ledger.Find(chapter.ChestReceipt).Rarity == chapter.ChestRarity && f.Draws == 0,
+                    chapter.Id + " chest did not climb to exactly its level without rolling.");
+                Require(f.Ledger.TryOpen(chapter.ChestReceipt, out var opened) && opened.Gems >= CaseRewards.MinimumGems(chapter.ChestRarity),
+                    chapter.Id + " chest did not pay its level's gems.");
+                f.Reload();
+                Require(f.Ledger.Find(chapter.ChestReceipt).Opened, chapter.Id + " chest did not reload.");
+            }
+            Require(BossCatalog.FindChapter("forest").ChestRarity == CaseRarity.Rare &&
+                    BossCatalog.FindChapter("ice").ChestRarity == CaseRarity.Epic &&
+                    BossCatalog.FindChapter("lava").ChestRarity == CaseRarity.Legendary, "Island chest levels are not 2 / 3 / 4.");
         }
 
         private static void Queue()

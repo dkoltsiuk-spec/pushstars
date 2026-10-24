@@ -256,7 +256,7 @@ namespace PushStars.Editor
 
             // The owner's tag art comes already tilted; the level sits on its card below the clip,
             // turned to the same angle.
-            var levelBadge = Child(xp, "LevelBadge", 26.5f, 21.5f, 45, 59);
+            var levelBadge = Child(xp, "LevelBadge", 26.5f, 27.5f, 45, 59);
             var oldBadge = levelBadge.GetComponent<RewardPlateGraphic>();
             if (oldBadge != null) Object.DestroyImmediate(oldBadge);
             var badgeImage = Ensure<Image>(levelBadge.gameObject);
@@ -269,6 +269,7 @@ namespace PushStars.Editor
             ui.Level.enableAutoSizing = false; ui.Level.lineSpacing = -30; // pulls the small "LVL" down onto the number
             ui.Level.rectTransform.localRotation = Quaternion.Euler(0, 0, 10);
             ui.Level.text = "<size=8>LVL</size>\n4";
+            LevelTagText.Style(ui.Level);
 
             int order = 0;
             foreach (var part in new Transform[] { track, area, ui.LevelProgress.transform, ui.LevelUp.transform, xpValue, levelBadge })

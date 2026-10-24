@@ -27,8 +27,9 @@ namespace PushStars.UI
     {
         // Published from legal_site/ to the separate "pushupstars-app" Firebase Hosting site
         // (firebase deploy --only hosting --config firebase.legal.json).
-        private const string PrivacyUrl = "https://pushupstars-app.web.app/privacy";
-        private const string TermsUrl   = "https://pushupstars-app.web.app/terms";
+        public const string PrivacyUrl = "https://pushupstars-app.web.app/privacy";
+        public const string TermsUrl   = "https://pushupstars-app.web.app/terms";
+        public const string SupportUrl = "https://pushupstars-app.web.app/support";
         private const string BootSceneName = "Boot";
 
         [Header("Overlay (toggled root)")]

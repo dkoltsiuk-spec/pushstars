@@ -33,6 +33,9 @@ namespace PushStars.CV
         [SerializeField] private string _pushupStateName = "PushUp";
         [SerializeField] private string _idleStateName = "StandIdle";
         [SerializeField] private string _restStateName = "SittingIdle";
+        /// <summary>Played between training sets (forced rest presentation) when the controller
+        /// has it; otherwise the rest state. Not serialized: scenes would pin a retired name.</summary>
+        private const string BetweenSetsState = "RestBreathing";
 
         /// <summary>The idle this asked for before the controller carried the menu's standing
         /// idle: a fighter's guard, which was the idle only because it was the one looping clip
@@ -93,8 +96,12 @@ namespace PushStars.CV
 
         private int _pushupHash;
         private int _idleHash;
-        private int _restHash;
+        private int _restHash, _betweenSetsHash;
         private float _targetDepth;
+        /// <summary>Elbow angle this player's straight arms read as — the avatar's top. The plank
+        /// arms from 143°, but the gauge's top is 155°: a straight-armed player whose camera
+        /// reads 145° would otherwise start every set a fifth of the way down.</summary>
+        private float _topDeg = CVConstants.AmplitudeGaugeTopDeg;
         private float _depthVel;
         private float _flightPhase = -1f;                      // < 0 = hands planted
         private float _flightTakeoff = float.NegativeInfinity; // takeoff already judged
@@ -137,7 +144,7 @@ namespace PushStars.CV
             RehashStates();
         }
 
-        /// <summary>Forces the seated rest pose used by the training screen between sets.
+        /// <summary>Forces the between-sets breathing idle used by the training screen.
         /// The live session is disabled while the rest screen is shown, so the normal session
         /// state cannot select the rest clip on its own during that interval.</summary>
         public void SetRestPresentation(bool resting)
@@ -158,6 +165,7 @@ namespace PushStars.CV
             _pushupHash = Animator.StringToHash(_pushupStateName);
             _idleHash = IdleStateHash();
             _restHash = Animator.StringToHash(_restStateName);
+            _betweenSetsHash = Animator.StringToHash(BetweenSetsState);
         }
 
         /// <summary>The idle state to actually play, reconciled against the controller in front of
@@ -257,14 +265,20 @@ namespace PushStars.CV
                 case AvatarMode.Pushup:
                     // Scrub mode: the animator's own clock stops; ScrubPushup() sets the pose.
                     _animator.speed = 0f;
-                    _targetDepth = _session.Tracker.CurrentDepth01;
+                    // Armed means a plank top: whatever the elbows read now is this player's top.
+                    _topDeg = _session.Tracker.SignalValid
+                        ? Mathf.Clamp(_session.Tracker.SmoothedElbowDeg, MinTopDeg, CVConstants.AmplitudeGaugeTopDeg)
+                        : CVConstants.AmplitudeGaugeTopDeg;
+                    _targetDepth = Depth(_session.Tracker);
                     SmoothedDepth = _targetDepth;
                     _depthVel = 0f;
                     break;
 
                 case AvatarMode.Rest:
                     _animator.speed = 1f;
-                    _animator.CrossFadeInFixedTime(_restHash, _crossFadeSec, 0);
+                    // Between sets the hero stands and breathes; a pause inside a set keeps the rest pose.
+                    int rest = _restPresentation && _animator.HasState(0, _betweenSetsHash) ? _betweenSetsHash : _restHash;
+                    _animator.CrossFadeInFixedTime(rest, _crossFadeSec, 0);
                     break;
 
                 default:
@@ -274,13 +288,24 @@ namespace PushStars.CV
             }
         }
 
+        private const float MinTopDeg = CVConstants.ArmingElbowTopAngle - 5f;
+
+        /// <summary>Push-up depth against this player's own top (see <see cref="_topDeg"/>).</summary>
+        private float Depth(AmplitudeTracker tracker) => Mathf.Clamp01(
+            (_topDeg - tracker.SmoothedElbowDeg) / Mathf.Max(1f, _topDeg - CVConstants.AmplitudeGaugeBottomDeg));
+
         private void ScrubPushup(float deltaTime)
         {
             var tracker = _session.Tracker;
             // Hold the last pose through invalid frames — the tracker freezes its signal too.
             // And while the hands are off the floor or the torso is upright: whatever the elbows
             // read then is not a depth. Half a second of that disarms, and the mirror takes over.
-            if (tracker.SignalValid && !_session.Posture.Suspect) _targetDepth = tracker.CurrentDepth01;
+            if (tracker.SignalValid && !_session.Posture.Suspect)
+            {
+                // Straighter arms later in the set raise the top (never past the gauge's own).
+                _topDeg = Mathf.Min(CVConstants.AmplitudeGaugeTopDeg, Mathf.Max(_topDeg, tracker.SmoothedElbowDeg));
+                _targetDepth = Depth(tracker);
+            }
             // Airborne, the elbow angle is not a depth (it can dip far enough to fake a bottom).
             // The real depth takes over again on landing, which is the dip that absorbs it.
             if (_flightPhase >= 0f) _targetDepth = 0f;

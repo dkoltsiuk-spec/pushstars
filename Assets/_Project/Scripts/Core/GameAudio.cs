@@ -125,7 +125,7 @@ namespace PushStars.Core
             Add(SoundCue.Navigate, .23f, .12f, 160, "ui_swipe");
             Add(SoundCue.Rep, .46f, .08f, 32, "rep_01", "rep_02", "rep_03");
             Add(SoundCue.RepRejected, .3f, .5f, 40, "rep_rejected");
-            Add(SoundCue.Countdown, .32f, .2f, 40, "countdown");
+            Add(SoundCue.Countdown, .7f, .2f, 40, "countdown"); // heard from the plank, 2 m from the phone
             Add(SoundCue.RewardTick, .15f, .065f, 170, "reward_tick");
             Add(SoundCue.RewardComplete, .48f, .2f, 80, "reward_complete");
             Add(SoundCue.CaseUnlock, .5f, .2f, 90, "case_unlock");

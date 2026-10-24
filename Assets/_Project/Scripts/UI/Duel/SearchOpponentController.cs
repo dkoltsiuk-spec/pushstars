@@ -61,6 +61,8 @@ namespace PushStars.UI
 
         /// <summary>The offer card comes up after this long (or at once without a connection).</summary>
         private const float OfferDelaySec = 4f, OfferLatestSec = 8f;
+        /// <summary>How long FIGHT waits for an offered bot's recording before it fights the set alone.</summary>
+        private const float BotLoadSec = 6f;
         /// <summary>"Players today" shows from this many: a handful reads as an empty game.</summary>
         private const int PlayersTodayMin = 20;
         /// <summary>A call older than this is not acted on: the caller has stopped waiting.</summary>
@@ -83,6 +85,7 @@ namespace PushStars.UI
         private SearchLobbyView _lobby;
         private bool _notify, _offerTaken, _unreachable, _asking;
         private LiveQueueGhost _offer;       // a stranger at the player's level; null → own shadow
+        private System.Threading.Tasks.Task<BotRecording> _botLoad;   // the offered pool bot's recording
         private string _caller;              // the player whose call opened this search
         private IDisposable _callWatch;
         private CallBanner _banner;
@@ -109,6 +112,8 @@ namespace PushStars.UI
             WatchCalls();
             CheckCall();
             StartCoroutine(WatchLobby());
+            // Back from a queue duel the stranger walked out of before it began: keep searching.
+            if (FightRequest.ConsumeSearchAgain() && LiveDuelService.Available) OpenSearch(null);
         }
 
         // A lobby callout goes once its search has stopped refreshing (the phone that searched died).
@@ -159,6 +164,7 @@ namespace PushStars.UI
             _notify = PlayerPrefs.GetInt(KeyNotify, 0) == 1 && new PlayerPrefsSettingsStore().NotificationsEnabled
                       && NotificationAccess.Current() == NotificationAccess.State.Granted;
             _offer = null;
+            _botLoad = null;
             _offerTaken = _unreachable = false;
             if (_notify) MarkStandby();
             RefreshBell();
@@ -231,7 +237,13 @@ namespace PushStars.UI
                 if (search != null)
                 {
                     search.Tick(now);
-                    if (search.Offer != null) _offer = search.Offer;
+                    // The card on screen is the fight FIGHT takes: a later search's offer does not swap it.
+                    if (search.Offer != null && search.Offer != _offer && (_lobby == null || !_lobby.OfferShown))
+                    {
+                        _offer = search.Offer;
+                        // A bot's set comes with its motion — fetched now, so FIGHT does not wait.
+                        _botLoad = _offer.IsBot ? PoolBotClient.Prefetch(_offer) : null;
+                    }
                     if (search.State == LiveQueueSearch.Result.Live)
                     {
                         // Both phones are in the room: the preparation screen's READY opens the
@@ -319,6 +331,34 @@ namespace PushStars.UI
                 yield break;
             }
             float elapsed = Elapsed();
+
+            if (_offer != null && _offer.IsValid && _offer.IsBot)
+            {
+                // Shown and fought as the player it plays. Met once: it leaves this player's search.
+                ShowFoundCard($"{_offer.name}  ·  {_offer.repTimes.Length}");
+                Analytics.SearchEnded("bot", elapsed, _notify);
+                float waitUntil = Time.realtimeSinceStartup + BotLoadSec;
+                yield return new WaitForSeconds(FightConfig.FoundPauseSec);
+                while (_botLoad != null && !_botLoad.IsCompleted && Time.realtimeSinceStartup < waitUntil) yield return null;
+                PoolBotClient.MarkFought(_offer.botId);
+                if (_botLoad != null && _botLoad.IsCompleted && _botLoad.Result != null)
+                {
+                    _searchRoutine = null;
+                    FightRequest.PoolBot(_botLoad.Result);
+                    OtaSceneLoader.LoadScene(FightConfig.PreparationSceneName);
+                    yield break;
+                }
+                // No recording in time: the same set without its motion, still under the bot's name.
+                var plain = GhostRecord.From(_offer.repTimes, 0, "stranger");
+                plain.clapTimes = _offer.clapTimes ?? Array.Empty<float>();
+                if (plain.IsValid)
+                {
+                    _searchRoutine = null;
+                    FightRequest.StrangerGhost(plain, _offer.name);
+                    OtaSceneLoader.LoadScene(FightConfig.PreparationSceneName);
+                    yield break;
+                }
+            }
 
             if (_offer != null && _offer.IsValid)
             {

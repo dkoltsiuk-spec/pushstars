@@ -34,6 +34,10 @@ namespace PushStars.Fight
         [SerializeField] private Sprite _check, _dumbbell;
         [SerializeField] private RectTransform[] _bolts, _sleepLetters;
         private Vector2[] _boltOrigins, _sleepOrigins;
+        private RawImage _restImage;
+        private Texture _restStill;
+        private static readonly Color32 StepDone = new Color32(255, 207, 0, 255), StepNext = new Color32(74, 84, 132, 255),
+            StepLater = new Color32(38, 43, 70, 255);
         private View _view;
         private bool _preview, _paused;
         private float _shownReps = -1, _repPop;
@@ -69,9 +73,10 @@ namespace PushStars.Fight
             if (PushStars.UI.CharacterRoster.SavedGender == PushStars.UI.CharacterGender.Female)
             {
                 if (_femalePushup != null) _pushupPreview = _femalePushup;
-                if (_femaleRest != null) _restPortrait.GetComponent<RawImage>().texture = _femaleRest;
+                if (_femaleRest != null && _restPortrait != null) _restPortrait.GetComponent<RawImage>().texture = _femaleRest;
                 if (_femaleStanding != null) _resultPortrait.texture = _femaleStanding;
             }
+            if (_restPortrait != null) { _restImage = _restPortrait.GetComponent<RawImage>(); _restStill = _restImage.texture; }
             ShowLoading();
         }
         private void OnDestroy()
@@ -131,15 +136,27 @@ namespace PushStars.Fight
             }
             _restTimer.text = manual ? "∞" : FormatTime(remaining);
             _elapsed.text = FormatTime(elapsed); _addRest.interactable = !manual;
-            _progressFill.fillAmount = total > 1 ? (float)completed / (total - 1) : 1;
+            float progress = total > 1 ? Mathf.Clamp01((float)completed / (total - 1)) : 1;
+            // A sliced fill keeps its rounded ends: it grows to the next set's node instead of
+            // being clipped by a radial/horizontal fill.
+            if (_progressFill.type == Image.Type.Filled) _progressFill.fillAmount = progress;
+            else _progressFill.rectTransform.anchorMax = new Vector2(progress, 1);
             int visible = Mathf.Min(total, _steps.Length);
+            var track = _progressFill.transform.parent;
             for (int i = 0; i < _steps.Length; i++)
             {
-                var step = _steps[i]; step.transform.parent.gameObject.SetActive(i < visible);
+                var step = _steps[i];
+                var node = (RectTransform)step.transform;
+                while (node.parent != track) node = (RectTransform)node.parent;
+                node.gameObject.SetActive(i < visible);
                 if (i >= visible) continue;
-                var rt = (RectTransform)step.transform.parent;
-                rt.anchorMin = rt.anchorMax = new Vector2(visible == 1 ? .5f : (float)i / (visible - 1), .5f);
-                step.sprite = i < completed ? _check : _dumbbell;
+                node.anchorMin = node.anchorMax = new Vector2(visible == 1 ? .5f : (float)i / (visible - 1), .5f);
+                bool done = i < completed;
+                step.sprite = done ? _check : _dumbbell;
+                step.color = done || i == completed ? Color.white : new Color(1, 1, 1, .45f);
+                var disc = step.transform.parent.GetComponent<Image>();
+                if (disc != null && disc.transform != track)
+                    disc.color = done ? StepDone : i == completed ? StepNext : StepLater;
                 _stepLabels[i].text = total > 5 ? (i + 1).ToString() : "";
             }
         }
@@ -178,9 +195,72 @@ namespace PushStars.Fight
             {
                 for (int i = 0; i < _bolts.Length; i++) _bolts[i].anchoredPosition = _boltOrigins[i] + Vector2.up * Mathf.Repeat(Time.unscaledTime * 9, 160);
                 for (int i = 0; i < _sleepLetters.Length; i++) _sleepLetters[i].anchoredPosition = _sleepOrigins[i] + new Vector2(Mathf.Sin(Time.unscaledTime + i) * 4, Mathf.Sin(Time.unscaledTime * 1.5f + i) * 6);
-                if (_restPortrait != null) _restPortrait.localScale = Vector3.one * (1 + .009f * Mathf.Sin(Time.unscaledTime * 1.7f));
             }
+            if (_view == View.Rest) ShowRestingHero();
         }
+        /// <summary>Between sets the live hero stands and gets their breath back (the fight's own stage, framed
+        /// standing by the preparation presentation); the baked still stands in where no stage
+        /// renders, such as the editor preview.</summary>
+        private void ShowRestingHero()
+        {
+            if (_restImage == null) return;
+            var live = !_preview && _sourcePortrait != null ? _sourcePortrait.texture : null;
+            if (live == null || !TryFrameHero(live, out var uv))
+            {
+                _restImage.texture = _restStill;
+                _restImage.uvRect = new Rect(0, 0, 1, 1);
+                if (_restStill != null) FitRestBox((float)_restStill.width / _restStill.height);
+                return;
+            }
+            _restImage.texture = live;
+            _restImage.uvRect = uv;
+            FitRestBox(LiveRestAspect);
+        }
+
+        private const float LiveRestAspect = .75f;
+        private FightAvatar _stageAvatar;
+
+        /// <summary>The fight stage renders a wide strip with the hero small in it. Cut a portrait
+        /// around the body: feet at the bottom, a standing height above them (from the rig, not
+        /// the animated limbs, so the crop stays still while the arms swing).</summary>
+        private bool TryFrameHero(Texture live, out Rect uv)
+        {
+            uv = default;
+            if (_stageAvatar == null || _stageAvatar.StageCamera == null || _stageAvatar.StageCamera.targetTexture != live)
+            {
+                _stageAvatar = null;
+                foreach (var avatar in FindObjectsByType<FightAvatar>(FindObjectsSortMode.None))
+                    if (avatar.StageCamera != null && avatar.StageCamera.targetTexture == live) _stageAvatar = avatar;
+                if (_stageAvatar == null) return false;
+            }
+            var body = _stageAvatar.Character != null ? _stageAvatar.Character.GetComponentInChildren<Animator>() : null;
+            if (body == null || !body.isHuman) return false;
+            var camera = _stageAvatar.StageCamera;
+            Vector3 feet = body.transform.position;
+            // humanScale is the hips height; a standing body with headroom is ~1.8 of it.
+            float height = body.humanScale * body.transform.lossyScale.y * 1.8f;
+            Vector3 ground = camera.WorldToViewportPoint(feet);
+            Vector3 top = camera.WorldToViewportPoint(feet + body.transform.up * height);
+            float tall = top.y - ground.y;
+            if (ground.z <= 0 || tall <= .01f) return false;
+            // The stage lens may squeeze the strip horizontally (AvatarWideCamera): measure how a
+            // metre across compares with a metre up, in texture pixels, and widen the cut by it.
+            Vector3 across = camera.WorldToViewportPoint(feet + camera.transform.right);
+            Vector3 up = camera.WorldToViewportPoint(feet + camera.transform.up);
+            float squeeze = (across.x - ground.x) * live.width / ((up.y - ground.y) * live.height);
+            if (squeeze <= .01f) return false;
+            float uvHeight = tall * 1.1f;
+            float uvWidth = uvHeight * LiveRestAspect * live.height / live.width * squeeze;
+            uv = new Rect(ground.x - uvWidth * .5f, ground.y - tall * .06f, uvWidth, uvHeight);
+            return true;
+        }
+
+        private void FitRestBox(float aspect)
+        {
+            var size = _restPortrait.sizeDelta;
+            if (!Mathf.Approximately(size.x, size.y * aspect)) _restPortrait.sizeDelta = new Vector2(size.y * aspect, size.y);
+        }
+
         public void Preview(View view)
         {
             _preview = true;

@@ -50,9 +50,9 @@ namespace PushStars.Fight
                 _liveDeadline = Time.realtimeSinceStartup + LiveReadySec;
                 LiveDuelDiagnostics.Mark("prep");
             }
-            else if (FightRequest.TestBot != null)
+            else if ((FightRequest.TestBot ?? FightRequest.StrangerBot) is { } bot)
             {
-                var bot = FightRequest.TestBot;
+                // A test bot, or a pool bot the search offered as a player: its own face and record.
                 opponent = new DuelReadyPanel.Side(bot.displayName, bot.trophies, bot.fight.reps,
                     DuelReadyPanel.Side.Unknown, bot.countryCode, bot.achievementIds);
                 opponentFlag = CountryFlags.Get(bot.countryCode);

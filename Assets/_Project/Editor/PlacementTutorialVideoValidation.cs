@@ -59,7 +59,15 @@ namespace PushStars.Editor
                 _due = EditorApplication.timeSinceStartup + .3;
                 switch (_step++)
                 {
-                    case 0: _guide = UnityEngine.Object.FindFirstObjectByType<GuidedOnboardingController>(); _guide.DismissGreeting(); break;
+                    case 0:
+                        _guide = UnityEngine.Object.FindFirstObjectByType<GuidedOnboardingController>();
+                        var guideSettings = new SerializedObject(_guide);
+                        _panel = (GameObject)guideSettings.FindProperty("_placement").objectReferenceValue;
+                        _video = _panel.GetComponentInChildren<PlacementTutorialVideo>(true);
+                        _player = _guide.GetComponent<VideoPlayer>();
+                        Check(!_video.isActiveAndEnabled && _player != null && _player.isPrepared && !_player.isPlaying, "Video prepared before placement opens");
+                        Check(Math.Abs(_player.clip.length - 217d / 24) < .05, "Clip shortened by one second (217 frames at 24 fps)");
+                        _guide.DismissGreeting(); break;
                     case 1: _guide.Advance(); break;
                     case 2:
                         var so = new SerializedObject(_guide);
@@ -74,9 +82,8 @@ namespace PushStars.Editor
                         var button = (Button)so.FindProperty("_action").objectReferenceValue;
                         ((RectTransform)button.transform).anchoredPosition = new Vector2(0, 49);
                         ((TextMeshProUGUI)so.FindProperty("_actionLabel").objectReferenceValue).text = "I'M READY";
-                        _panel.SetActive(true); _due += 2; break;
+                        _panel.SetActive(true); _due += .2; break;
                     case 3:
-                        _video = _panel.GetComponentInChildren<PlacementTutorialVideo>(); _player = _video.GetComponent<VideoPlayer>();
                         Check(_player.isPlaying && _player.frame > 0 && _video.GetComponent<RawImage>().texture == _player.texture, "Moving frames rendered");
                         Check(_player.isLooping && _player.audioOutputMode == VideoAudioOutputMode.None, "Silent loop configured");
                         Check(_panel.transform.Find("VideoFrame").GetComponent<Image>().sprite != null && _video.GetComponent<PlacementVideoFrame>() != null, "Supplied frame connected");
@@ -89,11 +96,13 @@ namespace PushStars.Editor
                     case 4:
                         Check(_loops > 0 && _player.isPlaying, "Completed a loop"); _player.loopPointReached -= Looped;
                         _video.SendMessage("OnApplicationPause", true); Check(!_player.isPlaying, "Background stops playback");
+                        Check(_player.isPrepared, "Background retains prepared decoder");
                         _video.SendMessage("OnApplicationPause", false); _due += 2; break;
                     case 5:
                         Check(_player.isPlaying && _player.frame > 0, "Foreground resumes");
                         _panel.SetActive(false); Check(!_player.isPlaying, "Closing stops playback");
-                        _panel.SetActive(true); _due += 2; break;
+                        Check(_player.isPrepared, "Closing retains prepared decoder");
+                        _panel.SetActive(true); _due += .2; break;
                     case 6: Check(_player.isPlaying && _player.time < 4, "Reopening starts from beginning"); Finish("PASS"); break;
                 }
             }

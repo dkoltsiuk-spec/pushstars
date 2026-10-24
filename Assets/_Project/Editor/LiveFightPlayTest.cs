@@ -37,6 +37,17 @@ namespace PushStars.Editor
         private static readonly float[] Shots = { 3f, 8f, 11f, 12.5f, 15f, 20f };
         private static int _shots;
 
+        /// <summary>How the duel is cut short, if it is (FightController.Live's leaving rules).</summary>
+        public enum Scenario { Full, PeerLeavesMidSet, PeerLeavesInCountdown, ExitMidSet, AwayMidSet, ExitHold, ConnectionDrop }
+        // Survives the domain reload entering play mode may bring, like the pending flag.
+        public static Scenario Mode
+        {
+            get => (Scenario)SessionState.GetInt("PushStars.LiveFightPlayTest.Scenario", 0);
+            set => SessionState.SetInt("PushStars.LiveFightPlayTest.Scenario", (int)value);
+        }
+        private const float ScenarioAtSetSec = 8f;
+        private static bool _scenarioDone;
+
         /// <summary>Both stages' renders as PNGs in output/live-fight, to see the opponent.</summary>
         private static void Capture(string label)
         {
@@ -103,7 +114,7 @@ namespace PushStars.Editor
             _peer.Open("t", now); _me.Open("t", now);
             LiveDuelLink.SetActive(_me);
             FightRequest.Live(_me, ranked: true);
-            _shots = 0; _summaryLogged = false; _scene = _pressed = "";
+            _shots = 0; _summaryLogged = _scenarioDone = _searchAgainSeen = false; _scene = _pressed = ""; _confirmAt = 0f; _confirmShot = false; _shotAfter = _shotResult = 0;
             _last = _nextPose = _nextLog = _startedAt = now; _nextScore = _nextMyRep = float.MaxValue; _peerReps = _myReps = 0;
             _running = true;
             SceneManager.sceneLoaded += OnLoaded;
@@ -171,6 +182,10 @@ namespace PushStars.Editor
                 Log($"my rep {_myReps} done");
             }
             bool live = _peer.HasStart && _peer.SecondsUntilStart <= 0f;
+            if (!_scenarioDone && fightNow != null) PlayScenario(fightNow, phaseNow, live);
+            if (fightNow != null && (bool)typeof(FightController).GetField("_liveSearchAgain", BindingFlags.Instance | BindingFlags.NonPublic).GetValue(fightNow))
+                _searchAgainSeen = true;
+            if (_peer.Closed) live = false;
             if (live && _nextScore == float.MaxValue) _nextScore = now + PeerRepSec;
             // The opponent's body is this player's own, echoed back: real frames from the
             // player stage, re-stamped on the opponent's clock — what a second phone would send.
@@ -192,16 +207,27 @@ namespace PushStars.Editor
                 _nextScore = now + PeerRepSec;
                 _peer.SendScore(++_peerReps, 0, 80, -_peer.SecondsUntilStart);
             }
-            if (!_summaryLogged && SceneManager.GetActiveScene().name != FightConfig.FightSceneName && FightScreenNavigation.Result != null)
+            if (!_summaryLogged && SceneManager.GetActiveScene().name == "RewardSummary" && FightScreenNavigation.Result != null)
             {
                 _summaryLogged = true;
                 var r = FightScreenNavigation.Result; var sum = FightScreenNavigation.RewardSummary;
                 Log($"RESULT win={r.Win} draw={r.Draw} me={r.MyReps} opp={r.OppReps} trophies={r.Trophies} status={r.LeagueStatus} | " +
                     $"aura={sum.Aura} case={sum.HasCase} moments=[{string.Join("; ", sum.AuraMoments ?? new string[0])}] scene={SceneManager.GetActiveScene().name}");
+                Log($"PEER VIEW quit={_peer.PeerQuit} gone={_peer.PeerGone} finished={_peer.Peer?.Finished} closed={_peer.Closed}");
+            }
+            // Called off: home, and (from the queue) the search open again a moment later.
+            if (!_summaryLogged && _scenarioDone && _scene == FightConfig.MainSceneName && now - _sceneAt > 3f)
+            {
+                _summaryLogged = true;
+                var search = Object.FindFirstObjectByType<SearchOpponentController>();
+                var open = search != null && (bool)typeof(SearchOpponentController).GetField("_open", BindingFlags.Instance | BindingFlags.NonPublic).GetValue(search);
+                var pending = (bool)typeof(FightRequest).GetField("_searchAgain", BindingFlags.Static | BindingFlags.NonPublic).GetValue(null);
+                Log($"LEFT WITHOUT RESULT scene={SceneManager.GetActiveScene().name} searchAgain={_searchAgainSeen} pending={pending} searchOpen={open} controllers={Object.FindObjectsByType<SearchOpponentController>(FindObjectsSortMode.None).Length} mode={SelectedGameMode.Current}");
             }
             // After the fight: press on through the reward screens like a player would.
             string scene = SceneManager.GetActiveScene().name;
             if (scene != _scene) { _scene = scene; _sceneAt = now; Log("scene -> " + scene); }
+            ShootScenario(now, scene);
             if (scene == "RewardSummary" && now - _sceneAt > 5f && _pressed != scene)
             { _pressed = scene; Object.FindFirstObjectByType<RewardScreen>()?.Home(); Log("pressed continue on " + scene); }
             if (scene == "AuraReward" && now - _sceneAt > 8f && _pressed != scene)
@@ -217,6 +243,110 @@ namespace PushStars.Editor
                     $"meStatus={_me.Status} peerPresent={_me.PeerPresent}");
             }
         }
+
+        private static bool _searchAgainSeen;
+        private static float _confirmAt;
+        private static bool _confirmShot;
+
+        private static void PlayScenario(FightController fight, string phase, bool live)
+        {
+            var flags = BindingFlags.Instance | BindingFlags.NonPublic;
+            float setSec = live ? -_peer.SecondsUntilStart : -1f;
+            switch (Mode)
+            {
+                case Scenario.PeerLeavesInCountdown:
+                    if (phase != "Countdown") return;
+                    _peer.Leave();
+                    Log("SCENARIO peer left in the countdown");
+                    break;
+                case Scenario.PeerLeavesMidSet:
+                    if (phase != "Live" || setSec < ScenarioAtSetSec) return;
+                    _peer.Leave();
+                    Log("SCENARIO peer left mid-set");
+                    break;
+                case Scenario.ExitMidSet:
+                case Scenario.ExitHold:
+                {
+                    if (phase != "Live" || setSec < ScenarioAtSetSec) return;
+                    typeof(FightController).GetMethod("ExitToCaller", flags).Invoke(fight, null);
+                    // First pass asks; a second, two seconds on, answers LEAVE — the duel runs meanwhile.
+                    var confirm = Object.FindFirstObjectByType<LiveExitConfirm>();
+                    if (_confirmAt <= 0f)
+                    {
+                        Log($"SCENARIO pressing exit (confirm before: {(confirm != null ? confirm.Showing.ToString() : "none")})");
+                        _confirmAt = Time.realtimeSinceStartup;
+                        try
+                        {
+                            typeof(FightController).GetMethod("ExitToCaller", flags).Invoke(fight, null);
+                            confirm = Object.FindFirstObjectByType<LiveExitConfirm>();
+                            Directory.CreateDirectory("output/live-fight");
+                            ScreenCapture.CaptureScreenshot("output/live-fight/exit-confirm.png");
+                        }
+                        catch (System.Exception e) { Log("SCENARIO exit threw: " + e); }
+                        var dim = GameObject.Find("LiveExitConfirm");
+                        if (dim != null)
+                        {
+                            var rt = (RectTransform)dim.transform;
+                            Log($"SCENARIO confirm root parent={rt.parent.name} rect={rt.rect} scale={rt.lossyScale} " +
+                                $"dim={dim.GetComponent<UnityEngine.UI.Image>()?.color} order={dim.GetComponent<Canvas>()?.sortingOrder} host={confirm?.gameObject.name}");
+                        }
+                        Log($"SCENARIO exit pressed: confirm={(confirm != null && confirm.Showing)} phase={typeof(FightController).GetField("_phase", flags).GetValue(fight)}");
+                        return;
+                    }
+                    if (!_confirmShot && Time.realtimeSinceStartup - _confirmAt >= 1f)
+                    {
+                        _confirmShot = true; ScreenCapture.CaptureScreenshot("output/live-fight/exit-confirm-1s.png");
+                        var root = GameObject.Find("LiveExitConfirm");
+                        var cr = root != null ? root.GetComponent<CanvasRenderer>() : null;
+                        var img = root != null ? root.GetComponent<UnityEngine.UI.Image>() : null;
+                        var canvas = root != null ? root.GetComponent<Canvas>() : null;
+                        Log($"SCENARIO dim renderer cull={cr?.cull} alpha={cr?.GetAlpha()} color={cr?.GetColor()} inherited={cr?.GetInheritedAlpha()} " +
+                            $"enabled={img?.enabled} active={root?.activeInHierarchy} mats={cr?.materialCount} canvasEnabled={canvas?.enabled} " +
+                            $"layer={root?.layer} rootCanvas={canvas?.rootCanvas.name} mode={canvas?.rootCanvas.renderMode} " +
+                            $"groups={(root != null ? root.GetComponentsInParent<CanvasGroup>().Length : -1)}");
+                    }
+                    if (Time.realtimeSinceStartup - _confirmAt < 2f || Mode == Scenario.ExitHold) return;
+                    foreach (var button in confirm.GetComponentsInChildren<UnityEngine.UI.Button>(true))
+                        if (button.name == "Leave") button.onClick.Invoke();
+                    Log("SCENARIO pressed LEAVE");
+                    break;
+                }
+                case Scenario.ConnectionDrop:
+                    if (phase != "Live" || setSec < ScenarioAtSetSec) return;
+                    ((LoopbackDuelTransport)_me.Transport).SetConnected(false);
+                    Log("SCENARIO this phone lost the connection");
+                    break;
+                case Scenario.AwayMidSet:
+                {
+                    if (phase != "Live" || setSec < ScenarioAtSetSec) return;
+                    var pause = typeof(FightController).GetMethod("OnLiveApplicationPause", flags);
+                    pause.Invoke(fight, new object[] { true });
+                    typeof(FightController).GetField("_liveAwayFrom", flags).SetValue(fight, (System.DateTime?)System.DateTime.UtcNow.AddSeconds(-12));
+                    pause.Invoke(fight, new object[] { false });
+                    Log("SCENARIO 12 s in the background");
+                    break;
+                }
+                default: return;
+            }
+            _scenarioDone = true;
+            _scenarioAt = Time.realtimeSinceStartup;
+        }
+
+        /// <summary>Screens for the record: the fight just after the scenario (and, for a lost
+        /// connection, while it counts down), then the result screen once it has settled.</summary>
+        private static void ShootScenario(float now, string scene)
+        {
+            if (!_scenarioDone || Mode == Scenario.Full) return;
+            Directory.CreateDirectory("output/live-fight");
+            float after = Mode == Scenario.ConnectionDrop ? 6f : .8f;
+            if (_shotAfter == 0 && scene == FightConfig.FightSceneName && now - _scenarioAt >= after)
+            { _shotAfter = 1; ScreenCapture.CaptureScreenshot($"output/live-fight/{Mode}-fight.png"); Log("shot fight"); }
+            if (_shotResult == 0 && (scene == "RewardSummary" || scene == FightConfig.MainSceneName) && now - _sceneAt >= 3f)
+            { _shotResult = 1; ScreenCapture.CaptureScreenshot($"output/live-fight/{Mode}-{scene}.png"); Log("shot " + scene); }
+        }
+
+        private static float _scenarioAt;
+        private static int _shotAfter, _shotResult;
 
         private static void Log(string line) => File.AppendAllText(LogPath, line + "\n");
     }
