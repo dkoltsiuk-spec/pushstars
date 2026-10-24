@@ -99,12 +99,21 @@ namespace PushStars.Services
 
         /// <summary>Sends this phone's trophies to the league table if they changed since the last
         /// accepted copy. Never throws: offline it retries later, a refused copy waits for the next change.</summary>
-        public static Task SyncTrophies()
+        public static Task SyncTrophies(bool force = false)
         {
-            if (_trophies == null || _trophies.IsCompleted) _trophies = SendTrophies();
+            if (force) return ReconcileTrophies();
+            if (_trophies == null || _trophies.IsCompleted) _trophies = SendTrophies(false);
             return _trophies;
         }
-        private static async Task SendTrophies()
+        private static async Task ReconcileTrophies()
+        {
+            // An older upload may still be running when the screen opens. Finish it before
+            // taking a fresh snapshot, so it cannot overwrite the reconciliation afterwards.
+            while (_trophies != null && !_trophies.IsCompleted) await _trophies;
+            _trophies = SendTrophies(true);
+            await _trophies;
+        }
+        private static async Task SendTrophies(bool force)
         {
             _trophiesDueAt = -1;
             try
@@ -113,12 +122,15 @@ namespace PushStars.Services
                 string uid = Uid;
                 if (string.IsNullOrEmpty(uid)) { _trophiesDueAt = Time.realtimeSinceStartup + TrophyRetrySec; return; }
                 string mark = uid + ":" + LocalProfile.Trophies;
-                if (mark == PlayerPrefs.GetString(TrophiesSentKey, "") || mark == PlayerPrefs.GetString(TrophiesRefusedKey, "")) return;
+                // A match can change the server total after this local total was uploaded.
+                // Explicit reconciliation must not trust a previous sent/refused marker.
+                if (!force && (mark == PlayerPrefs.GetString(TrophiesSentKey, "") || mark == PlayerPrefs.GetString(TrophiesRefusedKey, ""))) return;
                 var request = new TrophyRequest { workouts = ProgressCodec.Pack(LocalProfile.ExportSave()) };
                 try
                 {
                     var accepted = await Call<TrophyRequest, TrophyResponse>("syncLeagueTrophies", request, uid);
                     PlayerPrefs.SetString(TrophiesSentKey, mark);
+                    PlayerPrefs.DeleteKey(TrophiesRefusedKey);
                     _cached = null;
                     Debug.Log($"[League] Trophies sent: {accepted.trophies} ({accepted.league}).");
                 }

@@ -84,7 +84,13 @@ namespace PushStars.UI
             {
                 await FirebaseAuthService.EnsureReadyAsync();
                 if (this == null || !isActiveAndEnabled || version != _generation) return;
-                if (!more) { await LeagueClient.FlushPending(); await LeagueClient.SyncTrophies(); }
+                if (!more)
+                {
+                    await LeagueClient.FlushPending();
+                    // Current standings must reconcile even when the phone's total has not
+                    // changed: a delayed match result may have changed the server's total.
+                    if (requestedSeason == "") await LeagueClient.SyncTrophies(force: true);
+                }
                 if (this == null || !isActiveAndEnabled || version != _generation) return;
                 var page = await LeagueClient.GetPage(cursor, requestedSeason, requestedLeague, force);
                 if (this == null || !isActiveAndEnabled || version != _generation) return;

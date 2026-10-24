@@ -119,7 +119,7 @@ namespace PushStars.Core
             _music.volume = _musicOut.volume = 0f;
             _mainTheme = Theme(MusicName);
             for (int i = 0; i < VoiceCount; i++) _effects[i] = NewSource(128);
-            Add(SoundCue.Tap, .28f, .045f, 160, "ui_tap_01", "ui_tap_02", "ui_tap_03");
+            Add(SoundCue.Tap, .28f, .045f, 160, "ui_tap_a_01", "ui_tap_a_02", "ui_tap_a_03");
             Add(SoundCue.Confirm, .36f, .12f, 150, "ui_confirm");
             Add(SoundCue.Back, .3f, .12f, 150, "ui_back");
             Add(SoundCue.Navigate, .23f, .12f, 160, "ui_swipe");

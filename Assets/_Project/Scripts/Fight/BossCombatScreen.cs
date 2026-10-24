@@ -38,6 +38,9 @@ namespace PushStars.Fight
         private ClawSlashGraphic _clawSlash;
         private TMP_Text _clapLabel;
         private float _clapAt = -100f;
+        private StrikeBoltGraphic _bolt;
+        private float _hitAt = -100f;
+        private Animator _playerAnimator;
         private Vector2 _bossPortraitHome;
         private Color _bossPortraitTint = Color.white;
         private static RenderTexture _headSnapshot;
@@ -92,6 +95,7 @@ namespace PushStars.Fight
             _health.Damaged += OnDamage;
             _health.ClapStrike += OnClapStrike;
             if (!Preparation) BuildClapStrike();
+            if (!Preparation) BuildStrikeBolt();
             if (!Preparation) StagePlayerOnGround();
             var profile = BossCatalog.Bosses.FirstOrDefault(b => b.Id == id) ?? BossCatalog.Current;
             BossName.text = profile.DisplayName;
@@ -220,6 +224,43 @@ namespace PushStars.Fight
             _clapLabel.gameObject.SetActive(false);
         }
 
+        // ── Rep strike: an orb flies from the player's avatar to the boss ─────────────────────────
+
+        /// <summary>Runtime-built like the claw slash; above both portraits, below the HUD numbers.</summary>
+        private void BuildStrikeBolt()
+        {
+            if (BossPortrait == null || PlayerPortrait == null || _bolt != null) return;
+            var go = new GameObject("StrikeBolt", typeof(RectTransform), typeof(CanvasRenderer), typeof(StrikeBoltGraphic));
+            go.layer = gameObject.layer;
+            var rect = (RectTransform)go.transform;
+            rect.SetParent(BossPortrait.transform.parent, false);
+            rect.SetSiblingIndex(Mathf.Max(BossPortrait.transform.GetSiblingIndex(), PlayerPortrait.transform.GetSiblingIndex()) + 1);
+            rect.anchorMin = rect.anchorMax = rect.pivot = new Vector2(.5f, .5f);
+            rect.anchoredPosition = Vector2.zero; rect.sizeDelta = Vector2.zero;
+            _bolt = go.GetComponent<StrikeBoltGraphic>();
+        }
+
+        /// <summary>Where the blow leaves the avatar: its chest on the player's portrait (the stage
+        /// renders straight into it), else the portrait's middle.</summary>
+        private Vector2 PlayerStrikeOrigin()
+        {
+            var portrait = PlayerPortrait.rectTransform;
+            var fallback = portrait.anchoredPosition + Vector2.up * (portrait.rect.height * .1f);
+            var camera = PlayerStage != null ? PlayerStage.StageCamera : null;
+            if (camera == null || PlayerStage.Character == null) return fallback;
+            if (_playerAnimator == null || !_playerAnimator.transform.IsChildOf(PlayerStage.Character.transform))
+                _playerAnimator = PlayerStage.Character.GetComponentInChildren<Animator>();
+            if (_playerAnimator == null || !_playerAnimator.isHuman) return fallback;
+            var bone = _playerAnimator.GetBoneTransform(HumanBodyBones.Chest);
+            if (bone == null) bone = _playerAnimator.GetBoneTransform(HumanBodyBones.Spine);
+            if (bone == null) return fallback;
+            var view = camera.WorldToViewportPoint(bone.position);
+            if (view.z <= 0) return fallback;
+            var rect = portrait.rect;
+            return portrait.anchoredPosition + new Vector2(
+                rect.xMin + Mathf.Clamp01(view.x) * rect.width, rect.yMin + Mathf.Clamp01(view.y) * rect.height);
+        }
+
         private void OnClapStrike(int damage)
         {
             if (_clawSlash == null) return;
@@ -236,6 +277,7 @@ namespace PushStars.Fight
         {
             if (_clawSlash == null) return;
             float t = Time.unscaledTime - _clapAt;
+            float hitAge = Time.unscaledTime - _hitAt;
             var portrait = BossPortrait.rectTransform;
             if (t < .32f)
             {
@@ -244,6 +286,14 @@ namespace PushStars.Fight
                     Mathf.Sin(t * 95f) * 7f * k, Mathf.Sin(t * 71f + 1.3f) * 4f * k);
                 float flash = Mathf.Clamp01(k * 1.4f);
                 BossPortrait.color = Color.Lerp(_bossPortraitTint, _bossPortraitTint * new Color(1f, .5f, .48f), flash);
+            }
+            else if (hitAge < .18f)
+            {
+                // A plain rep's blow landing: a lighter shake and flash than the clap's.
+                float k = 1 - hitAge / .18f;
+                portrait.anchoredPosition = _bossPortraitHome + new Vector2(
+                    Mathf.Sin(hitAge * 110f) * 3.5f * k, Mathf.Sin(hitAge * 83f + .7f) * 2f * k);
+                BossPortrait.color = Color.Lerp(_bossPortraitTint, _bossPortraitTint * new Color(1f, .62f, .58f), k * .9f);
             }
             else if (portrait.anchoredPosition != _bossPortraitHome || BossPortrait.color != _bossPortraitTint)
             {
@@ -416,17 +466,30 @@ namespace PushStars.Fight
         private void OnDamage(bool boss, int damage)
         {
             var effects = IslandEffects;
+            if (boss && _bolt != null)
+            {
+                // The impact (petals, kick) waits for the orb to arrive; the boss is the same
+                // torso spot the claw slash rakes.
+                var size = BossPortrait.rectTransform.rect.size;
+                var target = _bossPortraitHome + Vector2.up * (size.y * .06f);
+                var burst = BossPortrait.rectTransform.anchoredPosition + Vector2.up * (size.y * .1f);
+                _bolt.Launch(PlayerStrikeOrigin(), target, Mathf.Min(size.x, size.y) * .11f, () =>
+                {
+                    _hitAt = Time.unscaledTime;
+                    if (effects != null) effects.Hit(burst);
+                });
+            }
             if (boss && effects != null)
             {
                 var portrait = BossPortrait.rectTransform;
-                effects.Hit(portrait.anchoredPosition + Vector2.up * (portrait.rect.height * .1f));
+                if (_bolt == null) effects.Hit(portrait.anchoredPosition + Vector2.up * (portrait.rect.height * .1f));
                 if (_health.BossHp == 0)
                 {
                     var presentation = BossStage != null && BossStage.Character != null
                         ? BossStage.Character.GetComponentInChildren<BossAvatarPresentation>() : null;
                     float fallTime = presentation != null ? presentation.BeginDefeat() : .6f;
                     float contactTime = Mathf.Min(fallTime * .45f, 1.1f);
-                    BossDefeatPresentationSeconds = Mathf.Max(.6f, contactTime + 1.3f);
+                    BossDefeatPresentationSeconds = Mathf.Max(.6f, contactTime + 1.3f) + (_bolt != null ? StrikeBoltGraphic.FlightSec : 0f);
                     effects.QueueFall(portrait.anchoredPosition + Vector2.down * (portrait.rect.height * .5f - 12), contactTime);
                 }
             }
