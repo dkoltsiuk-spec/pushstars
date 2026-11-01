@@ -478,7 +478,8 @@ namespace PushStars.UI
         {
             var offer = AvatarCatalog.At(index);
             if (offer == null) return "UNAVAILABLE";
-            if (offer.Kind == AvatarPurchaseKind.Dollars) return "$" + (offer.Price / 100m).ToString("0.00", System.Globalization.CultureInfo.InvariantCulture);
+            if (offer.Kind == AvatarPurchaseKind.Dollars)
+                return IapStore.PriceOf(offer.StoreProductId, "$" + (offer.Price / 100m).ToString("0.00", System.Globalization.CultureInfo.InvariantCulture));
             // Aura heroes are never bought: the label is how much Aura is still missing.
             if (offer.UnlocksByAura) return $"{AuraFormat.Short(CaseRewards.AvatarPrice(offer.Id))} <sprite name=\"aura\"> TO GO";
             // Free, but only for clearing the island: the label names where to go.

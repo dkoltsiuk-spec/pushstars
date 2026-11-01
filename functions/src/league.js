@@ -27,7 +27,8 @@ function entry(uid, profile) {
     bestClapTimes: profile.rankedBestClapTimes || [] };
 }
 function publicRow(row) {
-  return { uid: row.uid, displayName: row.displayName, trophies: row.trophies, league: row.league, standing: row.standing };
+  // Through the filter again: a row keeps the name it was last saved with.
+  return { uid: row.uid, displayName: displayNameOf(row, row.uid), trophies: row.trophies, league: row.league, standing: row.standing };
 }
 function seasonRef(season) { return db.doc(`seasons/${season.id}`); }
 function playerRef(season, uid) { return seasonRef(season).collection('players').doc(uid); }

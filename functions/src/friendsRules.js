@@ -1,4 +1,5 @@
 // Pure rules of the friends list (friends.js reads and writes; friends.test.js pins these).
+const { displayNameOf } = require('./playerNames');
 
 const LIST_MAX = 100;            // friends shown (most recent duel first)
 const INVITE_COOLDOWN_MS = 15000; // the same friend is called at most this often
@@ -31,10 +32,10 @@ const millisOf = t => !t ? 0 : typeof t === 'number' ? t : typeof t.toMillis ===
 const PRESENCE_WINDOW_MS = 75000;
 function row(entry, profile, presence, now) {
   const expires = millisOf(presence && presence.expiresAt);
-  const name = profile && typeof profile.displayName === 'string' && profile.displayName.trim() ? profile.displayName.trim() : entry.name;
+  const name = displayNameOf(profile || { displayName: entry.name }, entry.uid);
   return {
     uid: entry.uid,
-    name: String(name || '').slice(0, 24),
+    name,
     hero: Number.isInteger(entry.hero) ? entry.hero : 0,
     gender: entry.gender === 1 ? 1 : 0,
     trophies: profile && Number.isFinite(profile.trophies) ? Math.max(0, Math.floor(profile.trophies)) : 0,

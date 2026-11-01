@@ -685,7 +685,9 @@ namespace PushStars.Fight
                 MyForm = AverageForm(), OppForm = _opponent.FormPercent,
                 MyRepsPerMinute = _session.TempoRpm, OppSecondsPerRep = _opponent.SecondsPerRep,
                 Xp = xp, Trophies = trophies, OpponentName = FightConfig.ShownOpponentName(OpponentLabel),
-                PlayerName = PlayerLabel, NewRecord = newRecord
+                PlayerName = PlayerLabel, NewRecord = newRecord,
+                OpponentUid = _liveLink != null ? _liveLink.Peer?.Uid : FightRequest.StrangerUid,
+                OpponentBot = _liveLink != null ? null : FightRequest.StrangerBotId,
             });
         }
 

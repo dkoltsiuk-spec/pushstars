@@ -35,7 +35,7 @@ namespace PushStars.Editor
                 shop.Packs[i].onClick.Invoke();
                 Check(shop.PackDialog.activeSelf && shop.PackTitle.text == ShopScreen.GemAmounts[i] + " GEMS", "Pack details");
                 Check(shop.PackImage.sprite == shop.PackSprites[i] && shop.PackPrice.text == ShopScreen.GemPrices[i], "Pack art and price");
-                shop.DialogClose.onClick.Invoke(); Check(!shop.PackDialog.activeSelf && shop.IsOpen, "Pack dismiss");
+                shop.ClosePack(); Check(!shop.PackDialog.activeSelf && shop.IsOpen, "Pack dismiss");
             }
             shop.Okay.onClick.Invoke(); Check(!shop.IsOpen, "OK to lobby");
             shop.Entry.onClick.Invoke(); shop.Back.onClick.Invoke(); Check(!shop.IsOpen, "Back to lobby");

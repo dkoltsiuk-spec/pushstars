@@ -2,6 +2,8 @@
 // The name is derived from the uid, so the server and the app (PlayerNames.cs) agree on it
 // without a round trip. Keep both word lists and the hash identical — playerNames.test.js and
 // PlayerNamesTests.cs pin the same samples.
+const { isObjectionable } = require('./nameFilter');
+
 const ADJECTIVES = [
   'Swift', 'Brave', 'Turbo', 'Mighty', 'Sneaky', 'Lucky', 'Fuzzy', 'Iron',
   'Golden', 'Spicy', 'Cosmic', 'Wild', 'Silent', 'Rapid', 'Jolly', 'Grumpy',
@@ -40,10 +42,12 @@ function nameFor(uid) {
 
 const isPlaceholder = name => PLACEHOLDERS.has(String(name || '').trim().toLowerCase());
 
-// The name other players see: the chosen one, else the generated one.
+// The name other players see: the chosen one, else the generated one — also when moderation hid
+// the chosen one (moderation.js) or it does not pass the filter, whenever it was saved.
 function displayNameOf(profile, uid) {
   const name = profile?.displayName;
-  return (isPlaceholder(name) ? nameFor(uid) : String(name)).replace(/[<>]/g, '').slice(0, 20);
+  const hidden = isPlaceholder(name) || profile?.nameHidden === true || isObjectionable(name);
+  return (hidden ? nameFor(uid) : String(name)).replace(/[<>]/g, '').slice(0, 20);
 }
 
 module.exports = { nameFor, isPlaceholder, displayNameOf, ADJECTIVES, NOUNS };

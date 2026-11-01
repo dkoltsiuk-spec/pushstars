@@ -34,6 +34,7 @@ const { displayNameOf: nameOf } = require('./playerNames');
 const { seasonAt, entry } = require('./league');
 const { callPlayer } = require('./push');
 const { botFor } = require('./botPool');
+const { avoidFor } = require('./moderation');
 const db = admin.firestore();
 const { Timestamp } = admin.firestore;
 
@@ -125,11 +126,12 @@ exports.peekLiveDuel = functions.https.onCall(async (data, context) => {
 exports.joinLiveDuel = functions.https.onCall(async (data, context) => {
   const uid = uidOf(context), me = look(data);
   if (!validCode(data?.code)) fail('invalid-argument', 'Enter a 6-digit code.');
-  const profile = await db.doc(`users/${uid}`).get();
+  const [profile, avoid] = await Promise.all([db.doc(`users/${uid}`).get(), avoidFor(uid)]);
   const guestName = nameOf(profile.exists ? profile.data() : null, uid);
   return db.runTransaction(async tx => {
     const match = await openByCode(tx, data.code, uid);
-    const guest = { guestUid: uid, guestName, guestHero: me.hero, guestGender: me.gender, guestCountry: me.country, state: 'joined' };
+    if (avoid.has(match.hostUid)) fail('permission-denied', 'This room is not available.');
+    const guest ={ guestUid: uid, guestName, guestHero: me.hero, guestGender: me.gender, guestCountry: me.country, state: 'joined' };
     tx.update(matchRef(match.id), guest);
     return ticket({ ...match, ...guest });
   });
@@ -161,6 +163,8 @@ async function search(uid, data, fresh) {
   const profile = db.doc(`users/${uid}`).get();
   profile.catch(() => {}); // a call that returns before reading it must not leave it unhandled
   const nameNow = async () => { const p = await profile; return nameOf(p.exists ? p.data() : null, uid); };
+  // Players blocked in either direction are never paired, called or offered (moderation.js).
+  const avoid = await avoidFor(uid);
   let seat = null, recall = false, lobby = null, pairedWith = '';
   const result = await db.runTransaction(async tx => {
     const now = Date.now();
@@ -173,7 +177,7 @@ async function search(uid, data, fresh) {
     if (paired) return queueTicket(mine.data(), now);
     const name = await nameNow();
     seat = { uid, name, hero: me.hero, gender: me.gender, country: me.country, best };
-    const other = pool.docs.map(d => d.data()).find(e => e.uid !== uid && e.state === 'waiting');
+    const other = pool.docs.map(d => d.data()).find(e => e.uid !== uid && e.state === 'waiting' && !avoid.has(e.uid));
     if (!other) {
       const was = mine.exists && mine.data().state === 'waiting' ? mine.data() : {};
       // Standby players are called on a fresh search and again every LIVE_QUEUE_RECALL_SEC.
@@ -221,8 +225,8 @@ async function search(uid, data, fresh) {
   // Nobody online: show the search on main screens, call players who asked to be notified, and
   // (once per search) offer a stranger's set at the player's level to fight while waiting.
   const [called, ghost] = await Promise.all([
-    recall ? callStandby(seat).catch(e => { functions.logger.warn('call standby: ' + e.message); return 0; }) : 0,
-    fresh ? offerFor(uid, best, data?.fought) : null,
+    recall ? callStandby(seat, avoid).catch(e => { functions.logger.warn('call standby: ' + e.message); return 0; }) : 0,
+    fresh ? offerFor(uid, best, data?.fought, avoid) : null,
     lobby ? lobbyRef.set(lobby).catch(e => functions.logger.warn('lobby: ' + e.message)) : null,
   ]);
   return { ...result, called, ...(fresh ? { ghost } : {}) };
@@ -267,11 +271,11 @@ function wasInRoom(match, uid) {
 // the caller's name: an open app shows it above START at once, and the phone that opens on the
 // push (or within a minute and a half) searches at once. Only the push is budgeted (push.js) —
 // a player called a minute ago still sees the next search in the open app.
-async function callStandby(caller) {
+async function callStandby(caller, avoid) {
   const now = Date.now();
   const snap = await db.collection('liveDuelQueue').where('standbyUntilMs', '>', now).limit(C.LIVE_QUEUE_STANDBY_POOL).get();
   const candidates = snap.docs.map(d => d.data())
-    .filter(e => e.uid !== caller.uid && e.state === 'waiting' && (e.waitUntilMs || 0) <= now && (e.standbyFromMs || 0) <= now)
+    .filter(e => e.uid !== caller.uid && !avoid.has(e.uid) && e.state === 'waiting' && (e.waitUntilMs || 0) <= now && (e.standbyFromMs || 0) <= now)
     .sort((a, b) => Math.abs((a.best || 0) - caller.best) - Math.abs((b.best || 0) - caller.best))
     .slice(0, C.LIVE_QUEUE_CALLS_PER_SEARCH);
   for (const e of candidates) {
@@ -306,29 +310,29 @@ exports.leaveLiveDuel = functions.region(...QUEUE_REGIONS).https.onCall(async (d
   });
   await clearLobby([uid]);
   if (left) return left;
-  const ghost = data?.ghost === false ? null : await ghostFor(uid, Number.isInteger(data?.best) ? data.best : 0);
+  const ghost = data?.ghost === false ? null : await ghostFor(uid, Number.isInteger(data?.best) ? data.best : 0, false, await avoidFor(uid));
   return { status: 'left', ghost, serverTimeMs: Date.now() };
 });
 
 // The fight a waiting search offers: a bot from the pool the player has not met yet (botPool.js,
 // shown as the player it plays), else a stranger's season set at their level, else nothing (the
 // phone offers the player's own shadow).
-async function offerFor(uid, best, foughtHere) {
+async function offerFor(uid, best, foughtHere, avoid) {
   const bot = await botFor(uid, best, foughtHere).catch(e => { functions.logger.warn('bot pool: ' + e.message); return null; });
-  return bot || ghostFor(uid, best, true).catch(() => null);
+  return bot || ghostFor(uid, best, true, avoid).catch(() => null);
 }
 
 // Another player's best ranked set from this season's table, close to the player's own level.
 // A few nearest candidates take turns, so the same stranger does not answer every search.
 // `near`: only a set within the level band (LIVE_QUEUE_GHOST_BAND_*) — offered as an opponent
 // while searching; nothing that close means the phone offers the player's own shadow instead.
-async function ghostFor(uid, best, near = false) {
+async function ghostFor(uid, best, near = false, avoid = new Set()) {
   if (near && best <= 0) return null;
   const season = seasonAt(Date.now());
   const rows = await db.collection(`seasons/${season.id}/players`).orderBy('standing').limit(C.LIVE_QUEUE_GHOST_POOL).get();
   const band = Math.max(C.LIVE_QUEUE_GHOST_BAND_MIN, Math.ceil(best * C.LIVE_QUEUE_GHOST_BAND_PCT));
   const candidates = rows.docs.map(d => d.data())
-    .filter(row => row.uid !== uid && Array.isArray(row.bestTimes) && row.bestTimes.length > 0)
+    .filter(row => row.uid !== uid && !avoid.has(row.uid) && Array.isArray(row.bestTimes) && row.bestTimes.length > 0)
     .filter(row => !near || Math.abs(row.bestTimes.length - best) <= band)
     .sort((a, b) => Math.abs(a.bestTimes.length - best) - Math.abs(b.bestTimes.length - best))
     .slice(0, 3);

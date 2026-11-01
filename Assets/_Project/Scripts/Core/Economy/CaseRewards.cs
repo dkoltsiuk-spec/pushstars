@@ -132,6 +132,8 @@ namespace PushStars.Core
         public static bool HasAuraReceipt(string receipt) => Ledger.HasAuraReceipt(receipt);
         /// <summary>One-shot gem payout keyed by a stable receipt (e.g. a boss-map gem islet).</summary>
         public static bool TryCreditGems(string receipt, int amount) => Ledger.TryCreditGems(receipt, amount);
+        /// <summary>A hero bought at the store and verified by the server (<see cref="AvatarPurchaseKind.Dollars"/>).</summary>
+        public static bool TryGrantBoughtAvatar(string id) => Ledger.TryGrantBoughtAvatar(id);
         public static bool HasGemReceipt(string receipt) => Ledger.HasGemReceipt(receipt);
         /// <summary>A case with this grant or workout ID was ever awarded (claimed or not).</summary>
         public static bool HasCaseReceipt(string grantId) => Ledger.HasCaseReceipt(grantId);
@@ -586,6 +588,16 @@ namespace PushStars.Core
             if (price < 0 || _state.gems < price) return false;
             var next = _state.Copy();
             next.gems -= price;
+            Progress(next, id).owned = true;
+            Commit(next);
+            return true;
+        }
+
+        public bool TryGrantBoughtAvatar(string id)
+        {
+            var offer = Offer(id);
+            if (offer == null || OwnsAvatar(id) || offer.Kind != AvatarPurchaseKind.Dollars) return false;
+            var next = _state.Copy();
             Progress(next, id).owned = true;
             Commit(next);
             return true;

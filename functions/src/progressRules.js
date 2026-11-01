@@ -42,6 +42,7 @@ const PER_WORKOUT = {
 const ALLOWANCE = { XP: 10000, AURA: 1000000, GEMS: 2000, TROPHIES: 500, CASES: 50, GEM_RECEIPTS: 50, REPS: 5000 };
 // A workout takes a minute plus countdown and result screens.
 const PACE = { SECONDS_PER_WORKOUT: 45, BURST: 20 };
+const NOTHING_BOUGHT = { gems: 0, count: 0 };
 
 class RuleError extends Error {
   constructor(code, message) { super(message); this.code = code; }
@@ -152,8 +153,9 @@ function inspectPrefs(prefs) {
   return { bossCleared };
 }
 
-/** Parses a packed snapshot and returns its summary, or throws RuleError. */
-function inspectSnapshot(packed) {
+/** Parses a packed snapshot and returns its summary, or throws RuleError.
+ *  `bought`: the store purchases verified for this account (purchaseTotals/{uid}, purchases.js). */
+function inspectSnapshot(packed, bought = NOTHING_BOUGHT) {
   const snapshot = unpack(packed, LIMITS.PACKED_SNAPSHOT_CHARS);
   if (!snapshot || typeof snapshot !== 'object' || snapshot.version !== 1) fail('Unsupported progress snapshot.');
   const summary = {
@@ -161,22 +163,21 @@ function inspectSnapshot(packed) {
     ...inspectWorkouts(parseInner(snapshot.workouts, 'workouts')),
     ...inspectPrefs(snapshot.prefs),
   };
-  checkEvidence(summary);
+  checkEvidence(summary, bought);
   return summary;
 }
 
-/** Every total bounded by the workouts that earned it. */
-function checkEvidence(s) {
+/** Every total bounded by the workouts that earned it, and gems also by what was bought. */
+function checkEvidence(s, bought = NOTHING_BOUGHT) {
   const w = s.workouts;
   // TotalReps is the history's sum plus counters kept before the history existed.
   if (s.totalReps > s.historyReps + ALLOWANCE.REPS) tooMuch('More reps than workouts.');
   if (s.xp > PER_WORKOUT.XP_PER_REP * Math.max(s.totalReps, s.historyReps) + PER_WORKOUT.XP_BONUS * w + ALLOWANCE.XP) tooMuch('More XP than reps earn.');
   if (s.peakAura > PER_WORKOUT.AURA * w + ALLOWANCE.AURA) tooMuch('More Aura than workouts earn.');
   if (s.caseAwards > w + ALLOWANCE.CASES) tooMuch('More cases than workouts.');
-  if (s.gemReceipts > w + ALLOWANCE.GEM_RECEIPTS) tooMuch('More gem rewards than workouts.');
-  // Gems come only from cases and boss-map islets today. Bought gem packs will need their store
-  // receipts verified here before this bound can count them.
-  if (s.gems > PER_WORKOUT.GEMS_PER_CASE * s.caseAwards + PER_WORKOUT.GEMS_PER_RECEIPT * s.gemReceipts + ALLOWANCE.GEMS) tooMuch('More gems than rewards pay.');
+  if (s.gemReceipts > w + ALLOWANCE.GEM_RECEIPTS + (bought.count || 0)) tooMuch('More gem rewards than workouts.');
+  // Gems come from cases, boss-map islets and store purchases verified on the server.
+  if (s.gems > PER_WORKOUT.GEMS_PER_CASE * s.caseAwards + PER_WORKOUT.GEMS_PER_RECEIPT * s.gemReceipts + ALLOWANCE.GEMS + (bought.gems || 0)) tooMuch('More gems than rewards pay.');
   if (s.trophies > s.trophiesWon + ALLOWANCE.TROPHIES) tooMuch('More trophies than workouts.');
   if (s.bossCleared < 0 || s.bossCleared > Math.min(64, w)) tooMuch('More bosses than fights.');
 }

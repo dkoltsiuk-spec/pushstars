@@ -22,7 +22,6 @@ namespace PushStars.UI
         private static readonly Color Online = new Color32(82, 255, 2, 255);
         private static readonly Color Gold = new Color32(255, 210, 31, 255);
         private static readonly Color Blue = new Color32(46, 111, 242, 255);
-        private static readonly Color Red = new Color32(232, 64, 64, 255);
         private static readonly Color Muted = new Color32(196, 206, 255, 255);
         /// <summary>SHOP's screen blue (ShopSceneSetup).</summary>
         private static readonly Color ShopBlue = new Color32(25, 74, 224, 255);
@@ -42,7 +41,6 @@ namespace PushStars.UI
         private TextMeshProUGUI _status, _empty;
         private readonly List<GameObject> _rows = new List<GameObject>();
         private FriendEntry[] _friends = Array.Empty<FriendEntry>();
-        private string _removing = "";
         private bool _loading, _loaded;
         private float _nextLoad = 2f;
         private IDisposable _inviteWatch;
@@ -211,7 +209,6 @@ namespace PushStars.UI
 
         public void Open()
         {
-            _removing = "";
             _overlay.SetActive(true);
             _overlay.transform.SetAsLastSibling();
             Canvas.ForceUpdateCanvases();
@@ -224,7 +221,6 @@ namespace PushStars.UI
 
         public void Hide()
         {
-            _removing = "";
             if (_overlay != null) _overlay.SetActive(false);
         }
 
@@ -321,9 +317,13 @@ namespace PushStars.UI
             var face = row.gameObject.AddComponent<DuelActionPlate>();
             face.Slope = 0f; face.Radius = 14f;
             face.color = CardColor;
-            // Tapping the row (not FIGHT) offers to remove the friend.
-            row.gameObject.AddComponent<Button>().onClick.AddListener(() =>
-            { _removing = _removing == friend.uid ? "" : friend.uid; Render(); });
+            // Tapping the row (not FIGHT) offers report, block and removing the friend.
+            row.gameObject.AddComponent<Button>().onClick.AddListener(() => PlayerActionsSheet.Show(this, new PlayerActionsSheet.Target
+            {
+                Uid = friend.uid, Name = friend.name, Where = "friends",
+                RemoveFriend = () => Remove(friend),
+                Changed = () => { _friends = Array.FindAll(_friends, f => !ModerationClient.IsBlocked(f.uid)); Render(); RefreshBadge(); },
+            }));
 
             // Avatar: the hero's head when it has one, else the first letter on a colour of the name.
             var avatar = NewImage("Avatar", row, Tint(friend.uid), _theme != null ? _theme.CircleShape : null);
@@ -385,22 +385,20 @@ namespace PushStars.UI
                 cr.anchoredPosition = new Vector2(-112f, -12f); cr.sizeDelta = new Vector2(16f, 16f);
             }
 
-            bool removing = _removing == friend.uid;
-            bool calling = _invite != null && _invite.FromUid == friend.uid && _invite.Live(now) && _answered != _invite.MatchId;
+            bool calling =_invite != null && _invite.FromUid == friend.uid && _invite.Live(now) && _answered != _invite.MatchId;
             var action = New("Fight", row);
             action.anchorMin = action.anchorMax = new Vector2(1f, .5f);
             action.anchoredPosition = new Vector2(-50f, 1f); action.sizeDelta = new Vector2(88f, 44f);
             var actionFace = action.gameObject.AddComponent<DuelActionPlate>();
             actionFace.Slope = CallBanner.Slope;
-            actionFace.color = removing ? Red : calling ? Online : Gold;
+            actionFace.color = calling ? Online : Gold;
             var actionButton = action.gameObject.AddComponent<Button>();
             actionButton.targetGraphic = actionFace;
             var actionLabel = NewText("Label", action, 18f, Color.white, TextAlignmentOptions.Midline);
             CallBanner.StyleFight(actionLabel, _font);
-            actionLabel.text = removing ? "REMOVE" : calling ? "JOIN" : "FIGHT";
+            actionLabel.text = calling ? "JOIN" : "FIGHT";
             actionLabel.enableAutoSizing = true; actionLabel.fontSizeMin = 11f; actionLabel.fontSizeMax = 18f;
-            if (removing) actionButton.onClick.AddListener(() => Remove(friend));
-            else if (calling) { var invite = _invite; actionButton.onClick.AddListener(() => Accept(invite)); }
+            if (calling) { var invite = _invite; actionButton.onClick.AddListener(() => Accept(invite)); }
             else actionButton.onClick.AddListener(() => Fight(friend));
             return row.gameObject;
         }
@@ -430,8 +428,7 @@ namespace PushStars.UI
 
         private async void Remove(FriendEntry friend)
         {
-            _removing = "";
-            _friends = Array.FindAll(_friends, f => f.uid != friend.uid);
+            _friends =Array.FindAll(_friends, f => f.uid != friend.uid);
             Render(); RefreshBadge();
             try { await FriendsClient.Remove(friend.uid); }
             catch (Exception e)

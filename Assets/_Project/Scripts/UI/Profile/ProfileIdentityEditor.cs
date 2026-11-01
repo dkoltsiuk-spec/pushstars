@@ -33,6 +33,8 @@ namespace PushStars.UI
         private string _scope;
         private string _positionedName;
         private Vector2 _positionedNameSize;
+        /// <summary>What saving a name agrees to; tapping the line opens the Terms (App Store guideline 1.2).</summary>
+        private const string NameRule = "No offensive names. By saving you accept the Terms of Use.";
 
         private static string Uid => ServiceLocator.TryGet<FirebaseAuthService>(out var auth) ? auth.Uid : null;
         private static string Scope => string.IsNullOrEmpty(Uid) ? "profile.identity.local." : "profile.identity." + Uid + ".";
@@ -42,7 +44,8 @@ namespace PushStars.UI
         public static string PlayerName()
         {
             string name = PlayerPrefs.GetString(Scope + "name", PlayerPrefs.GetString("profile.identity.local.name", ""));
-            if (!PlayerNames.IsPlaceholder(name)) return name;
+            // A name saved before the filter existed is not this player's name any more, for others or here.
+            if (!PlayerNames.IsPlaceholder(name) && !NameFilter.IsObjectionable(name)) return name;
             string uid = Uid;
             return PlayerNames.For(string.IsNullOrEmpty(uid) ? SystemInfo.deviceUniqueIdentifier : uid);
         }
@@ -50,6 +53,10 @@ namespace PushStars.UI
         private void Awake()
         {
             BuildModal();
+            _feedback.raycastTarget = true;
+            var terms = _feedback.gameObject.AddComponent<Button>();
+            terms.transition = Selectable.Transition.None;
+            terms.onClick.AddListener(() => { if (!_editingAvatar) Application.OpenURL(SettingsScreen.TermsUrl); });
             NickStyleView.Own(NameLabel);
             EditName.onClick.AddListener(OpenName);
             EditAvatar.onClick.AddListener(OpenAvatar);
@@ -104,7 +111,7 @@ namespace PushStars.UI
             _colorGroup.SetActive(!avatar);
             _draftColor = CaseRewards.NickColorId;
             Layout(avatar ? 370f : 480f);
-            _feedback.text = "Saved on this device";
+            _feedback.text = avatar ? "Saved on this device" : NameRule;
             _modal.SetActive(true);
             _modal.transform.SetAsLastSibling();
             DrawSelection();
@@ -122,11 +129,12 @@ namespace PushStars.UI
             else
             {
                 string name = NameInput.text.Trim();
-                if (name.Length < 2 || name.Length > 18)
+                if (name.Length < NameFilter.MinChars || name.Length > NameFilter.MaxChars)
                 { _feedback.text = "Use 2-18 characters."; return; }
-                foreach (char c in name)
-                    if (!char.IsLetterOrDigit(c) && c != ' ' && c != '_' && c != '-')
-                    { _feedback.text = "Use letters, numbers, spaces, _ or -."; return; }
+                if (!NameFilter.HasAllowedCharacters(name))
+                { _feedback.text = "Use letters, numbers, spaces, _ or -."; return; }
+                if (NameFilter.IsObjectionable(name))
+                { _feedback.text = "This name is not allowed. Choose another."; return; }
                 PlayerPrefs.SetString(_scope + "name", name);
                 NameLabel.text = name;
                 NameShadow.text = name;

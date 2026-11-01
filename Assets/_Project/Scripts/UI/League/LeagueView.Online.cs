@@ -181,6 +181,7 @@ namespace PushStars.UI
                 rect.localScale = Vector3.one;
                 rect.anchoredPosition = new Vector2(rect.anchoredPosition.x, -y);
                 FillRow(go, player);
+                if (player.uid != LeagueClient.Uid) OfferPlayerActions(go, player);
                 y += 69;
             }
             if (!string.IsNullOrEmpty(_cloud.nextCursor)) MakeButton(layout.Rows, "LoadMore", "LOAD MORE", y, () => _ = LoadPage(true));
@@ -205,9 +206,24 @@ namespace PushStars.UI
             {
                 label.richText = false;
                 if (label.name == "Rank") { label.text = row.rank.ToString(); label.enableAutoSizing = true; label.fontSizeMin = 9; }
-                else if (label.name == "PlayerName") label.text = string.IsNullOrWhiteSpace(row.displayName) ? "PLAYER" : row.displayName;
+                else if (label.name == "PlayerName") label.text = ModerationClient.IsBlocked(row.uid) ? "BLOCKED PLAYER"
+                    : string.IsNullOrWhiteSpace(row.displayName) ? "PLAYER" : row.displayName;
                 else if (label.name == "Trophies") label.text = row.trophies.ToString();
             }
+        }
+
+        /// <summary>Tapping another player's row opens report and block; the table redraws after, so a
+        /// blocked player's name goes at once.</summary>
+        private void OfferPlayerActions(GameObject go, LeagueRow row)
+        {
+            var hit = go.GetComponent<Graphic>();
+            if (hit == null) { hit = go.AddComponent<Image>(); hit.color = Color.clear; }
+            hit.raycastTarget = true;
+            var button = go.GetComponent<Button>();
+            if (button == null) button = go.AddComponent<Button>();
+            button.transition = Selectable.Transition.None;
+            button.onClick.AddListener(() => PlayerActionsSheet.Show(this, new PlayerActionsSheet.Target
+            { Uid = row.uid, Name = row.displayName, Where = "league", Changed = RenderOnline }));
         }
         private void MakeButton(RectTransform parent, string name, string text, float y, UnityEngine.Events.UnityAction action)
         {

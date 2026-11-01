@@ -1,8 +1,14 @@
 const functions = require('firebase-functions/v1');
 const admin = require('./admin');
-const { DISPLAY_NAME_MIN, DISPLAY_NAME_MAX } = require('./constants');
+const { nameError } = require('./nameFilter');
 
 const db = admin.firestore();
+
+const REFUSALS = {
+  length: ['invalid-argument', 'Use 2-18 characters.'],
+  characters: ['invalid-argument', 'Use letters, numbers, spaces, _ or -.'],
+  objectionable: ['permission-denied', 'This name is not allowed.'],
+};
 
 // Atomically renames the player across users/{uid} and their leaderboard entry.
 // Recommended over a client batch (the client can't write leaderboard under the rules).
@@ -16,12 +22,8 @@ exports.updateDisplayName = functions.https.onCall(async (data, context) => {
     throw new functions.https.HttpsError('invalid-argument', 'displayName must be a string.');
   }
   name = name.trim();
-  if (name.length < DISPLAY_NAME_MIN || name.length > DISPLAY_NAME_MAX) {
-    throw new functions.https.HttpsError(
-      'invalid-argument',
-      `displayName must be ${DISPLAY_NAME_MIN}–${DISPLAY_NAME_MAX} characters.`,
-    );
-  }
+  const error = nameError(name);
+  if (error) throw new functions.https.HttpsError(...REFUSALS[error]);
 
   const uid = context.auth.uid;
   const userRef = db.doc(`users/${uid}`);
@@ -29,6 +31,8 @@ exports.updateDisplayName = functions.https.onCall(async (data, context) => {
   if (!userSnap.exists) {
     throw new functions.https.HttpsError('not-found', 'User profile not found.');
   }
+  // Moderation hid this player's name (moderation.js): a new one needs the moderator to lift it.
+  if (userSnap.data().nameHidden === true) throw new functions.https.HttpsError(...REFUSALS.objectionable);
 
   const league = userSnap.data().leaderboardLeague || userSnap.data().rank || 'bronze';
 

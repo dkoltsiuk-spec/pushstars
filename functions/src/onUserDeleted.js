@@ -26,10 +26,19 @@ exports.onUserDeleted = functions.auth.user().onDelete(async (user) => {
   batch.delete(db.doc(`users/${uid}/progress/state`));
   batch.delete(db.doc(`users/${uid}/progress/ghost`));
 
+  batch.delete(db.doc(`purchaseTotals/${uid}`));
+  batch.delete(db.doc(`reportCounts/${uid}`));
+
   const ghostSnap = await db.collection(`ghost_sessions/${uid}/sessions`).get();
   ghostSnap.forEach((doc) => batch.delete(doc.ref));
 
   await batch.commit();
+  // Blocks made by and against this account (moderation.js): nobody is left to avoid.
+  const [blocks, blockedBy] = await Promise.all([db.collection(`blocks/${uid}/list`).get(), db.collection(`blockedBy/${uid}/list`).get()]);
+  const blockWriter = db.bulkWriter();
+  for (const block of blocks.docs) { blockWriter.delete(block.ref); blockWriter.delete(db.doc(`blockedBy/${block.id}/list/${uid}`)); }
+  for (const blocker of blockedBy.docs) { blockWriter.delete(blocker.ref); blockWriter.delete(db.doc(`blocks/${blocker.id}/list/${uid}`)); }
+  await blockWriter.close();
   // The monthly archive and ranked session receipts also belong to this account.
   const seasons = await db.collection('seasons').listDocuments();
   const sessions = await db.collection('rankedSessions').where('uid', '==', uid).get();

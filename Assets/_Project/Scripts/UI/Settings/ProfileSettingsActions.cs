@@ -47,6 +47,7 @@ namespace PushStars.UI
             Privacy.onClick.RemoveAllListeners();
             Privacy.onClick.AddListener(() => Application.OpenURL(SettingsScreen.PrivacyUrl));
             Support.onClick.AddListener(() => Application.OpenURL(SettingsScreen.SupportUrl));
+            AddBlockedPlayersButton();
             ExternalMusic.SetIsOnWithoutNotify(GameAudio.KeepExternalMusic);
             ExternalMusic.onValueChanged.AddListener(value => GameAudio.KeepExternalMusic = value);
             for (int i = 0; i < Switches.Length; i++)
@@ -58,6 +59,19 @@ namespace PushStars.UI
             for (int i = 0; i < Switches.Length; i++) DrawSwitch(i);
             Notice.transform.parent.gameObject.SetActive(false);
             // Privacy, Support and Delete account are laid out in the scene (Restyle Settings Footer Buttons).
+        }
+
+        /// <summary>BLOCKED PLAYERS: Support's plate copied, under it, beside Delete account (which sits under Privacy).</summary>
+        private void AddBlockedPlayersButton()
+        {
+            var blocked = Instantiate(Support, Support.transform.parent, false);
+            blocked.name = "BlockedPlayers";
+            blocked.onClick = new Button.ButtonClickedEvent();
+            var label = blocked.GetComponentInChildren<TextMeshProUGUI>(true);
+            if (label != null) { label.text = "BLOCKED PLAYERS"; label.enableAutoSizing = true; label.fontSizeMin = 9f; label.fontSizeMax = label.fontSize; }
+            var rect = (RectTransform)blocked.transform;
+            rect.anchoredPosition -= new Vector2(0f, rect.sizeDelta.y + 10f);
+            blocked.onClick.AddListener(() => PlayerActionsSheet.ShowBlockedList(this));
         }
 
         private void OnEnable()

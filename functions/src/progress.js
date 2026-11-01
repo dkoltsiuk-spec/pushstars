@@ -42,8 +42,9 @@ exports.saveProgress = functions.https.onCall(async (data, context) => {
   if (!Number.isInteger(baseRev) || baseRev < 0) throw new functions.https.HttpsError('invalid-argument', 'baseRev is required.');
   const sendGhost = Boolean(data && data.sendGhost);
   let summary, ghost = null;
+  const bought = await db.doc(`purchaseTotals/${uid}`).get();
   try {
-    summary = rules.inspectSnapshot(data && data.snapshot);
+    summary = rules.inspectSnapshot(data && data.snapshot, bought.exists ? bought.data() : undefined);
     if (sendGhost && data.ghost) ghost = rules.inspectGhost(data.ghost);
   } catch (e) {
     throw asHttps(e);

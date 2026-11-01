@@ -189,6 +189,7 @@ namespace PushStars.Core
                 case LiveDuelProtocol.State:
                     if (LiveDuelProtocol.TryDecodeState(payload, out var seat, out bool mismatch))
                     {
+                        seat.Name = NameFilter.Shown(seat.Name, seat.Uid);
                         Peer = seat; _peerHeardAt = _now; PeerQuit = false;
                         if (seat.Finished) PeerReps = Math.Max(PeerReps, seat.FinalReps);
                     }

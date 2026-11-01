@@ -17,6 +17,9 @@ namespace PushStars.Fight
         public float MyForm, OppForm, MyRepsPerMinute, OppSecondsPerRep;
         public long Xp;
         public string OpponentName, PlayerName;
+        /// <summary>Who to report or block: an account's uid or a pool bot's id. Both empty against
+        /// a boss or the player's own shadow.</summary>
+        public string OpponentUid, OpponentBot;
         public string LeagueStatus;
         /// <summary>Why a live duel ended before the bell ("OPPONENT LEFT", "CONNECTION LOST"…),
         /// shown under the score; empty when the duel ran its minute.</summary>

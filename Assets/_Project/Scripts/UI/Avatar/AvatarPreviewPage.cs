@@ -14,7 +14,7 @@ namespace PushStars.UI
         public GameObject[] Prefabs;
         public AvatarUnlockView UnlockView;
         private int _index;
-        private bool _styled;
+        private bool _styled, _buying;
 
         private void Awake()
         {
@@ -48,7 +48,7 @@ namespace PushStars.UI
             var offer = AvatarCatalog.At(_index);
             if (Collection.IsLocked(_index))
             {
-                if (offer.Kind == AvatarPurchaseKind.Dollars) { Status.text = "STORE COMING SOON"; return; }
+                if (offer.Kind == AvatarPurchaseKind.Dollars) { BuyAtStore(offer); return; }
                 // Aura and island heroes cannot be bought: they unlock by themselves.
                 if (offer.UnlocksByAura || offer.UnlocksByIsland) return;
                 try
@@ -62,9 +62,24 @@ namespace PushStars.UI
             Refresh();
         }
 
+        private void BuyAtStore(AvatarOffer offer)
+        {
+            if (_buying) return;
+            _buying = true;
+            Refresh();
+            IapStore.Buy(offer.StoreProductId, (outcome, text) =>
+            {
+                if (this == null) return;
+                _buying = false;
+                Refresh();
+                if (outcome != IapOutcome.Bought && !string.IsNullOrEmpty(text)) Status.text = text;
+            });
+        }
+
         public void Present(int index)
         {
             _index = index;
+            IapStore.Start();
             Preview.SetPrefab(index < Prefabs.Length ? Prefabs[index] : AvatarCatalog.LoadPrefab(index));
             Name.text = AvatarCollectionScreen.AvatarName(index);
             Refresh();
@@ -77,7 +92,7 @@ namespace PushStars.UI
             bool selected = Collection.IsSelected(_index);
             var offer = AvatarCatalog.At(_index);
             bool byAura = offer.UnlocksByAura;
-            Action.interactable = !selected && (available || offer.Kind == AvatarPurchaseKind.Gems);
+            Action.interactable = !_buying && !selected && (available || offer.Kind == AvatarPurchaseKind.Gems || offer.Kind == AvatarPurchaseKind.Dollars);
             var island = offer.UnlocksByIsland ? BossCatalog.FindChapter(offer.Island) : null;
             ActionText.text = available ? (selected ? "SELECTED" : "SELECT")
                 : byAura ? AvatarCollectionScreen.PriceLabel(_index)
@@ -90,7 +105,7 @@ namespace PushStars.UI
                 ? $"UNLOCKS AT {AuraFormat.Short(offer.AuraGoal)} <sprite name=\"aura\"> · WIN FIGHTS TO FILL THE BAR" +
                   (offer.UsesCards ? $"\nEVERY {offer.Name} CARD FROM CASES ADDS {AuraFormat.Short(offer.CardAura)}" : "")
                 : island != null ? IslandGoal(island)
-                : offer.Kind == AvatarPurchaseKind.Gems ? "GEMS EXCLUSIVE" : "STORE COMING SOON";
+                : offer.Kind == AvatarPurchaseKind.Gems ? "GEMS EXCLUSIVE" : "ONE-TIME PURCHASE";
             if (UnlockView != null) UnlockView.Refresh(offer);
         }
 

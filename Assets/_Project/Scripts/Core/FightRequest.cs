@@ -43,6 +43,10 @@ namespace PushStars.Core
         /// <summary>The stranger is a bot from the pool: its hero, flag, trophies and recorded
         /// motion stand in for a player's. Fought for real — rewards and rating as any stranger.</summary>
         public static BotRecording StrangerBot { get; private set; }
+        /// <summary>Who the stranger is, to report or block them after the fight: an account's uid,
+        /// or a pool bot's id.</summary>
+        public static string StrangerUid { get; private set; }
+        public static string StrangerBotId { get; private set; }
         // Snapshot the chosen boss: winning advances the ladder before the result scene opens.
         public static string BossId { get; private set; }
 
@@ -58,6 +62,7 @@ namespace PushStars.Core
             Stranger = null;
             StrangerName = null;
             StrangerBot = null;
+            StrangerUid = StrangerBotId = null;
             BossId = null;
             Mode = FightMode.Ghost;
             ReturnScene = FightConfig.MainSceneName;
@@ -113,6 +118,8 @@ namespace PushStars.Core
             StrangerGhost(bot.fight, bot.displayName, returnScene);
             StrangerBot = bot;
         }
+
+        public static void StrangerIs(string uid, string botId) { StrangerUid = uid; StrangerBotId = botId; }
 
         /// <param name="ranked">A stranger from the random queue (trophies) rather than a friend.</param>
         public static void Live(LiveDuelLink link, bool ranked = false)

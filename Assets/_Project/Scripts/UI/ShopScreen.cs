@@ -19,9 +19,11 @@ namespace PushStars.UI
         public TextMeshProUGUI Balance, PackTitle, PackPrice;
         public Image PackImage;
         public Sprite[] PackSprites;
-        public static readonly int[] GemAmounts = { 30, 120, 360 };
-        // 360 gems used to repeat the 120 pack's $5.99: the bigger pack now pays out more per dollar.
-        public static readonly string[] GemPrices = { "$1.99", "$5.99", "$14.99" };
+        public static readonly int[] GemAmounts = System.Array.ConvertAll(StoreCatalog.GemPacks, p => p.Gems);
+        public static readonly string[] GemPrices = System.Array.ConvertAll(StoreCatalog.GemPacks, p => p.FallbackPrice);
+        private TextMeshProUGUI _packStatus, _restoreStatus;
+        private int _showingPack;
+        private bool _packBuying;
         private int _openedFrame;
         // Catalog slot behind each offer card: the authored cards first, then one per hero on sale.
         private int[] _offerSlots;
@@ -49,7 +51,6 @@ namespace PushStars.UI
             Back.onClick.AddListener(Hide);
             Home.onClick.AddListener(Hide);
             Okay.onClick.AddListener(Hide);
-            DialogClose.onClick.AddListener(ClosePack);
             for (int i = 0; i < Offers.Length; i++)
             {
                 int index = i;
@@ -65,8 +66,104 @@ namespace PushStars.UI
             _arenas = ShopArenaSection.Install(this);
             if (EmoteCatalog.Enabled) _emotes = ShopEmoteSection.Install(this);
             HideGemPacks();
+            BuildPackBuying();
+            if (StoreAccess.RealMoney) AddRestoreButton();
+            IapStore.Changed += StoreChanged;
+            IapStore.Start();
             Hide();
             RefreshNoticeBadge();
+        }
+
+        private void OnDestroy() => IapStore.Changed -= StoreChanged;
+
+        private void StoreChanged()
+        {
+            RefreshPackPrices();
+            if (IsOpen) Refresh();
+        }
+
+        private void RefreshPackPrices()
+        {
+            for (int i = 0; i < Packs.Length && i < StoreCatalog.GemPacks.Length; i++)
+            {
+                var price = Packs[i].transform.Find("Price")?.GetComponent<TextMeshProUGUI>();
+                if (price != null) price.text = PackPriceText(i);
+            }
+        }
+
+        private static string PackPriceText(int index) =>
+            IapStore.PriceOf(StoreCatalog.GemPacks[index].ProductId, StoreCatalog.GemPacks[index].FallbackPrice);
+
+        /// <summary>The pack dialog's button buys, and tapping outside the panel closes it, like the
+        /// arena dialog. Done after the arena section has copied the dialog.</summary>
+        private void BuildPackBuying()
+        {
+            var panel = PackDialog.transform.Find("Panel");
+            _packStatus = panel.Find("Availability").GetComponent<TextMeshProUGUI>();
+            panel.Find("Description").gameObject.SetActive(false);
+            var dim = PackDialog.AddComponent<Button>();
+            dim.transition = Selectable.Transition.None;
+            dim.onClick.AddListener(ClosePack);
+            panel.gameObject.AddComponent<Button>().transition = Selectable.Transition.None; // swallow taps
+            DialogClose.onClick.AddListener(BuyShownPack);
+            DialogClose.GetComponentInChildren<TextMeshProUGUI>(true).text = "BUY";
+        }
+
+        private void BuyShownPack()
+        {
+            if (_packBuying) return;
+            _packBuying = true;
+            DialogClose.interactable = false;
+            _packStatus.text = "";
+            IapStore.Buy(StoreCatalog.GemPacks[_showingPack].ProductId, (outcome, text) =>
+            {
+                if (this == null) return;
+                _packBuying = false;
+                DialogClose.interactable = true;
+                if (outcome == IapOutcome.Bought) { ClosePack(); Refresh(); }
+                else _packStatus.text = text;
+            });
+        }
+
+        /// <summary>Under the gem packs, in the list: Apple asks for it where heroes are sold for money.</summary>
+        private void AddRestoreButton()
+        {
+            var restore = Instantiate(Okay.gameObject, Content, false).GetComponent<Button>();
+            restore.name = "RestorePurchases";
+            restore.onClick = new Button.ButtonClickedEvent();
+            var rect = (RectTransform)restore.transform;
+            rect.sizeDelta = new Vector2(250f, rect.sizeDelta.y);
+            float top = Content.rect.height + 6f;
+            rect.anchorMin = rect.anchorMax = rect.pivot = new Vector2(0f, 1f);
+            rect.anchoredPosition = new Vector2(70f, -top);
+            var label = restore.GetComponentInChildren<TextMeshProUGUI>(true);
+            label.text = "RESTORE PURCHASES";
+            label.rectTransform.sizeDelta = new Vector2(rect.sizeDelta.x - 16f, label.rectTransform.sizeDelta.y);
+            label.enableAutoSizing = true; label.fontSizeMin = 12f; label.fontSizeMax = label.fontSize;
+
+            _restoreStatus = Instantiate(Balance, Content, false);
+            _restoreStatus.name = "RestoreStatus";
+            var statusRect = _restoreStatus.rectTransform;
+            statusRect.anchorMin = statusRect.anchorMax = statusRect.pivot = new Vector2(0f, 1f);
+            statusRect.anchoredPosition = new Vector2(20f, -(top + rect.sizeDelta.y + 4f));
+            statusRect.sizeDelta = new Vector2(350f, 22f);
+            _restoreStatus.alignment = TextAlignmentOptions.Center;
+            _restoreStatus.enableAutoSizing = true; _restoreStatus.fontSizeMin = 10f; _restoreStatus.fontSizeMax = 14f;
+            _restoreStatus.text = "";
+            Content.SetSizeWithCurrentAnchors(RectTransform.Axis.Vertical, top + rect.sizeDelta.y + 34f);
+
+            restore.onClick.AddListener(() =>
+            {
+                restore.interactable = false;
+                _restoreStatus.text = "";
+                IapStore.Restore((ok, text) =>
+                {
+                    if (this == null) return;
+                    restore.interactable = true;
+                    _restoreStatus.text = text;
+                    Refresh();
+                });
+            });
         }
 
         /// <summary>Also used by scene authoring; the legacy circular info icon is retired.</summary>
@@ -222,6 +319,9 @@ namespace PushStars.UI
             Overlay.SetActive(true);
             Overlay.transform.SetAsLastSibling();
             PackDialog.SetActive(false);
+            if (_restoreStatus != null) _restoreStatus.text = "";
+            IapStore.Start();
+            RefreshPackPrices();
             Refresh();
             MarkNoticesSeen();
             Canvas.ForceUpdateCanvases();
@@ -311,8 +411,10 @@ namespace PushStars.UI
 
         public void ShowPack(int index)
         {
+            _showingPack = index;
             PackTitle.text = GemAmounts[index] + " GEMS";
-            PackPrice.text = GemPrices[index];
+            PackPrice.text = PackPriceText(index);
+            _packStatus.text = "";
             PackImage.sprite = PackSprites[index];
             PackDialog.SetActive(true);
             PackDialog.GetComponentInChildren<UiTactile>()?.Reveal();

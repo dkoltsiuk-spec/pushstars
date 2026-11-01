@@ -345,6 +345,7 @@ namespace PushStars.UI
                 {
                     _searchRoutine = null;
                     FightRequest.PoolBot(_botLoad.Result);
+                    FightRequest.StrangerIs(_offer.uid, _offer.botId);
                     OtaSceneLoader.LoadScene(FightConfig.PreparationSceneName);
                     yield break;
                 }
@@ -355,6 +356,7 @@ namespace PushStars.UI
                 {
                     _searchRoutine = null;
                     FightRequest.StrangerGhost(plain, _offer.name);
+                    FightRequest.StrangerIs(_offer.uid, _offer.botId);
                     OtaSceneLoader.LoadScene(FightConfig.PreparationSceneName);
                     yield break;
                 }
@@ -371,6 +373,7 @@ namespace PushStars.UI
                     yield return new WaitForSeconds(FightConfig.FoundPauseSec);
                     _searchRoutine = null;
                     FightRequest.StrangerGhost(record, _offer.name);
+                    FightRequest.StrangerIs(_offer.uid, _offer.botId);
                     OtaSceneLoader.LoadScene(FightConfig.PreparationSceneName);
                     yield break;
                 }
@@ -523,7 +526,7 @@ namespace PushStars.UI
         private void OnLobby(LobbySearch search)
         {
             if (this == null) return;
-            if (search == null || !search.Live(NowMs()) || search.Uid == LiveDuelClient.Uid)
+            if (search == null || !search.Live(NowMs()) || search.Uid == LiveDuelClient.Uid || ModerationClient.IsBlocked(search.Uid))
             {
                 if (_bannerFromLobby) HideLobbyBanner();
                 return;

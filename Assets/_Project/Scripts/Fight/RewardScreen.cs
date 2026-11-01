@@ -305,6 +305,7 @@ namespace PushStars.Fight
                 Set(ui.TotalReps, Mathf.Max(0, result.MyReps).ToString());
                 Set(ui.OpponentReps, Mathf.Max(0, result.OppReps).ToString());
                 Set(ui.OpponentName, "VS " + (string.IsNullOrWhiteSpace(result.OpponentName) ? "GHOST" : result.OpponentName));
+                OfferPlayerActions(ui.OpponentName, result);
             }
             else Set(ui.OpponentName, "REPS");
             ShowEarlyEnd(duel ? result.EarlyEnd : null);
@@ -318,6 +319,21 @@ namespace PushStars.Fight
                 if (duel && ui.Opponent.StageCamera != null) ui.Opponent.StageCamera.enabled = true;
             }
             if (ui.Backdrop != null) Tint(ui.Backdrop, _outcome);
+        }
+
+        /// <summary>Another player's name on the result can be reported or blocked: the "···" after
+        /// it says the caption is a button. Not against a boss or the player's own shadow.</summary>
+        private static void OfferPlayerActions(TextMeshProUGUI caption, FightResultData result)
+        {
+            if (caption == null || (string.IsNullOrEmpty(result.OpponentUid) && string.IsNullOrEmpty(result.OpponentBot))) return;
+            caption.text += "  ···";
+            caption.raycastTarget = true;
+            var button = caption.GetComponent<Button>();
+            if (button == null) button = caption.gameObject.AddComponent<Button>();
+            button.transition = Selectable.Transition.None;
+            button.onClick.RemoveAllListeners();
+            button.onClick.AddListener(() => PushStars.UI.PlayerActionsSheet.Show(caption, new PushStars.UI.PlayerActionsSheet.Target
+            { Uid = result.OpponentUid, BotId = result.OpponentBot, Name = result.OpponentName, Where = "result" }));
         }
 
         private TextMeshProUGUI _earlyEnd;

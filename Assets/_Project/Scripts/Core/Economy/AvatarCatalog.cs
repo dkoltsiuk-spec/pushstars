@@ -52,7 +52,8 @@ namespace PushStars.Core
         // Slot 0 held a third-party character that cannot ship. The slot and its saved ID stay so
         // every card index keeps its meaning, but it is never shown, sold or selectable.
         private const string RetiredId = "sonic";
-        public static bool IsListed(int index) => At(index) is { } offer && offer.Id != RetiredId;
+        public static bool IsListed(int index) => At(index) is { } offer && offer.Id != RetiredId
+            && (offer.Kind != AvatarPurchaseKind.Dollars || StoreAccess.RealMoney);
 
         /// <summary>Slots from here on carry their own <see cref="AvatarOffer.Prefab"/> and are
         /// equipped by slot number; the slots below are the bodies the stages hold by reference.</summary>
