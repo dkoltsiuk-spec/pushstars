@@ -44,7 +44,7 @@ Paid content: gem packs (consumable) and three heroes (non-consumable): shop ico
 Camera frames are processed on the device and are never recorded or uploaded. There are no ad networks or server-side AI services.
 
 5. REGIONAL DIFFERENCES
-The app works the same in all regions. The interface language follows the device (English, Russian, Brazilian Portuguese).
+The app works the same in all regions. The interface language is chosen in Settings (English, Russian, Brazilian Portuguese).
 
 6. REGULATED INDUSTRY / THIRD-PARTY MATERIAL
 The app does not operate in a regulated industry. It contains no third-party brands or licensed characters. Models, animations, art and music were made for the app or are licensed for commercial use.
