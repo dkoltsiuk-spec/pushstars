@@ -6,7 +6,7 @@ namespace PushStars.Tests
 {
     public class ModerationClientTests
     {
-        private const string Key = "moderation.blocked.v1";
+        private const string Key = "moderation.blocked.v1."; // no account in a test: the key ends right here
         private string _saved;
 
         [SetUp] public void SetUp() { _saved = PlayerPrefs.GetString(Key, ""); PlayerPrefs.DeleteKey(Key); }

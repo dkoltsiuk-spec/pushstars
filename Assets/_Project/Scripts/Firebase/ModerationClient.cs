@@ -31,22 +31,29 @@ namespace PushStars.Services
 
         public const string ReasonName = "offensive_name", ReasonCheating = "cheating";
         private const string Region = "europe-west1";
-        private const string SaveKey = "moderation.blocked.v1";
+        private const string SaveKey = "moderation.blocked.v1.";
         private static HashSet<string> _blocked;
         private static Dictionary<string, string> _bots;
+        private static string _readFor;
+
+        /// <summary>The list belongs to the account: another account on this phone (a switch, a new
+        /// guest after deleting one) starts with its own, not the previous one's.</summary>
+        private static string Key => SaveKey + (LeagueClient.Uid ?? "");
 
         [RuntimeInitializeOnLoadMethod(RuntimeInitializeLoadType.SubsystemRegistration)]
-        private static void Reset() { _blocked = null; _bots = null; }
+        private static void Reset() { _blocked = null; _bots = null; _readFor = null; }
 
         private static HashSet<string> Blocked { get { Read(); return _blocked; } }
         private static Dictionary<string, string> Bots { get { Read(); return _bots; } }
 
         private static void Read()
         {
-            if (_blocked != null) return;
+            string key = Key;
+            if (_blocked != null && _readFor == key) return;
+            _readFor = key;
             _blocked = new HashSet<string>(StringComparer.Ordinal);
             _bots = new Dictionary<string, string>(StringComparer.Ordinal);
-            string json = PlayerPrefs.GetString(SaveKey, "");
+            string json = PlayerPrefs.GetString(key, "");
             if (string.IsNullOrEmpty(json)) return;
             try
             {
@@ -61,7 +68,7 @@ namespace PushStars.Services
         {
             var saved = new SavedList { ids = new List<string>(Blocked) };
             foreach (var bot in Bots) saved.bots.Add(new SavedBot { id = bot.Key, name = bot.Value });
-            PlayerPrefs.SetString(SaveKey, JsonUtility.ToJson(saved));
+            PlayerPrefs.SetString(Key, JsonUtility.ToJson(saved));
             PlayerPrefs.Save();
         }
 
