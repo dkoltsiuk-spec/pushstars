@@ -27,13 +27,15 @@ namespace PushStars.Services
             public List<string> ids = new List<string>();
             /// <summary>Blocked pool bots with the name they showed, for the blocked list.</summary>
             public List<SavedBot> bots = new List<SavedBot>();
+            /// <summary>Blocked accounts with the name they showed: the list does not wait for the server to name them.</summary>
+            public List<SavedBot> players = new List<SavedBot>();
         }
 
         public const string ReasonName = "offensive_name", ReasonCheating = "cheating";
         private const string Region = "europe-west1";
         private const string SaveKey = "moderation.blocked.v1.";
         private static HashSet<string> _blocked;
-        private static Dictionary<string, string> _bots;
+        private static Dictionary<string, string> _bots, _players;
         private static string _readFor;
 
         /// <summary>The list belongs to the account: another account on this phone (a switch, a new
@@ -41,10 +43,11 @@ namespace PushStars.Services
         private static string Key => SaveKey + (LeagueClient.Uid ?? "");
 
         [RuntimeInitializeOnLoadMethod(RuntimeInitializeLoadType.SubsystemRegistration)]
-        private static void Reset() { _blocked = null; _bots = null; _readFor = null; }
+        private static void Reset() { _blocked = null; _bots = null; _players = null; _readFor = null; }
 
         private static HashSet<string> Blocked { get { Read(); return _blocked; } }
         private static Dictionary<string, string> Bots { get { Read(); return _bots; } }
+        private static Dictionary<string, string> Players { get { Read(); return _players; } }
 
         private static void Read()
         {
@@ -53,6 +56,7 @@ namespace PushStars.Services
             _readFor = key;
             _blocked = new HashSet<string>(StringComparer.Ordinal);
             _bots = new Dictionary<string, string>(StringComparer.Ordinal);
+            _players = new Dictionary<string, string>(StringComparer.Ordinal);
             string json = PlayerPrefs.GetString(key, "");
             if (string.IsNullOrEmpty(json)) return;
             try
@@ -60,6 +64,7 @@ namespace PushStars.Services
                 var saved = JsonUtility.FromJson<SavedList>(json);
                 _blocked.UnionWith(saved.ids);
                 if (saved.bots != null) foreach (var bot in saved.bots) _bots[bot.id] = bot.name ?? "";
+                if (saved.players != null) foreach (var player in saved.players) _players[player.id] = player.name ?? "";
             }
             catch (ArgumentException e) { Debug.LogWarning("[Moderation] blocked list: " + e.Message); }
         }
@@ -68,6 +73,7 @@ namespace PushStars.Services
         {
             var saved = new SavedList { ids = new List<string>(Blocked) };
             foreach (var bot in Bots) saved.bots.Add(new SavedBot { id = bot.Key, name = bot.Value });
+            foreach (var player in Players) saved.players.Add(new SavedBot { id = player.Key, name = player.Value });
             PlayerPrefs.SetString(Key, JsonUtility.ToJson(saved));
             PlayerPrefs.Save();
         }
@@ -93,18 +99,18 @@ namespace PushStars.Services
             string id = string.IsNullOrEmpty(targetUid) ? targetBot : targetUid;
             if (string.IsNullOrEmpty(id)) return;
             if (blocked) Blocked.Add(id); else Blocked.Remove(id);
-            if (string.IsNullOrEmpty(targetUid))
-            {
-                if (blocked) Bots[id] = string.IsNullOrWhiteSpace(name) ? "PLAYER" : name;
-                else Bots.Remove(id);
-            }
+            var names = string.IsNullOrEmpty(targetUid) ? Bots : Players;
+            if (blocked) names[id] = string.IsNullOrWhiteSpace(name) ? "PLAYER" : name;
+            else names.Remove(id);
             Save();
         }
 
-        /// <summary>The bots blocked on this phone: no account, no server to ask.</summary>
+        /// <summary>What this phone blocked for this account: accounts and bots of the pool. A bot
+        /// has no account, so only the phone knows it; the rest the server lists as well.</summary>
         public static BlockedPlayer[] LocalPlayers()
         {
             var players = new List<BlockedPlayer>();
+            foreach (var player in Players) players.Add(new BlockedPlayer { uid = player.Key, botId = "", name = player.Value });
             foreach (var bot in Bots) players.Add(new BlockedPlayer { uid = "", botId = bot.Key, name = bot.Value });
             return players.ToArray();
         }
@@ -116,9 +122,15 @@ namespace PushStars.Services
             await FirebaseAuthService.EnsureReadyAsync();
             var list = await LeagueClient.Call<Empty, BlockedPlayers>("getBlockedPlayers", new Empty(), LeagueClient.Uid, Region);
             var players = new List<BlockedPlayer>(list?.players ?? Array.Empty<BlockedPlayer>());
-            foreach (var player in players) Blocked.Add(player.uid);
+            foreach (var player in players)
+            {
+                Blocked.Add(player.uid);
+                if (!string.IsNullOrWhiteSpace(player.name)) Players[player.uid] = player.name;
+            }
             Save();
-            players.AddRange(LocalPlayers());
+            // This phone's own entries (named when it blocked them) fill in whatever the server did not list.
+            foreach (var local in LocalPlayers())
+                if (!players.Exists(p => !string.IsNullOrEmpty(local.uid) ? p.uid == local.uid : p.botId == local.botId)) players.Add(local);
             return players.ToArray();
         }
     }
