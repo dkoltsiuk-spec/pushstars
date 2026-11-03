@@ -10,7 +10,7 @@
 
 ```
 1. SCREEN RECORDING
-Attached: captured on a physical iPhone running the latest iOS, starting from launching the app. It shows onboarding, the camera-based push-up count, a boss fight, a duel, reporting and blocking a player, an in-app purchase in the sandbox, restoring purchases, sign-in and account deletion.
+Attached: captured on a physical iPhone running the latest iOS, starting from launching the app. It shows onboarding, the camera-based push-up count, a boss fight, a duel, reporting and blocking a player, the list of blocked players, in-app purchases in the sandbox, sign-in and account deletion.
 
 2. PURPOSE AND AUDIENCE
 Pushup Stars is a fitness game that helps people build a home push-up habit without a gym, equipment or a wearable. The phone camera counts full reps on the device, and every rep deals damage to an opponent, which makes a repetitive exercise motivating. It is for teens and adults who want a short daily workout at home. It is not a medical device.
