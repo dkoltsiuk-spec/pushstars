@@ -143,7 +143,7 @@ namespace PushStars.UI
             SetBusy(true);
             try
             {
-                await ModerationClient.SetBlocked(_target.Uid, _target.BotId, blocked);
+                await ModerationClient.SetBlocked(_target.Uid, _target.BotId, blocked, _target.Name);
                 if (this == null) return;
                 _status.text = blocked ? "BLOCKED. YOU WON'T MEET THIS PLAYER AGAIN." : "UNBLOCKED.";
                 DrawBlock();
@@ -195,23 +195,30 @@ namespace PushStars.UI
             LoadBlocked();
         }
 
+        /// <summary>The bots blocked on this phone show at once; the account's list follows from the
+        /// server. Offline, the phone's own list still stands.</summary>
         private async void LoadBlocked()
         {
+            Render(ModerationClient.LocalPlayers(), false);
             try
             {
                 var players = await ModerationClient.Load();
-                if (this == null) return;
-                _status.text = players.Length == 0 ? "Nobody is blocked." : "";
-                float y = 0f;
-                foreach (Transform old in _listContent) Destroy(old.gameObject);
-                foreach (var player in players) { AddBlockedRow(player, y); y += ButtonHeight + ButtonGap; }
-                _listContent.sizeDelta = new Vector2(0f, y);
+                if (this != null) Render(players, true);
             }
             catch (Exception e)
             {
                 Debug.LogWarning("[Moderation] list: " + e.Message);
-                if (this != null) _status.text = "NO CONNECTION. TRY AGAIN.";
+                if (this != null) _status.text = _listContent.childCount == 0 ? "NO CONNECTION. TRY AGAIN." : "";
             }
+        }
+
+        private void Render(BlockedPlayer[] players, bool final)
+        {
+            _status.text = players.Length > 0 ? "" : final ? "Nobody is blocked." : "Loading…";
+            float y = 0f;
+            foreach (Transform old in _listContent) Destroy(old.gameObject);
+            foreach (var player in players) { AddBlockedRow(player, y); y += ButtonHeight + ButtonGap; }
+            _listContent.sizeDelta = new Vector2(0f, y);
         }
 
         private void AddBlockedRow(BlockedPlayer player, float y)
@@ -229,7 +236,7 @@ namespace PushStars.UI
                 SetBusy(true);
                 try
                 {
-                    await ModerationClient.SetBlocked(player.uid, null, false);
+                    await ModerationClient.SetBlocked(player.uid, player.botId, false);
                     if (this == null) return;
                     SetBusy(false);
                     LoadBlocked();
